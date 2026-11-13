@@ -8,6 +8,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem } from '@/components/ui/pagination'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { HotStories } from '@/components/app/HotStories'
 import { SentimentBadge } from '@/components/app/Sentiment'
 import { PAGE_SIZE, useDashboard } from '@/hooks/useDashboard'
 import type { Article } from '@/lib/api'
@@ -219,6 +220,8 @@ export function ArticleFeed() {
           {total} article{total === 1 ? '' : 's'}
         </span>
       </div>
+      {filters.hot && !filters.cluster && <HotStories />}
+
       {filters.cluster && (
         <Alert className="mb-3">
           <Newspaper />

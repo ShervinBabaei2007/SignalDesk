@@ -179,7 +179,10 @@ def to_hrs(dt: datetime | None, now: datetime) -> float:
     return max((now - dt).total_seconds() / 3600, 0.0)
 
 
-def trending(db: Session, limit: int = 6) -> list[dict]:
+HOT_STORIES = 8  # how many top stories count as "hot topics" (list and feed filter agree)
+
+
+def _ranked(db: Session) -> list[tuple[Cluster, dict]]:
     """The biggest stories right now: covered by several outlets and recent.
 
     score = (2 x distinct outlets + reports) x 0.5^(age / 24h), so a story that
@@ -204,7 +207,7 @@ def trending(db: Session, limit: int = 6) -> list[dict]:
         latest = max(stamps, key=lambda d: d if d.tzinfo else d.replace(tzinfo=timezone.utc))
         age = min(to_hrs(d, now) for d in stamps)
         score = (len(c.sources) * 2 + c.size) * 0.5 ** (age / 24)
-        ranked.append((score, {
+        ranked.append((score, c, {
             "cluster_id": c.id,
             "article_id": c.lead_id,
             "title": c.title,
@@ -216,4 +219,14 @@ def trending(db: Session, limit: int = 6) -> list[dict]:
             "latest_at": latest if latest.tzinfo else latest.replace(tzinfo=timezone.utc),
         }))
     ranked.sort(key=lambda t: t[0], reverse=True)
-    return [story for _, story in ranked[:limit]]
+    return [(c, story) for _, c, story in ranked]
+
+
+def trending(db: Session, limit: int = HOT_STORIES) -> list[dict]:
+    """The top `limit` hot stories (see _ranked for how they are scored)."""
+    return [story for _, story in _ranked(db)[:limit]]
+
+
+def hot_article_ids(db: Session, limit: int = HOT_STORIES) -> list[int]:
+    """Every article that belongs to one of the hot stories."""
+    return [i for c, _ in _ranked(db)[:limit] for i in c.article_ids]

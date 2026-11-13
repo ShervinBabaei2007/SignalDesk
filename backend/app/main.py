@@ -285,7 +285,7 @@ def stats(db: Session = Depends(get_db)):
 # --------------------------------------------------------------------------- #
 
 @app.get("/api/trending", response_model=list[TrendingStory], tags=["Intelligence"])
-def trending_stories(limit: int = Query(6, ge=1, le=20), db: Session = Depends(get_db)):
+def trending_stories(limit: int = Query(clustering.HOT_STORIES, ge=1, le=20), db: Session = Depends(get_db)):
     """Hot topics: the stories the most outlets are covering right now."""
     return clustering.trending(db, limit)
 
@@ -297,6 +297,7 @@ def list_articles(
     topic: str | None = Query(None, max_length=50),
     sentiment: str | None = Query(None),
     cluster: int | None = Query(None, ge=1),
+    hot: bool = Query(False),
     order: str = Query("newest"),
     limit: int = Query(25, ge=1, le=100),
     offset: int = Query(0, ge=0),
@@ -320,6 +321,9 @@ def list_articles(
         q = q.where(Article.source == source)
     if topic:
         q = q.where(Article.topic == topic)
+
+    if hot:
+        q = q.where(Article.id.in_(clustering.hot_article_ids(db) or [0]))
 
     if cluster is not None:
         _, by_id = clustering.get_clusters(db)

@@ -3,7 +3,7 @@
 > **AI-powered news intelligence, on autopilot.**
 > SignalDesk pulls news from RSS feeds around the web, deduplicates it, scores sentiment, classifies topics, and surfaces it all in a real-time intelligence dashboard.
 
-![Status](https://img.shields.io/badge/status-production--grade-brightgreen) ![Python](https://img.shields.io/badge/python-3.12%2B-blue) ![FastAPI](https://img.shields.io/badge/FastAPI-latest-teal) ![React](https://img.shields.io/badge/React-19-61dafb) ![Tests](https://img.shields.io/badge/tests-71%20passing-brightgreen) ![License](https://img.shields.io/badge/license-MIT-lightgrey)
+![Status](https://img.shields.io/badge/status-production--grade-brightgreen) ![Python](https://img.shields.io/badge/python-3.12%2B-blue) ![FastAPI](https://img.shields.io/badge/FastAPI-latest-teal) ![React](https://img.shields.io/badge/React-19-61dafb) ![Tests](https://img.shields.io/badge/tests-72%20passing-brightgreen) ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
 ---
 
@@ -61,9 +61,9 @@ And the platform runs itself: a built-in scheduler re-ingests every feed every 3
 | ✉️ **Brief delivery** | Send the daily brief to Slack and/or email from the dashboard, or on a schedule (`DIGEST_HOUR`) |
 | 🔑 **Optional API token** | Set `API_TOKEN` to require `X-API-Key` on all write endpoints; the UI has a field for it |
 | 📡 **15 curated feeds** | BBC (World, Technology, Business, Science, Health), The Guardian, NPR, Al Jazeera, Politico, STAT News, CNBC, Ars Technica, ScienceDaily, The Verge and TechCrunch: free-to-read sources chosen for topic and viewpoint spread. One click adds any that are missing to an existing install |
-| 🔥 **Hot topics** | The stories the most outlets are covering right now, ranked by outlets × recency from the story clusters, in the sticky sidebar. Click one to read every report of it |
+| 🔥 **Hot topics** | A category in the Topics list (and the topic filter). It shows the articles from the stories the most outlets are covering right now, ranked by outlets × recency, with the stories listed above the feed so you can open any one of them |
 | 📄 **Numbered pages** | Page 1, 2, 3… navigation with a windowed page list instead of an endless "load more" |
-| ✅ **Tested** | 51 pytest tests, 20 Vitest tests, and GitHub Actions CI for both the backend and the frontend build |
+| ✅ **Tested** | 52 pytest tests, 20 Vitest tests, and GitHub Actions CI for both the backend and the frontend build |
 | 🐳 **One-container deploy** | `docker compose up --build` and you're done |
 
 ## Quick start
@@ -129,7 +129,7 @@ Interactive API docs live at **http://localhost:8000/docs** (Swagger UI).
 | `GET` | `/api/stats` | KPIs, sentiment split, topic breakdown, 7-day trend |
 | `GET` | `/api/trending` | Hot topics: the stories the most outlets cover right now |
 | `GET` | `/api/digest` | Generated daily brief: headline, extremes, topic counts |
-| `GET` | `/api/articles` | Search/filter/sort/paginate articles (`cluster=<id>` shows one story) |
+| `GET` | `/api/articles` | Search/filter/sort/paginate articles (`cluster=<id>` shows one story, `hot=1` the hot stories) |
 | `GET` | `/api/articles/{id}` | Article detail (incl. keywords and `related` coverage of the same story) |
 | `POST` | `/api/articles/{id}/summarize` | Fetch the linked page and generate a clean full-text summary on demand |
 | `GET` | `/api/articles/export.csv` | Download all articles as CSV |

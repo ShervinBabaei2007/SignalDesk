@@ -14,6 +14,8 @@ interface DashboardValue {
   /** Show every report of one story, clearing other filters so none of them hide it. */
   openStory: (clusterId: number) => void
   hasActiveFilters: boolean
+  /** Articles that belong to the hot stories (matches the `hot` feed filter). */
+  hotCount: number
   articles: Article[]
   total: number
   page: number
@@ -73,7 +75,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
 
   const loadSide = useCallback(async () => {
     const [s, d, t, h, fs] = await Promise.allSettled([
-      api.stats(), api.digest(), api.trending(5), api.health(), api.feeds(),
+      api.stats(), api.digest(), api.trending(8), api.health(), api.feeds(),
     ])
     if (s.status === 'fulfilled') setStats(s.value)
     if (d.status === 'fulfilled') setDigest(d.value)
@@ -138,12 +140,13 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     }
   }, [refreshAll])
 
-  const hasActiveFilters = !!(filters.search || filters.source || filters.topic || filters.sentiment || filters.cluster)
+  const hasActiveFilters = !!(filters.search || filters.source || filters.topic || filters.sentiment || filters.cluster || filters.hot)
   const sources = useMemo(() => feeds.map((f) => f.name).sort(), [feeds])
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE))
+  const hotCount = trending.reduce((n, t) => n + t.reports, 0)
 
   const value: DashboardValue = {
-    filters, setFilter, clearFilters, openStory, hasActiveFilters, articles, total, page, pageCount,
+    filters, setFilter, clearFilters, openStory, hasActiveFilters, hotCount, articles, total, page, pageCount,
     setPage: setPageState, loading, stats, digest, trending, health, sources, feeds, refreshFeeds, refreshAll,
     ingesting, ingestResult, runIngest,
   }

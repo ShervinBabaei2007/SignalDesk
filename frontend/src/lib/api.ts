@@ -121,6 +121,7 @@ export interface Filters {
   topic: string
   sentiment: string
   cluster: string
+  hot: string // '1' = only articles from the hot stories
   order: string
 }
 
@@ -130,6 +131,7 @@ export const EMPTY_FILTERS: Filters = {
   topic: '',
   sentiment: '',
   cluster: '',
+  hot: '',
   order: 'newest',
 }
 
@@ -185,7 +187,7 @@ export const api = {
   health: () => request<Health>('/health'),
   stats: () => request<Stats>('/stats'),
   digest: () => request<Digest>('/digest'),
-  trending: (limit = 5) => request<TrendingStory[]>(`/trending?limit=${limit}`),
+  trending: (limit = 8) => request<TrendingStory[]>(`/trending?limit=${limit}`),
   sendDigest: () => request<{ sent: string[] }>('/digest/send', { method: 'POST' }),
   articles: (filters: Filters, offset: number, limit: number) => {
     const params = new URLSearchParams({ limit: String(limit), offset: String(offset), order: filters.order })

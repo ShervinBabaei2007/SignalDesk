@@ -135,3 +135,16 @@ def test_trending_api_ranks_multi_outlet_stories_and_skips_single_source():
     # the two-article story from a single outlet is not "hot"
     assert all("tax" not in s["title"].lower() for s in stories)
     assert client.get(f"/api/articles?cluster={top['cluster_id']}").json()["total"] == 3
+
+
+def test_hot_filter_matches_the_union_of_hot_stories():
+    client = TestClient(app)
+    stories = client.get("/api/trending").json()
+    assert stories
+    expected = set()
+    for s in stories:
+        page = client.get(f"/api/articles?cluster={s['cluster_id']}&limit=100").json()
+        expected |= {a["id"] for a in page["items"]}
+    hot = client.get("/api/articles?hot=1&limit=100").json()
+    assert {a["id"] for a in hot["items"]} == expected
+    assert hot["total"] == sum(s["reports"] for s in stories)
