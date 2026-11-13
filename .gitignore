@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Databases
+*.db
+*.sqlite3
+
+# Environment / secrets
+.env
+
+# Legacy scaffolding kept locally, not published
+_archive/
+
+# IDE
+.idea/
+.vscode/

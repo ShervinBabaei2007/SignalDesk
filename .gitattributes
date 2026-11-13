@@ -1,2 +1,4 @@
-# Auto detect text files and perform LF normalization
-* text=auto
+
+
+# Git attributes for line ending normalization across platforms  
+*.py text eol=crlf  # Python files use Windows-style CRLF endings (optional)

@@ -1,0 +1,10 @@
+
+
+{
+  "name": "RSS Feed Ingestion Workflow",
+  
+  "description": "Automated RSS feed collection and article ingestion into SignalDesk backend"
+
+}
+
+

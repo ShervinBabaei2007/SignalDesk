@@ -1,0 +1,22 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      # Switch to Postgres for production:
+      # DATABASE_URL: postgresql://signaldesk:signaldesk@db:5432/signaldesk
+      - DATABASE_URL=
+    restart: unless-stopped
+
+  # Optional: PostgreSQL for production use
+  # db:
+  #   image: postgres:16-alpine
+  #   environment:
+  #     POSTGRES_USER: signaldesk
+  #     POSTGRES_PASSWORD: signaldesk
+  #     POSTGRES_DB: signaldesk
+  #   volumes:
+  #     - pgdata:/var/lib/postgresql/data
+  #   ports:
+  #     - "5432:5432"

@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SignalDesk — News Intelligence Dashboard</title>
+  <meta name="description" content="SignalDesk ingests news from RSS feeds, analyzes sentiment and topics, and surfaces the signals that matter." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/styles.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <span class="brand-logo">⚡</span>
+        <div>
+          <h1>SignalDesk</h1>
+          <p class="tagline">News intelligence, on autopilot</p>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <span id="health-pill" class="pill pill-muted" title="API status">
+          <span class="dot"></span> checking…
+        </span>
+        <button id="feeds-btn" class="btn btn-ghost" title="Manage RSS feeds">📡 Feeds</button>
+        <button id="ingest-btn" class="btn btn-primary">
+          <span class="btn-icon">⬇</span> Ingest Feeds
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- KPI row -->
+    <section id="stats-row" class="stats-row" aria-label="Key metrics">
+      <div class="stat-card">
+        <div class="stat-label">Total Articles</div>
+        <div class="stat-value" id="stat-total">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Sources</div>
+        <div class="stat-value" id="stat-sources">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Last 24h</div>
+        <div class="stat-value" id="stat-24h">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Avg Sentiment</div>
+        <div class="stat-value"><span id="stat-sentiment">—</span>
+          <span id="stat-sentiment-arrow" class="sentiment-arrow"></span></div>
+        <div class="mini-bar">
+          <span id="bar-positive" class="bar-pos"></span>
+          <span id="bar-neutral" class="bar-neu"></span>
+          <span id="bar-negative" class="bar-neg"></span>
+        </div>
+      </div>
+      <div class="stat-card stat-chart">
+        <div class="stat-label">Sentiment Trend (7d)</div>
+        <svg id="trend-chart" viewBox="0 0 220 60" preserveAspectRatio="none" aria-hidden="true"></svg>
+      </div>
+    </section>
+
+    <!-- Filters -->
+    <section class="filters" aria-label="Filters">
+      <input id="f-search" type="search" placeholder="🔍 Search articles…" />
+      <select id="f-source"><option value="">All sources</option></select>
+      <select id="f-topic"><option value="">All topics</option></select>
+      <select id="f-sentiment">
+        <option value="">All sentiment</option>
+        <option value="positive">Positive</option>
+        <option value="neutral">Neutral</option>
+        <option value="negative">Negative</option>
+      </select>
+    </section>
+
+    <div class="layout">
+      <!-- Sidebar -->
+      <aside class="sidebar">
+        <div class="panel">
+          <h3>Topic Breakdown</h3>
+          <div id="topic-breakdown" class="topic-list"></div>
+        </div>
+        <div class="panel">
+          <h3>Sentiment Split</h3>
+          <div id="sentiment-split" class="split"></div>
+        </div>
+        <div class="panel panel-cta">
+          <h3>Live Ingestion</h3>
+          <p>Pull the latest stories from every configured RSS feed, dedupe, and analyze them instantly.</p>
+          <button id="ingest-btn-2" class="btn btn-primary btn-block">Run Ingestion</button>
+          <div id="ingest-result" class="ingest-result"></div>
+        </div>
+      </aside>
+
+      <!-- Article feed -->
+      <section class="feed">
+        <div class="feed-header">
+          <h2>Signal Feed</h2>
+          <span id="result-count" class="muted"></span>
+        </div>
+        <div id="articles" class="article-list" aria-live="polite"></div>
+        <div id="empty-state" class="empty hidden">
+          <div class="empty-icon">🛰️</div>
+          <h3>No signals found</h3>
+          <p>Try clearing filters, or run an ingestion to pull fresh articles.</p>
+        </div>
+        <div id="loading" class="loading">Loading signals…</div>
+      </section>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <p><strong>SignalDesk</strong> · FastAPI + SQLAlchemy + feedparser · Sentiment, topics &amp; summaries computed on ingest</p>
+  </footer>
+
+  <!-- Feeds modal -->
+  <dialog id="feeds-modal" class="modal">
+    <div class="modal-head">
+      <h2>📡 RSS Feeds</h2>
+      <button id="feeds-close" class="btn btn-ghost btn-sm">✕</button>
+    </div>
+    <p class="muted modal-sub">Every active feed is fetched when you press <em>Ingest Feeds</em>.</p>
+    <ul id="feeds-list" class="feeds-list"></ul>
+    <form id="feed-form" class="feed-form">
+      <input id="feed-name" placeholder="Feed name" required maxlength="200" />
+      <input id="feed-url" type="url" placeholder="https://example.com/rss.xml" required />
+      <button class="btn btn-primary">Add Feed</button>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
