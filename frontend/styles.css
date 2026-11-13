@@ -178,6 +178,32 @@ body {
 
 .sentiment-score { font-family: var(--mono); font-size: 11px; color: var(--text-dim); }
 
+/* ---------- Daily Brief ---------- */
+.panel-brief { border-color: rgba(108, 140, 255, 0.35); background: linear-gradient(160deg, rgba(108,140,255,0.08), var(--panel)); }
+.digest-headline { font-size: 13.5px; line-height: 1.55; font-weight: 500; }
+.digest-extremes { margin-top: 12px; display: flex; flex-direction: column; gap: 10px; }
+.digest-group-title { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.09em; color: var(--text-dim); margin-bottom: 5px; }
+.digest-item { display: block; font-size: 12.5px; line-height: 1.4; color: var(--text); text-decoration: none; padding: 7px 10px; border-radius: 8px; background: var(--bg-elev); border: 1px solid var(--border); }
+.digest-item:hover { border-color: var(--accent); }
+.digest-item .digest-score { font-family: var(--mono); font-size: 11px; float: right; }
+.digest-pos .digest-score { color: var(--pos); }
+.digest-neg .digest-score { color: var(--neg); }
+
+/* ---------- Article detail modal ---------- */
+.modal-article { width: min(640px, 94vw); }
+.am-meta { margin-bottom: 10px; }
+.am-title { font-size: 19px; line-height: 1.35; letter-spacing: -0.01em; margin-bottom: 12px; }
+.am-summary { font-size: 14px; line-height: 1.65; color: var(--text-dim); margin-bottom: 14px; }
+.am-sentiment { margin: 16px 0 18px; }
+.am-sentiment-label { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-dim); margin-bottom: 7px; }
+.am-sentiment-label span:last-child { font-family: var(--mono); }
+.am-sentiment-track { position: relative; height: 8px; border-radius: 4px; background: linear-gradient(90deg, var(--neg), #2a3247 50%, var(--pos)); opacity: 0.85; }
+.am-sentiment-gauge { position: absolute; top: -3px; width: 14px; height: 14px; border-radius: 50%; background: #fff; border: 3px solid var(--bg-elev); transform: translateX(-50%); transition: left 0.4s ease; box-shadow: 0 0 10px rgba(255,255,255,0.4); }
+.am-link { text-decoration: none; }
+
+/* ---------- Load more ---------- */
+.load-more-wrap { text-align: center; margin-top: 16px; }
+
 /* ---------- Empty / loading ---------- */
 .empty { text-align: center; padding: 70px 20px; color: var(--text-dim); }
 .empty-icon { font-size: 42px; margin-bottom: 10px; }
@@ -202,6 +228,9 @@ body {
 .feeds-list .feed-name { font-weight: 600; font-size: 13.5px; }
 .feeds-list .feed-url { font-family: var(--mono); font-size: 11px; color: var(--text-dim); display: block; margin-top: 2px;
   max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.feed-status { display: block; font-size: 11px; margin-top: 3px; }
+.feed-ok { color: var(--pos); }
+.feed-err { color: var(--neg); }
 .feed-form { display: grid; grid-template-columns: 1fr 1.6fr auto; gap: 8px; }
 .feed-form input {
   background: var(--panel); border: 1px solid var(--border); color: var(--text);

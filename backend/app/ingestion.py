@@ -1,6 +1,7 @@
 """RSS ingestion pipeline: fetch feeds, dedupe, analyze, store."""
 
 import logging
+import re
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from time import mktime
@@ -11,7 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .analysis import analyze
-from .models import Article
+from .models import Article, Feed
 
 logger = logging.getLogger("signaldesk.ingestion")
 
@@ -53,24 +54,36 @@ def _entry_text(entry) -> str:
     elif getattr(entry, "summary", None):
         body = entry.summary
     # feedparser can leave HTML entities/links in text; keep it readable
-    import re
-
     body = re.sub(r"<[^>]+>", " ", body)
     return f"{title}. {body}".strip()
 
 
-def ingest_feed(db: Session, feed_url: str, feed_name: str, max_entries: int = 20) -> dict:
+def ingest_feed(
+    db: Session,
+    feed_url: str,
+    feed_name: str,
+    max_entries: int = 20,
+    feed: Feed | None = None,
+) -> dict:
     """Fetch a single RSS feed and store any new articles.
 
     Returns per-feed stats: fetched, added (new), skipped (duplicates/errors).
+    When `feed` (a Feed row) is given, its health status is updated too.
     """
     stats = {"feed": feed_name, "fetched": 0, "added": 0, "skipped": 0}
+
+    def _finish(status: str) -> None:
+        if feed is not None:
+            feed.last_fetched_at = datetime.now(timezone.utc)
+            feed.last_status = status[:300]
+            db.commit()
 
     try:
         parsed = feedparser.parse(feed_url)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Feed %s failed to parse: %s", feed_url, exc)
         stats["error"] = str(exc)
+        _finish(f"error: {exc}")
         return stats
 
     entries = (parsed.entries or [])[:max_entries]
@@ -95,6 +108,7 @@ def ingest_feed(db: Session, feed_url: str, feed_name: str, max_entries: int = 2
             url=url[:1000],
             source=feed_name[:200],
             summary=result["summary"],
+            keywords=", ".join(result["keywords"]),
             topic=result["topic"],
             sentiment=result["sentiment"],
             published_at=_parse_published(entry),
@@ -107,12 +121,17 @@ def ingest_feed(db: Session, feed_url: str, feed_name: str, max_entries: int = 2
             db.rollback()
             stats["skipped"] += 1
 
+    _finish(f"ok: {stats['added']} added, {stats['fetched']} fetched")
     return stats
 
 
-def ingest_all(db: Session, feeds: list[dict]) -> list[dict]:
+def ingest_all(db: Session, feeds: list[dict], feed_rows: dict[str, Feed] | None = None) -> list[dict]:
     """Ingest a list of {'name', 'url'} feeds. Returns stats per feed."""
-    return [ingest_feed(db, f["url"], f["name"]) for f in feeds]
+    feed_rows = feed_rows or {}
+    return [
+        ingest_feed(db, f["url"], f["name"], feed=feed_rows.get(f["name"]))
+        for f in feeds
+    ]
 
 
 def utcnow():

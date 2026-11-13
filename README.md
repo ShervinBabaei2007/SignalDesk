@@ -3,7 +3,11 @@
 > **AI-powered news intelligence, on autopilot.**
 > SignalDesk pulls news from RSS feeds around the web, deduplicates it, scores sentiment, classifies topics, and surfaces it all in a real-time intelligence dashboard.
 
-![Status](https://img.shields.io/badge/status-MVP-brightgreen) ![Python](https://img.shields.io/badge/python-3.12%2B-blue) ![FastAPI](https://img.shields.io/badge/FastAPI-latest-teal) ![Tests](https://img.shields.io/badge/tests-18%20passing-brightgreen) ![License](https://img.shields.io/badge/license-MIT-lightgrey)
+![Status](https://img.shields.io/badge/status-production--grade-brightgreen) ![Python](https://img.shields.io/badge/python-3.12%2B-blue) ![FastAPI](https://img.shields.io/badge/FastAPI-latest-teal) ![Tests](https://img.shields.io/badge/tests-24%20passing-brightgreen) ![License](https://img.shields.io/badge/license-MIT-lightgrey)
+
+---
+
+![SignalDesk dashboard](docs/screenshots/dashboard.png)
 
 ---
 
@@ -23,18 +27,25 @@ Every article that enters the system is automatically:
 - **Scored for sentiment** in `[-1.0, +1.0]` with negation and intensifier handling
 - **Classified** into one of 6 topics (Technology, Business, Science, Politics, Health, World)
 - **Summarized** with an extractive summary
+- **Tagged** with extracted keywords
 - **Deduplicated** by URL, so re-running ingestion never creates duplicates
+
+And the platform runs itself: a built-in scheduler re-ingests every feed every 30 minutes — no cron, no external workers.
 
 ## Highlights
 
 | | |
 |---|---|
 | 📡 **Live RSS ingestion** | Pull from any RSS feed with one click — 110 real articles in under 2 seconds |
+| 🤖 **Auto-pilot scheduler** | Background task re-fetches every feed on a configurable interval; feeds report health status ("ok: 5 added · 2h ago") |
 | 🧠 **Zero-dependency NLP** | Deterministic lexicon-based analysis that works offline; clean interface for swapping in an LLM later |
-| 📊 **Intelligence dashboard** | Dark-mode UI with KPI cards, 7-day sentiment trend chart, topic breakdown, and instant filters |
-| 🗄️ **Zero-config persistence** | SQLite by default, PostgreSQL with one environment variable |
+| ☀️ **Daily Brief** | Auto-generated intelligence headline + most positive/negative signals, refreshed with the stats |
+| 📊 **Intelligence dashboard** | Dark-mode UI: KPI cards, 7-day sentiment trend, topic breakdown, keyword chips, article detail modal with sentiment gauge |
+| 🔍 **Search, filter & sort** | Live search, source/topic/sentiment filters, newest/oldest/most-polarized sorting, and "load more" pagination |
+| 📤 **CSV export** | One click exports the full article dataset |
+| 🗄️ **Zero-config persistence** | SQLite by default, PostgreSQL with one environment variable; automatic column migrations on startup |
 | 🌱 **Demo seeding** | Auto-seeds 28 realistic articles on first boot — the dashboard never looks empty |
-| ✅ **Tested** | 18 pytest tests covering the analysis engine and the full API surface |
+| ✅ **Tested** | 24 pytest tests covering the analysis engine, API surface, sorting, digest, and export |
 | 🐳 **One-container deploy** | `docker compose up --build` and you're done |
 
 ## Quick start
@@ -85,12 +96,21 @@ Interactive API docs live at **http://localhost:8000/docs** (Swagger UI).
 |--------|----------|-------------|
 | `GET` | `/api/health` | Service health + row counts |
 | `GET` | `/api/stats` | KPIs, sentiment split, topic breakdown, 7-day trend |
-| `GET` | `/api/articles` | Search/filter/paginate articles |
-| `GET` | `/api/articles/{id}` | Single article |
-| `GET` | `/api/feeds` | List configured feeds |
+| `GET` | `/api/digest` | Generated daily brief: headline, extremes, topic counts |
+| `GET` | `/api/articles` | Search/filter/sort/paginate articles |
+| `GET` | `/api/articles/{id}` | Article detail (incl. keywords) |
+| `GET` | `/api/articles/export.csv` | Download all articles as CSV |
+| `GET` | `/api/feeds` | List feeds with last-fetch health |
 | `POST` | `/api/feeds` | Add a feed (`{"name", "url"}`) |
 | `DELETE` | `/api/feeds/{id}` | Remove a feed |
 | `POST` | `/api/ingest` | Fetch all active feeds → dedupe → analyze → store |
+
+## Configuration
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `DATABASE_URL` | SQLite (`backend/signaldesk.db`) | Point at PostgreSQL for production |
+| `INGEST_INTERVAL_MINUTES` | `30` | Auto-pilot re-ingest interval; `0` disables the scheduler |
 
 ## Project structure
 
@@ -118,7 +138,8 @@ SignalDesk/
 ## Design decisions
 
 - **Deterministic NLP over LLM-by-default.** The lexicon-based analyzer runs offline, is instant, and behaves identically on every demo run — ideal for a showcase. The `analyze()` interface is a single function, so dropping in an OpenAI/Anthropic-backed implementation is a one-file change.
-- **Deduplication at the storage layer.** URLs are unique-indexed; ingestion upserts are idempotent, so the pipeline can run on a schedule without supervision.
+- **Deduplication at the storage layer.** URLs are unique-indexed; ingestion is idempotent, so the pipeline can run on a schedule without supervision.
+- **Forward-safe migrations.** New columns are detected at startup (`ensure_columns`) and added via `ALTER TABLE`, and existing rows are backfilled (e.g. keyword computation) — upgrading a running deployment never breaks it.
 - **No build step for the frontend.** Vanilla JS keeps the project instantly runnable and reviewable — the entire UI is three readable files.
 - **SQLite-first.** The default needs zero infrastructure; `DATABASE_URL=postgresql://…` is the only change required for Postgres.
 
@@ -126,13 +147,17 @@ SignalDesk/
 
 ```bash
 .venv\Scripts\python -m pytest -q
-# 18 passed
+# 24 passed
 ```
 
 ## Roadmap
 
+- [x] Live RSS ingestion with URL deduplication
+- [x] Sentiment, topic, summary & keyword analysis
+- [x] Scheduled background ingestion
+- [x] Daily intelligence brief
+- [x] CSV export
 - [ ] LLM-backed analysis backend (plug into `analysis.analyze`)
-- [ ] Scheduled background ingestion (APScheduler)
 - [ ] Keyword/entity highlighting in article summaries
 - [ ] Email/Slack digest of daily signals
 - [ ] Auth + multi-user workspaces

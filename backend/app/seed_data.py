@@ -7,6 +7,7 @@ dashboard always has something interesting to show — no network required.
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from .analysis import extract_keywords
 from .ingestion import DEFAULT_FEEDS
 from .models import Article, Feed
 
@@ -167,6 +168,22 @@ SEED_ARTICLES = [
 ]
 
 
+def backfill_keywords(db: Session) -> int:
+    """One-time migration: compute keywords for articles ingested before the
+    keywords column existed. Idempotent — only touches rows with no keywords."""
+    rows = db.execute(
+        select(Article).where((Article.keywords.is_(None)) | (Article.keywords == ""))
+    ).scalars().all()
+    updated = 0
+    for article in rows:
+        text = f"{article.title}. {article.summary or ''}"
+        article.keywords = ", ".join(extract_keywords(text))
+        updated += 1
+    if updated:
+        db.commit()
+    return updated
+
+
 def seed_if_empty(db: Session) -> int:
     """Populate demo articles + default feeds if the DB is empty. Returns count."""
     existing = db.scalar(select(func.count()).select_from(Article))
@@ -178,12 +195,14 @@ def seed_if_empty(db: Session) -> int:
         if row == "SKIP":
             continue
         title, source, topic, sentiment, age, summary = row
+        text = f"{title}. {summary}"
         published = _relative_published(age)
         article = Article(
             title=title,
             url=f"https://demo.signaldesk.local/{added + 1}",
             source=source,
             summary=summary,
+            keywords=", ".join(extract_keywords(text)),
             topic=topic,
             sentiment=sentiment,
             published_at=published,

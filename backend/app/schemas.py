@@ -13,11 +13,16 @@ class ArticleOut(BaseModel):
     url: str
     source: str
     summary: str | None
+    keywords: str | None = None
     topic: str
     sentiment: float
     sentiment_label: str
     published_at: datetime | None
     ingested_at: datetime
+
+
+class ArticleDetail(ArticleOut):
+    is_seed: bool
 
 
 class ArticlePage(BaseModel):
@@ -34,6 +39,8 @@ class FeedOut(BaseModel):
     name: str
     url: str
     is_active: bool
+    last_fetched_at: datetime | None = None
+    last_status: str | None = None
 
 
 class FeedCreate(BaseModel):
@@ -67,3 +74,24 @@ class Stats(BaseModel):
     negative: int
     topic_breakdown: dict[str, int]
     sentiment_7d: list[dict]
+
+
+class DigestItem(BaseModel):
+    id: int
+    title: str
+    source: str
+    sentiment: float
+    topic: str
+    url: str
+
+
+class Digest(BaseModel):
+    generated_at: datetime
+    window_label: str
+    total_articles: int
+    articles_last_24h: int
+    avg_sentiment: float
+    headline: str
+    topic_breakdown: dict[str, int]
+    top_positive: list[DigestItem]
+    top_negative: list[DigestItem]

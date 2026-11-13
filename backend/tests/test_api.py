@@ -5,15 +5,24 @@ import sys
 import tempfile
 from pathlib import Path
 
-# Use a throwaway database for tests
+# Use a throwaway database for tests, disable background scheduler
 _test_dir = tempfile.mkdtemp()
 os.environ["DATABASE_URL"] = f"sqlite:///{_test_dir}/test.db"
+os.environ["INGEST_INTERVAL_MINUTES"] = "0"
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from fastapi.testclient import TestClient  # noqa: E402
 
+from app.database import Base, SessionLocal, engine  # noqa: E402
 from app.main import app  # noqa: E402
+from app.seed_data import seed_if_empty  # noqa: E402
+
+# TestClient does not run the lifespan in this Starlette version, so set up
+# the schema and seed data explicitly for a hermetic test database.
+Base.metadata.create_all(bind=engine)
+with SessionLocal() as _db:
+    seed_if_empty(_db)
 
 client = TestClient(app)
 
@@ -79,3 +88,53 @@ def test_duplicate_feed_rejected():
 def test_invalid_feed_url():
     res = client.post("/api/feeds", json={"name": "Bad", "url": "not-a-url"})
     assert res.status_code == 422
+
+
+def test_sort_orders():
+    newest = client.get("/api/articles?order=newest").json()["items"]
+    low = client.get("/api/articles?order=sentiment_low").json()["items"]
+    assert newest[0]["id"] != low[0]["id"] or newest[0]["sentiment"] <= low[0]["sentiment"]
+    assert low[0]["sentiment"] == min(i["sentiment"] for i in low)
+
+
+def test_invalid_order_rejected():
+    assert client.get("/api/articles?order=bogus").status_code == 422
+
+
+def test_digest():
+    body = client.get("/api/digest").json()
+    for key in ("generated_at", "window_label", "avg_sentiment", "headline",
+                "topic_breakdown", "top_positive", "top_negative"):
+        assert key in body
+    assert body["total_articles"] > 0
+    assert body["headline"]
+    for item in body["top_positive"]:
+        assert item["sentiment"] > 0.15
+    for item in body["top_negative"]:
+        assert item["sentiment"] < -0.15
+
+
+def test_backfill_keywords():
+    """All articles should end up with keywords after startup backfill."""
+    from app.database import SessionLocal
+    from sqlalchemy import select as sq
+    from app.models import Article
+    with SessionLocal() as db:
+        missing = [a for a in db.execute(sq(Article)).scalars().all() if not a.keywords]
+    assert missing == []
+
+
+def test_csv_export():
+    res = client.get("/api/articles/export.csv")
+    assert res.status_code == 200
+    assert res.headers["content-type"].startswith("text/csv")
+    lines = res.text.strip().splitlines()
+    assert lines[0].startswith("id,title,source")
+    assert len(lines) > 5
+
+
+def test_article_detail_has_keywords():
+    article = client.get("/api/articles?limit=1").json()["items"][0]
+    detail = client.get(f"/api/articles/{article['id']}").json()
+    assert "is_seed" in detail
+    assert "keywords" in detail

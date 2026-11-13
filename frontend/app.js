@@ -6,8 +6,12 @@ const $ = (id) => document.getElementById(id);
 const API = "/api";
 
 const state = {
-  filters: { search: "", source: "", topic: "", sentiment: "" },
+  filters: { search: "", source: "", topic: "", sentiment: "", order: "newest" },
   debounceTimer: null,
+  offset: 0,
+  limit: 25,
+  total: 0,
+  loaded: [],
 };
 
 /* ---------- Helpers ---------- */
@@ -75,6 +79,7 @@ async function loadStats() {
   renderTopicBreakdown(s.topic_breakdown, s.total_articles);
   renderSentimentSplit(s);
   renderTrendChart(s.sentiment_7d);
+  loadDigest();
 
   // populate topic filter
   const topicSelect = $("f-topic");
@@ -82,6 +87,35 @@ async function loadStats() {
   topicSelect.innerHTML = '<option value="">All topics</option>' +
     Object.keys(s.topic_breakdown).sort().map((t) => `<option value="${t}">${t}</option>`).join("");
   topicSelect.value = currentTopic;
+}
+
+/* ---------- Daily Brief ---------- */
+
+async function loadDigest() {
+  try {
+    const d = await api("/digest");
+    $("digest-headline").textContent = d.headline;
+    const groups = [
+      ["▲ Most positive", d.top_positive, "digest-pos", "var(--pos)"],
+      ["▼ Most negative", d.top_negative, "digest-neg", "var(--neg)"],
+    ];
+    $("digest-extremes").innerHTML = groups
+      .filter(([, items]) => items && items.length)
+      .map(([label, items, cls, color]) => `
+        <div>
+          <div class="digest-group-title" style="color:${color}">${label}</div>
+          ${items.map((item) => `
+            <a class="digest-item ${cls}" href="/#/article/${item.id}" data-id="${item.id}">
+              <span class="digest-score">${item.sentiment >= 0 ? "+" : ""}${item.sentiment.toFixed(2)}</span>
+              ${escapeHtml(item.title.length > 60 ? item.title.slice(0, 60) + "…" : item.title)}
+            </a>`).join("")}
+        </div>`)
+      .join("");
+    $("digest-extremes").querySelectorAll(".digest-item").forEach((el) =>
+      el.addEventListener("click", (e) => { e.preventDefault(); openArticle(+el.dataset.id); }));
+  } catch (err) {
+    $("digest-headline").textContent = "Brief unavailable";
+  }
 }
 
 function renderTopicBreakdown(breakdown, total) {
@@ -153,17 +187,24 @@ function renderTrendChart(points) {
 
 /* ---------- Articles ---------- */
 
-async function loadArticles() {
+async function loadArticles(append = false) {
   $("loading").classList.remove("hidden");
-  $("empty-state").classList.add("hidden");
-  const params = new URLSearchParams({ limit: 40 });
+  if (!append) {
+    $("empty-state").classList.add("hidden");
+    state.offset = 0;
+  }
+  const params = new URLSearchParams({ limit: state.limit, offset: state.offset, order: state.filters.order });
   for (const [key, value] of Object.entries(state.filters)) {
-    if (value && value.trim()) params.set(key, value.trim());
+    if (key !== "order" && value && value.trim()) params.set(key, value.trim());
   }
   try {
     const page = await api(`/articles?${params}`);
+    state.total = page.total;
+    if (append) state.loaded.push(...page.items);
+    else state.loaded = page.items;
     $("result-count").textContent = `${page.total} article${page.total === 1 ? "" : "s"}`;
-    renderArticles(page.items);
+    renderArticles(state.loaded);
+    $("load-more").classList.toggle("hidden", state.loaded.length >= state.total);
   } catch (err) {
     toast(`Failed to load articles: ${err.message}`);
   } finally {
@@ -181,6 +222,9 @@ function renderArticles(items) {
   for (const a of items) {
     const card = document.createElement("article");
     card.className = "article-card";
+    card.dataset.id = a.id;
+    card.style.cursor = "pointer";
+    const keywords = (a.keywords || "").split(",").map((k) => k.trim()).filter(Boolean).slice(0, 4);
     card.innerHTML = `
       <div class="article-topic" title="${a.topic}">${TOPIC_EMOJI[a.topic] || "📰"}</div>
       <div class="article-main">
@@ -190,13 +234,39 @@ function renderArticles(items) {
           <span class="badge badge-${a.sentiment_label}">${a.sentiment_label}</span>
           <span class="sentiment-score">${a.sentiment >= 0 ? "+" : ""}${a.sentiment.toFixed(2)}</span>
         </div>
-        <h3 class="article-title"><a href="${escapeHtml(a.url)}" target="_blank" rel="noopener">${escapeHtml(a.title)}</a></h3>
+        <h3 class="article-title"><a href="${escapeHtml(a.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${escapeHtml(a.title)}</a></h3>
         ${a.summary ? `<p class="article-summary">${escapeHtml(a.summary)}</p>` : ""}
         <div class="article-chips">
           <span class="chip">${TOPIC_EMOJI[a.topic] || "📰"} ${a.topic}</span>
+          ${keywords.map((k) => `<span class="chip">${escapeHtml(k)}</span>`).join("")}
         </div>
       </div>`;
+    card.addEventListener("click", () => openArticle(a.id));
     list.appendChild(card);
+  }
+}
+
+/* ---------- Article detail modal ---------- */
+
+async function openArticle(id) {
+  try {
+    const a = await api(`/articles/${id}`);
+    $("am-topic").textContent = `${TOPIC_EMOJI[a.topic] || "📰"} ${a.topic}`;
+    $("am-meta").innerHTML = `
+      <span class="article-source">${escapeHtml(a.source)}</span>
+      <span>·</span><span>${timeAgo(a.published_at)}</span>
+      <span class="badge badge-${a.sentiment_label}">${a.sentiment_label}</span>`;
+    $("am-title").textContent = a.title;
+    $("am-summary").textContent = a.summary || "No summary available.";
+    const keywords = (a.keywords || "").split(",").map((k) => k.trim()).filter(Boolean);
+    $("am-keywords").innerHTML = keywords.map((k) => `<span class="chip">${escapeHtml(k)}</span>`).join("");
+    $("am-score").textContent = `${a.sentiment >= 0 ? "+" : ""}${a.sentiment.toFixed(2)}`;
+    // map [-1, 1] onto the track (5% .. 95%)
+    $("am-gauge").style.left = `${((a.sentiment + 1) / 2) * 90 + 5}%`;
+    $("am-link").href = a.url;
+    $("article-modal").showModal();
+  } catch (err) {
+    toast(err.message);
   }
 }
 
@@ -245,10 +315,13 @@ async function loadFeeds() {
   const list = $("feeds-list");
   list.innerHTML = "";
   for (const feed of feeds) {
+    const status = feed.last_status
+      ? `<span class="feed-status ${feed.last_status.startsWith("ok") ? "feed-ok" : "feed-err"}">${escapeHtml(feed.last_status)}${feed.last_fetched_at ? " · " + timeAgo(feed.last_fetched_at) : ""}</span>`
+      : "";
     const li = document.createElement("li");
     li.innerHTML = `
       <div><span class="feed-name">${escapeHtml(feed.name)}</span>
-      <span class="feed-url">${escapeHtml(feed.url)}</span></div>
+      <span class="feed-url">${escapeHtml(feed.url)}</span>${status}</div>
       <button class="btn btn-ghost btn-sm btn-danger" data-id="${feed.id}" title="Remove feed">🗑</button>`;
     li.querySelector("button").addEventListener("click", async () => {
       try {
@@ -289,6 +362,13 @@ document.addEventListener("DOMContentLoaded", () => {
   $("ingest-btn").addEventListener("click", runIngestion);
   $("ingest-btn-2").addEventListener("click", runIngestion);
 
+  $("load-more").addEventListener("click", () => {
+    state.offset += state.limit;
+    loadArticles(true);
+  });
+
+  $("article-close").addEventListener("click", () => $("article-modal").close());
+
   $("feeds-btn").addEventListener("click", () => { loadFeeds(); $("feeds-modal").showModal(); });
   $("feeds-close").addEventListener("click", () => $("feeds-modal").close());
 
@@ -315,6 +395,7 @@ document.addEventListener("DOMContentLoaded", () => {
   $("f-source").addEventListener("change", (e) => { state.filters.source = e.target.value; loadArticles(); });
   $("f-topic").addEventListener("change", (e) => { state.filters.topic = e.target.value; loadArticles(); });
   $("f-sentiment").addEventListener("change", (e) => { state.filters.sentiment = e.target.value; loadArticles(); });
+  $("f-order").addEventListener("change", (e) => { state.filters.order = e.target.value; loadArticles(); });
 
   // auto-refresh stats every 60s
   setInterval(loadStats, 60000);

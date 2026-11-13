@@ -6,6 +6,9 @@ Run locally:
     uvicorn app.main:app --reload   (from the backend/ directory)
 """
 
+import asyncio
+import logging
+import os
 import time
 from collections import Counter
 from contextlib import asynccontextmanager
@@ -14,36 +17,79 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .database import SessionLocal, engine, get_db
+from .database import SessionLocal, ensure_columns, engine, get_db
 from .ingestion import ingest_all
 from .models import Article, Base, Feed
-from .schemas import (ArticlePage, FeedCreate, FeedOut, IngestResult,
-                      FeedIngestResult, Stats)
-from .seed_data import seed_if_empty
+from .schemas import (ArticleDetail, ArticlePage, Digest, DigestItem,
+                      FeedCreate, FeedOut, FeedIngestResult, IngestResult,
+                      Stats)
+from .seed_data import backfill_keywords, seed_if_empty
+
+logger = logging.getLogger("signaldesk")
 
 BASE_DIR = Path(__file__).resolve().parent.parent  # backend/
 FRONTEND_DIR = BASE_DIR.parent / "frontend"
 
+INGEST_INTERVAL_MINUTES = int(os.getenv("INGEST_INTERVAL_MINUTES", "30"))
+
+
+async def _scheduled_ingestion():
+    """Auto-pilot: periodically run the ingestion pipeline in the background."""
+    from .database import SessionLocal as _SL
+
+    first_run = True
+    while True:
+        wait = 30 if first_run else INGEST_INTERVAL_MINUTES * 60
+        first_run = False
+        await asyncio.sleep(wait)
+        try:
+            with _SL() as db:
+                feeds = [
+                    {"name": f.name, "url": f.url}
+                    for f in db.execute(select(Feed).where(Feed.is_active)).scalars().all()
+                ]
+                feed_rows = {f.name: f for f in db.execute(select(Feed)).scalars().all()}
+                results = ingest_all(db, feeds, feed_rows=feed_rows)
+                added = sum(r["added"] for r in results)
+                logger.info("[scheduler] auto-ingest finished: +%s new articles", added)
+        except Exception:  # noqa: BLE001
+            logger.exception("[scheduler] auto-ingest failed")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
     Base.metadata.create_all(bind=engine)
+    ensure_columns()
     with SessionLocal() as db:
         seeded = seed_if_empty(db)
         if seeded:
             print(f"[seed] Seeded database with {seeded} demo articles")
+        backfilled = backfill_keywords(db)
+        if backfilled:
+            logger.info("[migrate] Backfilled keywords for %s articles", backfilled)
+    scheduler_task = None
+    if INGEST_INTERVAL_MINUTES > 0 and not os.getenv("SCHEDULER_DISABLED"):
+        scheduler_task = asyncio.create_task(_scheduled_ingestion())
+        logger.info("[scheduler] auto-ingest every %s minutes", INGEST_INTERVAL_MINUTES)
     yield
+    if scheduler_task:
+        scheduler_task.cancel()
 
 
 app = FastAPI(
     title="SignalDesk API",
     description="Automated news research platform: RSS ingestion, AI analysis, intelligence dashboard.",
-    version="1.0.0",
+    version="2.0.0",
     lifespan=lifespan,
 )
 
@@ -53,6 +99,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 
 # --------------------------------------------------------------------------- #
@@ -141,6 +188,7 @@ def list_articles(
     source: str | None = Query(None, max_length=200),
     topic: str | None = Query(None, max_length=50),
     sentiment: str | None = Query(None),
+    order: str = Query("newest"),
     limit: int = Query(25, ge=1, le=100),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
@@ -150,8 +198,11 @@ def list_articles(
     source = (source or "").strip() or None
     topic = (topic or "").strip() or None
     search = (search or "").strip() or None
+    order = (order or "newest").strip().lower()
     if sentiment and sentiment not in ("positive", "neutral", "negative"):
         raise HTTPException(422, "sentiment must be positive, neutral, or negative")
+    if order not in ("newest", "oldest", "sentiment_high", "sentiment_low"):
+        raise HTTPException(422, "order must be newest, oldest, sentiment_high, or sentiment_low")
     q = select(Article)
     if search:
         like = f"%{search}%"
@@ -170,17 +221,110 @@ def list_articles(
     elif sentiment == "neutral":
         q = q.where(Article.sentiment >= -0.15, Article.sentiment <= 0.15)
 
-    q = q.order_by(Article.published_at.desc().nullslast(), Article.id.desc())
+    orderings = {
+        "newest": (Article.published_at.desc().nullslast(), Article.id.desc()),
+        "oldest": (Article.published_at.asc().nullslast(), Article.id.asc()),
+        "sentiment_high": (Article.sentiment.desc(), Article.id.desc()),
+        "sentiment_low": (Article.sentiment.asc(), Article.id.desc()),
+    }
+    q = q.order_by(*orderings[order])
     items = db.execute(q.offset(offset).limit(limit)).scalars().all()
     return ArticlePage(total=total, items=items, offset=offset, limit=limit)
 
 
-@app.get("/api/articles/{article_id}", tags=["Articles"])
+@app.get("/api/articles/export.csv", tags=["Articles"])
+def export_articles_csv(
+    db: Session = Depends(get_db),
+):
+    """Export all articles as CSV (respecting the same filters as /api/articles)."""
+    import csv
+    import io
+
+    items = db.execute(select(Article).order_by(Article.published_at.desc().nullslast())).scalars().all()
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(["id", "title", "source", "topic", "sentiment", "sentiment_label",
+                     "url", "published_at", "keywords"])
+    for a in items:
+        writer.writerow([a.id, a.title, a.source, a.topic, a.sentiment, a.sentiment_label,
+                         a.url, a.published_at.isoformat() if a.published_at else "", a.keywords or ""])
+    buffer.seek(0)
+    filename = f"signaldesk_articles_{datetime.now(timezone.utc):%Y%m%d}.csv"
+    return StreamingResponse(
+        iter([buffer.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@app.get("/api/articles/{article_id}", response_model=ArticleDetail, tags=["Articles"])
 def get_article(article_id: int, db: Session = Depends(get_db)):
     article = db.get(Article, article_id)
     if not article:
         raise HTTPException(404, "Article not found")
     return article
+
+
+# --------------------------------------------------------------------------- #
+# Digest
+# --------------------------------------------------------------------------- #
+
+@app.get("/api/digest", response_model=Digest, tags=["Intelligence"])
+def daily_digest(db: Session = Depends(get_db)):
+    """A generated intelligence brief: recent signals, extremes, and a headline."""
+    now = datetime.now(timezone.utc)
+    day_ago = now - timedelta(hours=24)
+    recent = db.execute(
+        select(Article).where(Article.published_at >= day_ago).order_by(Article.published_at.desc())
+    ).scalars().all()
+
+    window = "Last 24 hours"
+    if not recent:
+        recent = db.execute(select(Article).order_by(Article.published_at.desc().nullslast()).limit(50)).scalars().all()
+        window = "Most recent signals"
+
+    if not recent:
+        return Digest(
+            generated_at=now, window_label=window, total_articles=0, articles_last_24h=0,
+            avg_sentiment=0.0, headline="No signals ingested yet — run Ingest Feeds.",
+            topic_breakdown={}, top_positive=[], top_negative=[],
+        )
+
+    avg = round(sum(a.sentiment for a in recent) / len(recent), 3)
+    if avg > 0.15:
+        tone = "predominantly positive"
+    elif avg < -0.15:
+        tone = "predominantly negative"
+    else:
+        tone = "broadly mixed"
+
+    topics = Counter(a.topic for a in recent)
+    lead_topic = topics.most_common(1)[0][0] if topics else "General"
+    headline = (
+        f"{len(recent)} signals in the last 24h — sentiment {avg:+.2f} ({tone}). "
+        f"Hottest topic: {lead_topic}."
+    )
+
+    def to_item(a: Article) -> DigestItem:
+        return DigestItem(id=a.id, title=a.title, source=a.source,
+                          sentiment=a.sentiment, topic=a.topic, url=a.url)
+
+    top_positive = [to_item(a) for a in sorted(recent, key=lambda x: -x.sentiment)[:3]
+                    if a.sentiment > 0.15]
+    top_negative = [to_item(a) for a in sorted(recent, key=lambda x: x.sentiment)[:3]
+                    if a.sentiment < -0.15]
+
+    return Digest(
+        generated_at=now,
+        window_label=window,
+        total_articles=db.scalar(select(func.count()).select_from(Article)) or 0,
+        articles_last_24h=len(recent),
+        avg_sentiment=avg,
+        headline=headline,
+        topic_breakdown=dict(topics.most_common()),
+        top_positive=top_positive,
+        top_negative=top_negative,
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -217,12 +361,10 @@ def delete_feed(feed_id: int, db: Session = Depends(get_db)):
 @app.post("/api/ingest", response_model=IngestResult, tags=["Ingestion"])
 def ingest(db: Session = Depends(get_db)):
     """Fetch every active RSS feed, dedupe by URL, analyze, and store new articles."""
-    feeds = [
-        {"name": f.name, "url": f.url}
-        for f in db.execute(select(Feed).where(Feed.is_active)).scalars().all()
-    ]
+    feed_rows = {f.name: f for f in db.execute(select(Feed).where(Feed.is_active)).scalars().all()}
+    feeds = [{"name": f.name, "url": f.url} for f in feed_rows.values()]
     started = time.perf_counter()
-    results = ingest_all(db, feeds)
+    results = ingest_all(db, feeds, feed_rows=feed_rows)
     duration = time.perf_counter() - started
     return IngestResult(
         added=sum(r["added"] for r in results),
