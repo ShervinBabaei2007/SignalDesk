@@ -1,4 +1,9 @@
-
-
-# Git attributes for line ending normalization across platforms  
-*.py text eol=crlf  # Python files use Windows-style CRLF endings (optional)
+# Normalize line endings
+* text=auto
+*.py text
+*.md text
+*.json text
+*.yml text
+*.css text
+*.js text
+*.html text
