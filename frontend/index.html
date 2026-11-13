@@ -7,7 +7,7 @@
   <meta name="description" content="SignalDesk ingests news from RSS feeds, analyzes sentiment and topics, and surfaces the signals that matter." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/styles.css?v=4" />
+  <link rel="stylesheet" href="/static/styles.css?v=5" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>" />
 </head>
 <body>
@@ -139,11 +139,8 @@
           <p id="reader-summary" class="reader-summary"></p>
           <button id="reader-generate" class="btn btn-primary hidden">✨ Generate clean summary</button>
         </div>
+        <div id="reader-toc" class="reader-toc"></div>
         <div id="reader-body" class="reader-body"></div>
-        <details id="reader-full" class="reader-full hidden">
-          <summary>📜 Read the full article text</summary>
-          <div id="reader-fulltext" class="reader-fulltext"></div>
-        </details>
         <div id="reader-keywords" class="article-chips"></div>
         <div id="reader-sentiment" class="am-sentiment">
           <div class="am-sentiment-label">
@@ -178,6 +175,6 @@
 
   <div id="toast" class="toast hidden"></div>
 
-  <script src="/static/app.js?v=8"></script>
+  <script src="/static/app.js?v=9"></script>
 </body>
 </html>

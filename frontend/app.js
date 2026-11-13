@@ -176,11 +176,7 @@ function renderTrendChart(points) {
   const color = last > 0.15 ? "var(--pos)" : last < -0.15 ? "var(--neg)" : "var(--accent)";
   svg.innerHTML = `
     <line x1="0" y1="${h - pad - ((0 - min) / range) * (h - pad * 2)}" x2="${w}" y2="${h - pad - ((0 - min) / range) * (h - pad * 2)}" stroke="#2a3247" stroke-dasharray="3 4" stroke-width="1"/>
-    <path d="${area}" fill="url(#grad)" opacity="0.25"/>
-    <defs><linearGradient id="grad" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="${color}" stop-opacity="0.5"/>
-      <stop offset="100%" stop-color="${color}" stop-opacity="0"/>
-    </linearGradient></defs>
+    <path d="${area}" fill="${color}" opacity="0.1"/>
     <path d="${line}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
     <circle cx="${coords.at(-1)[0]}" cy="${coords.at(-1)[1]}" r="3" fill="${color}"/>`;
 }
@@ -188,10 +184,12 @@ function renderTrendChart(points) {
 /* ---------- Articles ---------- */
 
 async function loadArticles(append = false) {
-  $("loading").classList.remove("hidden");
   if (!append) {
     $("empty-state").classList.add("hidden");
     state.offset = 0;
+    showSkeletons();
+  } else {
+    $("loading").classList.remove("hidden");
   }
   const params = new URLSearchParams({ limit: state.limit, offset: state.offset, order: state.filters.order });
   for (const [key, value] of Object.entries(state.filters)) {
@@ -212,6 +210,24 @@ async function loadArticles(append = false) {
   }
 }
 
+function showSkeletons(count = 6) {
+  const list = $("articles");
+  list.innerHTML = "";
+  for (let i = 0; i < count; i++) {
+    const sk = document.createElement("div");
+    sk.className = "skeleton-card";
+    sk.innerHTML = `
+      <div class="skeleton sk-icon"></div>
+      <div class="skeleton-main">
+        <div class="skeleton sk-line" style="width:42%"></div>
+        <div class="skeleton sk-line" style="width:88%"></div>
+        <div class="skeleton sk-line" style="width:72%"></div>
+        <div class="skeleton sk-line sk-short" style="width:34%"></div>
+      </div>`;
+    list.appendChild(sk);
+  }
+}
+
 function renderArticles(items) {
   const list = $("articles");
   list.innerHTML = "";
@@ -224,6 +240,7 @@ function renderArticles(items) {
     card.className = "article-card";
     card.dataset.id = a.id;
     card.style.cursor = "pointer";
+    card.style.animationDelay = `${Math.min(state.loaded.indexOf(a) % state.limit, 8) * 40}ms`;
     const cleanSummary = a.summary_deep || a.summary;
     const keywords = (a.keywords || "").split(",").map((k) => k.trim()).filter(Boolean).slice(0, 4);
     card.innerHTML = `
@@ -275,27 +292,23 @@ function route() {
 
 /* ---------- Article reader page ---------- */
 
-function renderParagraphs(text, container) {
-  container.innerHTML = "";
-  for (const para of text.split(/\n+/)) {
-    const p = para.trim();
-    if (!p) continue;
-    const el = document.createElement("p");
-    el.textContent = p;
-    container.appendChild(el);
-  }
+function slugify(text) {
+  return text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 }
 
 /* Render the structured summary ("## Heading" / "- bullet" lines) as a
-   skimmable hierarchy of sections. */
-function renderStructured(markdown, container) {
+   skimmable hierarchy of section cards, plus a chip TOC for fast navigation. */
+function renderStructured(markdown, container, toc) {
   container.innerHTML = "";
+  if (toc) toc.innerHTML = "";
   const lines = (markdown || "").split("\n");
   let section = null;
+  const sections = [];
   const flush = () => {
     if (!section) return;
     const box = document.createElement("div");
     box.className = "reader-section";
+    box.id = `sec-${slugify(section.title)}`;
     const h = document.createElement("h4");
     h.className = "reader-section-title";
     h.textContent = section.title;
@@ -316,6 +329,7 @@ function renderStructured(markdown, container) {
       box.appendChild(p);
     }
     container.appendChild(box);
+    sections.push({ title: section.title, id: box.id });
   };
   for (const line of lines) {
     if (line.startsWith("## ")) {
@@ -330,6 +344,22 @@ function renderStructured(markdown, container) {
     }
   }
   flush();
+
+  // TOC chips: click to jump to a section
+  if (toc && sections.length > 1) {
+    toc.classList.remove("hidden");
+    for (const s of sections) {
+      const chip = document.createElement("button");
+      chip.className = "toc-chip";
+      chip.textContent = s.title;
+      chip.addEventListener("click", () => {
+        document.getElementById(s.id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+      toc.appendChild(chip);
+    }
+  } else if (toc) {
+    toc.classList.add("hidden");
+  }
 }
 
 async function showArticle(id) {
@@ -385,25 +415,17 @@ async function showArticle(id) {
   };
   updateSummary(a);
 
-  // Body: structured skimmable sections when available, full text in a
-  // collapsible underneath; otherwise fall back to the raw page text.
+  // Body: structured skimmable sections (the brief IS the article content)
   const renderBody = (article) => {
-    const full = $("reader-full");
     if (article.summary_structured) {
       // The summary box above already shows the TL;DR — don't repeat it
       let md = article.summary_structured;
       if (article.summary_deep) md = md.replace(/^## TL;DR\n[\s\S]*?(?=## )/, "");
-      renderStructured(md, $("reader-body"));
-      if (article.full_text) {
-        full.classList.remove("hidden");
-        renderParagraphs(article.full_text, $("reader-fulltext"));
-      } else {
-        full.classList.add("hidden");
-      }
+      renderStructured(md, $("reader-body"), $("reader-toc"));
     } else {
-      full.classList.add("hidden");
-      if (article.full_text) renderParagraphs(article.full_text, $("reader-body"));
-      else $("reader-body").innerHTML = "";
+      $("reader-toc").classList.add("hidden");
+      $("reader-body").innerHTML =
+        '<p class="reader-note">No brief generated yet — use the button above to read the article.</p>';
     }
   };
   renderBody(a);

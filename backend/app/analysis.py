@@ -191,7 +191,7 @@ def _score_sentence(sentence: str, position: float) -> float:
     return score
 
 
-def structured_summary(text: str, title: str = "", max_points: int = 5) -> str:
+def structured_summary(text: str, title: str = "", max_points: int = 6) -> str:
     """Build a skimmable, hierarchical brief from an article's full text:
 
     ## TL;DR           — 1-2 leading sentences that say something new
