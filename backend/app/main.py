@@ -521,7 +521,11 @@ def ingest(db: Session = Depends(get_db), background_tasks: BackgroundTasks = No
         select(func.count()).select_from(Article).where(
             Article.enriched_at.is_(None), Article.is_seed.is_(False))
     ) or 0
-    if background_tasks and pending:
+    missing_images = db.scalar(
+        select(func.count()).select_from(Article).where(
+            Article.image_url.is_(None), Article.is_seed.is_(False))
+    ) or 0
+    if background_tasks and (pending or missing_images):
         background_tasks.add_task(_enrich_background)
 
     return IngestResult(

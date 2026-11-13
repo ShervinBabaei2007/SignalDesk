@@ -7,6 +7,7 @@ Dependency-free so it works everywhere the rest of the analyzer works.
 
 import re
 from html import unescape
+from urllib.parse import urljoin
 
 # Blocks that never contain article body text
 _DROP_BLOCKS = re.compile(
@@ -80,3 +81,46 @@ def extract_main_text(html: str, max_chars: int = 10000) -> str:
     result = "\n".join(lines)
     result = _BLANK_LINES.sub("\n\n", result)
     return result[:max_chars]
+
+
+_META_TAG = re.compile(r"<meta\b[^>]*>", re.IGNORECASE)
+_LINK_TAG = re.compile(r"<link\b[^>]*>", re.IGNORECASE)
+_ATTR = re.compile(r"""([a-zA-Z:_-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')""")
+_IMAGE_META_KEYS = ("og:image:secure_url", "og:image", "twitter:image", "twitter:image:src")
+
+
+def _attrs(tag: str) -> dict[str, str]:
+    return {m.group(1).lower(): unescape(m.group(2) if m.group(2) is not None else m.group(3))
+            for m in _ATTR.finditer(tag)}
+
+
+def clean_image_url(candidate: str | None, base_url: str = "") -> str | None:
+    """Resolve to an absolute http(s) URL, or None if unusable."""
+    if not candidate:
+        return None
+    url = urljoin(base_url, candidate.strip())
+    if not url.lower().startswith(("http://", "https://")) or len(url) > 1000:
+        return None
+    return url
+
+
+def extract_image_url(html: str, base_url: str = "") -> str | None:
+    """Lead image of a page: og:image, then twitter:image, then rel=image_src."""
+    head = html[:200_000]
+    found: dict[str, str] = {}
+    for tag in _META_TAG.findall(head):
+        a = _attrs(tag)
+        key = (a.get("property") or a.get("name") or "").lower()
+        if key in _IMAGE_META_KEYS and a.get("content") and key not in found:
+            found[key] = a["content"]
+    for key in _IMAGE_META_KEYS:
+        url = clean_image_url(found.get(key), base_url)
+        if url:
+            return url
+    for tag in _LINK_TAG.findall(head):
+        a = _attrs(tag)
+        if a.get("rel", "").lower() == "image_src":
+            url = clean_image_url(a.get("href"), base_url)
+            if url:
+                return url
+    return None

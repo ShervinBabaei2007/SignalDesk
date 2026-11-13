@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from . import config
 from .analysis import analyze
+from .extractor import clean_image_url
 from .models import Article, Feed
 
 logger = logging.getLogger("signaldesk.ingestion")
@@ -66,6 +67,24 @@ def _entry_text(entry) -> str:
     body = re.sub(r"<[^>]+>", " ", body)
     body = strip_feed_metadata(body)
     return f"{title}. {body}".strip()
+
+
+def _entry_image(entry) -> str | None:
+    """Thumbnail advertised by the RSS entry itself (media:*, image enclosure)."""
+    candidates = []
+    for key in ("media_thumbnail", "media_content"):
+        for m in getattr(entry, key, None) or []:
+            if isinstance(m, dict) and (key == "media_thumbnail" or "image" in (m.get("type") or "image")
+                                        or m.get("medium") == "image"):
+                candidates.append(m.get("url"))
+    for enc in getattr(entry, "enclosures", None) or []:
+        if (enc.get("type") or "").startswith("image"):
+            candidates.append(enc.get("href") or enc.get("url"))
+    for c in candidates:
+        url = clean_image_url(c)
+        if url:
+            return url
+    return None
 
 
 def ingest_feed(
@@ -125,6 +144,7 @@ def ingest_feed(
             source=feed_name[:200],
             summary=result["summary"],
             keywords=", ".join(result["keywords"]),
+            image_url=_entry_image(entry),
             topic=result["topic"],
             sentiment=result["sentiment"],
             analysis_source="lexicon",

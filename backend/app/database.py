@@ -48,6 +48,7 @@ def ensure_columns():
     migrations = {
         "articles": {
             "keywords": "VARCHAR(500)",
+            "image_url": "VARCHAR(1000)",
             "summary_deep": "TEXT",
             "summary_structured": "TEXT",
             "full_text": "TEXT",

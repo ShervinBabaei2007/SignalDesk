@@ -277,10 +277,14 @@ function renderArticles(items) {
     card.style.animationDelay = `${Math.min(state.loaded.indexOf(a) % state.limit, 8) * 40}ms`;
     const cleanSummary = a.summary_deep || a.summary;
     const keywords = (a.keywords || "").split(",").map((k) => k.trim()).filter(Boolean).slice(0, 4);
+    const domain = a.is_seed ? "" : domainOf(a.url);
+    const thumb = a.image_url && !a.is_seed ? `<div class="article-thumb">${imageTag(a.image_url, "thumb-img")}</div>` : "";
     card.innerHTML = `
+      ${thumb}
       <div class="article-main">
         <div class="article-meta">
           <span class="article-source">${escapeHtml(a.source)}</span>
+          ${domain ? `<span class="article-domain" title="The story's real address">${escapeHtml(domain)}</span>` : ""}
           <span>·</span><span>${timeAgo(a.published_at)}</span>
           ${badge(a.sentiment_label)}
           <span class="sentiment-score">${a.sentiment >= 0 ? "+" : ""}${a.sentiment.toFixed(2)}</span>
@@ -426,6 +430,11 @@ async function showArticle(id) {
     ${a.analysis_source === "llm" ? '<span class="deep-tag" title="Analysis written by the configured language model">🤖 AI analysis</span>' : ""}
     ${a.summary_deep ? '<span class="deep-tag" title="Summary generated from the full article page">✨ deep</span>' : ""}`;
   $("reader-title").textContent = a.title;
+  const readerDomain = a.is_seed ? "" : domainOf(a.url);
+  $("reader-hero").innerHTML = a.image_url && !a.is_seed
+    ? `${imageTag(a.image_url, "hero-img")}<figcaption>Image from ${escapeHtml(readerDomain)} · <a href="${escapeHtml(a.url)}" target="_blank" rel="noopener">verify at the source ↗</a></figcaption>`
+    : "";
+  $("reader-hero").classList.toggle("hidden", !$("reader-hero").innerHTML);
   const readerKeywords = (a.keywords || "").split(",").map((k) => k.trim()).filter(Boolean);
   $("reader-keywords").innerHTML = readerKeywords.map((k) => `<span class="chip">${escapeHtml(k)}</span>`).join("");
   $("reader-score").textContent = `${a.sentiment >= 0 ? "+" : ""}${a.sentiment.toFixed(2)}`;
@@ -505,6 +514,18 @@ const TOPIC_EMOJI = {
   Technology: "💻", Business: "📈", Science: "🔬", Politics: "🏛️",
   Health: "🩺", World: "🌍", General: "📰",
 };
+
+/* Hostname of a URL without "www." — shown so users can see where a story really lives. */
+function domainOf(url) {
+  try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return ""; }
+}
+
+/* Lead image taken from the real page. Hotlinked; if a site blocks it, the
+   element removes itself so the layout silently falls back to text-only. */
+function imageTag(url, cls) {
+  if (!url) return "";
+  return `<img class="${cls}" src="${escapeHtml(url)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentElement.classList.add('no-img');this.remove()">`;
+}
 
 function escapeHtml(str) {
   const div = document.createElement("div");

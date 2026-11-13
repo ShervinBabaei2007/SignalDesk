@@ -15,6 +15,7 @@ class ArticleOut(BaseModel):
     summary: str | None
     summary_deep: str | None = None
     keywords: str | None = None
+    image_url: str | None = None
     why_it_matters: str | None = None
     importance: float | None = None
     relevance: float | None = None

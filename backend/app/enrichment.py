@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from . import llm
 from .analysis import extract_keywords, structured_summary, summarize
-from .extractor import extract_main_text
+from .extractor import extract_image_url, extract_main_text
 from .ingestion import strip_feed_metadata
 from .models import Article
 
@@ -33,23 +33,32 @@ _HEADERS = {
 }
 
 
-def fetch_full_text(url: str, timeout: float = 12.0) -> str | None:
-    """Download a page and return its extracted readable text, or None."""
+def fetch_page(url: str, timeout: float = 12.0) -> tuple[str | None, str | None]:
+    """Download a page once; return (readable text, lead image URL). Either may be None."""
     try:
         resp = httpx.get(url, headers=_HEADERS, timeout=timeout, follow_redirects=True)
     except Exception:  # noqa: BLE001  (network errors are expected sometimes)
-        return None
+        return None, None
     if resp.status_code != 200:
-        return None
+        return None, None
     content_type = resp.headers.get("content-type", "")
     if "html" not in content_type and "text" not in content_type:
-        return None
+        return None, None
+    try:
+        image = extract_image_url(resp.text, str(resp.url))
+    except Exception:  # noqa: BLE001
+        image = None
     try:
         text = extract_main_text(resp.text)
     except Exception:  # noqa: BLE001
-        return None
+        return None, image
     # Require a meaningful amount of text to call it a success
-    return text if len(text) > 200 else None
+    return (text if len(text) > 200 else None), image
+
+
+def fetch_full_text(url: str, timeout: float = 12.0) -> str | None:
+    """Readable text of a page, or None."""
+    return fetch_page(url, timeout)[0]
 
 
 def enrich_article(db: Session, article: Article) -> bool:
@@ -65,7 +74,9 @@ def enrich_article(db: Session, article: Article) -> bool:
 
     fetched = None
     if not article.is_seed:
-        fetched = fetch_full_text(article.url)
+        fetched, image = fetch_page(article.url)
+        if image:
+            article.image_url = image  # the page's own lead image beats the feed's thumbnail
 
     if fetched or article.full_text:
         if fetched:
@@ -132,6 +143,19 @@ def enrich_pending_articles(db: Session, limit: int | None = None) -> dict:
         for article in pending:
             if enrich_article(db, article):
                 enriched += 1
+
+        # Articles enriched before image support: fetch their lead image once.
+        # An empty string records "looked, found none" so we never retry.
+        if not pending:
+            for article in db.execute(
+                select(Article)
+                .where(Article.image_url.is_(None), Article.is_seed.is_(False),
+                       Article.enriched_at.is_not(None))
+                .order_by(Article.published_at.desc().nullslast())
+                .limit(limit)
+            ).scalars():
+                article.image_url = fetch_page(article.url)[1] or ""
+            db.commit()
 
         remaining = db.scalar(
             select(func.count()).select_from(Article).where(

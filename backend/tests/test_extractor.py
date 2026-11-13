@@ -96,3 +96,21 @@ def test_structured_summary_sections():
 def test_structured_summary_short_text():
     from app.analysis import structured_summary
     assert structured_summary("Too short.") == ""
+
+
+def test_extract_image_url_prefers_og_and_resolves_relative():
+    from app.extractor import extract_image_url
+
+    html = '<head><meta name="twitter:image" content="http://t.example/t.jpg">' \
+           '<meta property="og:image" content="/img/a.jpg?x=1&amp;y=2"></head>'
+    assert extract_image_url(html, "https://news.example/story") == "https://news.example/img/a.jpg?x=1&y=2"
+
+
+def test_extract_image_url_fallbacks_and_rejects_unsafe():
+    from app.extractor import extract_image_url
+
+    assert extract_image_url('<meta name="twitter:image" content="https://a.example/t.png">') == "https://a.example/t.png"
+    assert extract_image_url('<link rel="image_src" href="https://a.example/l.png">') == "https://a.example/l.png"
+    assert extract_image_url('<meta property="og:image" content="javascript:alert(1)">') is None
+    assert extract_image_url('<meta property="og:image" content="data:image/png;base64,AAAA">') is None
+    assert extract_image_url("<p>nothing</p>") is None

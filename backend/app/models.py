@@ -24,6 +24,7 @@ class Article(Base):
     summary_structured: Mapped[str | None] = mapped_column(Text, nullable=True)  # skimmable sections
     full_text: Mapped[str | None] = mapped_column(Text, nullable=True)  # extracted page text
     keywords: Mapped[str | None] = mapped_column(String(500), nullable=True)  # comma-separated
+    image_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)  # lead image from the real page
     why_it_matters: Mapped[str | None] = mapped_column(Text, nullable=True)  # LLM significance note
     importance: Mapped[float | None] = mapped_column(Float, nullable=True)  # 0..10
     relevance: Mapped[float | None] = mapped_column(Float, nullable=True)  # 0..10
