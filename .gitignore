@@ -17,3 +17,6 @@ _archive/
 # IDE
 .idea/
 .vscode/
+
+# Logs
+*.log

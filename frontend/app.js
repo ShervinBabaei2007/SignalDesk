@@ -290,9 +290,7 @@ function renderArticles(items) {
     const cleanSummary = a.summary_deep || a.summary;
     const keywords = (a.keywords || "").split(",").map((k) => k.trim()).filter(Boolean).slice(0, 4);
     const domain = a.is_seed ? "" : domainOf(a.url);
-    const thumb = a.image_url && !a.is_seed ? `<div class="article-thumb">${imageTag(a.image_url, "thumb-img")}</div>` : "";
     card.innerHTML = `
-      ${thumb}
       <div class="article-main">
         <div class="article-meta">
           <span class="article-source">${escapeHtml(a.source)}</span>

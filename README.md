@@ -41,7 +41,7 @@ And the platform runs itself: a built-in scheduler re-ingests every feed every 3
 | 📡 **Live RSS ingestion** | Pull from any RSS feed with one click — 110 real articles in under 2 seconds |
 | 🤖 **Auto-pilot scheduler** | Background task re-fetches every feed on a configurable interval; feeds report health status ("ok: 5 added · 2h ago") |
 | 📄 **Full-text summaries** | Each article's external link is fetched and parsed into a skimmable brief — TL;DR, key points, key numbers, quotes, and bottom line — so you get 90% of the story without opening the site |
-| 🖼️ **Real lead images** | Each article shows the lead image (`og:image`) from its real page, plus the story's true domain and a "verify at the source" link — a quick legitimacy check. Images are hotlinked and vanish cleanly if a site blocks them |
+| 🖼️ **Real lead images** | Each article's reader page shows the lead image (`og:image`) from its real page, and every card shows the story's true domain with a "verify at the source" link in the reader — a quick legitimacy check. Images are hotlinked and vanish cleanly if a site blocks them |
 | 📰 **Story clustering** | Headlines about the same event from different outlets are grouped automatically (word-overlap similarity within a time window). Cards show "3 reports · 2 sources"; click to see all coverage, and the reader lists "Also covered by" |
 | 📖 **Article reader page** | Clicking an article opens a dedicated reader at `/#/article/{id}`: the straightforward summary up top, then skimmable sections (key points, numbers, quotes, bottom line) with chip navigation |
 | 🌗 **Light & dark themes** | Accessible triadic color system (blue/green/violet) with a settings menu — both themes verified WCAG AA programmatically |
