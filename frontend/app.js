@@ -159,7 +159,7 @@ function renderSentimentSplit(s) {
 function renderTrendChart(points) {
   const svg = $("trend-chart");
   if (!points || points.length < 2) {
-    svg.innerHTML = `<text x="50%" y="55%" text-anchor="middle" fill="#3a4257" font-size="10">collecting data…</text>`;
+    svg.innerHTML = `<text x="50%" y="55%" text-anchor="middle" fill="#7c87a3" font-size="10">collecting data…</text>`;
     return;
   }
   const vals = points.map((p) => p.avg_sentiment);
@@ -175,7 +175,7 @@ function renderTrendChart(points) {
   const last = vals.at(-1);
   const color = last > 0.15 ? "var(--pos)" : last < -0.15 ? "var(--neg)" : "var(--accent)";
   svg.innerHTML = `
-    <line x1="0" y1="${h - pad - ((0 - min) / range) * (h - pad * 2)}" x2="${w}" y2="${h - pad - ((0 - min) / range) * (h - pad * 2)}" stroke="#2a3247" stroke-dasharray="3 4" stroke-width="1"/>
+    <line x1="0" y1="${h - pad - ((0 - min) / range) * (h - pad * 2)}" x2="${w}" y2="${h - pad - ((0 - min) / range) * (h - pad * 2)}" stroke="#253048" stroke-dasharray="3 4" stroke-width="1"/>
     <path d="${area}" fill="${color}" opacity="0.1"/>
     <path d="${line}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
     <circle cx="${coords.at(-1)[0]}" cy="${coords.at(-1)[1]}" r="3" fill="${color}"/>`;
@@ -228,6 +228,12 @@ function showSkeletons(count = 6) {
   }
 }
 
+const SENTIMENT_GLYPH = { positive: "▲", neutral: "●", negative: "▼" };
+
+function badge(label) {
+  return `<span class="badge badge-${label}">${SENTIMENT_GLYPH[label] || "●"} ${label}</span>`;
+}
+
 function renderArticles(items) {
   const list = $("articles");
   list.innerHTML = "";
@@ -249,7 +255,7 @@ function renderArticles(items) {
         <div class="article-meta">
           <span class="article-source">${escapeHtml(a.source)}</span>
           <span>·</span><span>${timeAgo(a.published_at)}</span>
-          <span class="badge badge-${a.sentiment_label}">${a.sentiment_label}</span>
+          ${badge(a.sentiment_label)}
           <span class="sentiment-score">${a.sentiment >= 0 ? "+" : ""}${a.sentiment.toFixed(2)}</span>
           ${a.summary_deep ? '<span class="deep-tag" title="Summary generated from the full article page">✨ deep</span>' : ""}
         </div>
@@ -386,7 +392,7 @@ async function showArticle(id) {
     <span class="article-topic-emoji">${TOPIC_EMOJI[a.topic] || "📰"}</span>
     <span class="article-source">${escapeHtml(a.source)}</span>
     <span>·</span><span>${timeAgo(a.published_at)}</span>
-    <span class="badge badge-${a.sentiment_label}">${a.sentiment_label}</span>
+    ${badge(a.sentiment_label)}
     ${a.summary_deep ? '<span class="deep-tag" title="Summary generated from the full article page">✨ deep</span>' : ""}`;
   $("reader-title").textContent = a.title;
   const keywords = (a.keywords || "").split(",").map((k) => k.trim()).filter(Boolean);
