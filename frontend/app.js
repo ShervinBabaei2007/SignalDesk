@@ -159,7 +159,7 @@ function renderSentimentSplit(s) {
 function renderTrendChart(points) {
   const svg = $("trend-chart");
   if (!points || points.length < 2) {
-    svg.innerHTML = `<text x="50%" y="55%" text-anchor="middle" fill="#7c87a3" font-size="10">collecting data…</text>`;
+    svg.innerHTML = `<text x="50%" y="55%" text-anchor="middle" style="fill:var(--text-dim)" font-size="10">collecting data…</text>`;
     return;
   }
   const vals = points.map((p) => p.avg_sentiment);
@@ -175,7 +175,7 @@ function renderTrendChart(points) {
   const last = vals.at(-1);
   const color = last > 0.15 ? "var(--pos)" : last < -0.15 ? "var(--neg)" : "var(--accent)";
   svg.innerHTML = `
-    <line x1="0" y1="${h - pad - ((0 - min) / range) * (h - pad * 2)}" x2="${w}" y2="${h - pad - ((0 - min) / range) * (h - pad * 2)}" stroke="#253048" stroke-dasharray="3 4" stroke-width="1"/>
+    <line x1="0" y1="${h - pad - ((0 - min) / range) * (h - pad * 2)}" x2="${w}" y2="${h - pad - ((0 - min) / range) * (h - pad * 2)}" style="stroke:var(--border)" stroke-dasharray="3 4" stroke-width="1"/>
     <path d="${area}" fill="${color}" opacity="0.1"/>
     <path d="${line}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
     <circle cx="${coords.at(-1)[0]}" cy="${coords.at(-1)[1]}" r="3" fill="${color}"/>`;
@@ -542,9 +542,73 @@ async function loadFeeds() {
   select.value = current;
 }
 
+/* ---------- Settings (theme + compact mode) ---------- */
+
+const SETTINGS_KEY = "signaldesk-settings";
+
+function loadSettings() {
+  try { return JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}"); }
+  catch { return {}; }
+}
+
+/* Saved settings with URL params (?theme=light&compact=1) taking precedence */
+function effectiveSettings() {
+  const s = loadSettings();
+  const q = new URLSearchParams(location.search);
+  if (q.get("theme")) s.theme = q.get("theme");
+  if (q.has("compact")) s.compact = q.get("compact") !== "0";
+  return s;
+}
+
+function saveSettings(patch) {
+  const s = { ...loadSettings(), ...patch };
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
+  return s;
+}
+
+function applySettingsToUI(s) {
+  const theme = s.theme || "dark";
+  const compact = !!s.compact;
+  document.documentElement.dataset.theme = theme;
+  document.documentElement.dataset.compact = compact ? "on" : "off";
+  for (const btn of document.querySelectorAll("[data-theme-choice]")) {
+    btn.setAttribute("aria-checked", String(btn.dataset.themeChoice === theme));
+  }
+  $("compact-toggle").setAttribute("aria-checked", String(compact));
+}
+
+function initSettings() {
+  applySettingsToUI(effectiveSettings());
+
+  $("settings-btn").addEventListener("click", () => $("settings-modal").showModal());
+  $("settings-close").addEventListener("click", () => $("settings-modal").close());
+  // ?settings=1 opens the menu directly (shareable/demo/testing)
+  if (new URLSearchParams(location.search).has("settings")) $("settings-modal").showModal();
+
+  for (const btn of document.querySelectorAll("[data-theme-choice]")) {
+    btn.addEventListener("click", () => {
+      applySettingsToUI(saveSettings({ theme: btn.dataset.themeChoice }));
+      toast(`Theme switched to ${btn.dataset.themeChoice} mode`);
+    });
+  }
+
+  $("compact-toggle").addEventListener("click", () => {
+    const s = saveSettings({ compact: !loadSettings().compact });
+    applySettingsToUI(s);
+    // fewer articles per page when compact
+    state.limit = s.compact ? 10 : 25;
+    loadArticles();
+    toast(s.compact ? "Compact mode on — calmer, less on screen" : "Compact mode off — full dashboard restored");
+  });
+}
+
 /* ---------- Wire up ---------- */
 
 document.addEventListener("DOMContentLoaded", () => {
+  // settings first so compact mode affects the initial article load
+  initSettings();
+  if (effectiveSettings().compact) state.limit = 10;
+
   // health pill
   api("/health")
     .then((h) => {

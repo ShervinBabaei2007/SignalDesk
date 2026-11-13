@@ -3,13 +3,27 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="color-scheme" content="dark" />
+  <meta name="color-scheme" content="dark light" />
   <title>SignalDesk — News Intelligence Dashboard</title>
   <meta name="description" content="SignalDesk ingests news from RSS feeds, analyzes sentiment and topics, and surfaces the signals that matter." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/styles.css?v=6" />
+  <link rel="stylesheet" href="/static/styles.css?v=7" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>" />
+  <script>
+    /* Apply saved theme/compact before first paint to avoid a flash.
+       URL params (?theme=light&compact=1) override for sharing/testing. */
+    (function () {
+      try {
+        var s = JSON.parse(localStorage.getItem("signaldesk-settings") || "{}");
+        var q = new URLSearchParams(location.search);
+        var theme = q.get("theme") || s.theme || "dark";
+        var compact = q.get("compact") ? q.get("compact") !== "0" : !!s.compact;
+        document.documentElement.dataset.theme = theme;
+        document.documentElement.dataset.compact = compact ? "on" : "off";
+      } catch (e) {}
+    })();
+  </script>
 </head>
 <body>
   <header class="topbar">
@@ -27,6 +41,7 @@
         </span>
         <a href="/api/articles/export.csv" class="btn btn-ghost" title="Export all articles as CSV" download>⬇ CSV</a>
         <button id="feeds-btn" class="btn btn-ghost" title="Manage RSS feeds">📡 Feeds</button>
+        <button id="settings-btn" class="btn btn-ghost" title="Settings" aria-haspopup="dialog">⚙ Settings</button>
         <button id="ingest-btn" class="btn btn-primary">
           <span class="btn-icon">⬇</span> Ingest Feeds
         </button>
@@ -174,8 +189,37 @@
     </form>
   </dialog>
 
+  <!-- Settings modal -->
+  <dialog id="settings-modal" class="modal modal-settings">
+    <div class="modal-head">
+      <h2>⚙ Settings</h2>
+      <button id="settings-close" class="btn btn-ghost btn-sm">✕</button>
+    </div>
+    <div class="settings-body">
+      <div class="setting-row">
+        <div>
+          <div class="setting-name">Theme</div>
+          <div class="setting-desc">Dark or light appearance for the whole app.</div>
+        </div>
+        <div class="seg-control" role="radiogroup" aria-label="Theme">
+          <button class="seg-btn" data-theme-choice="dark" role="radio" aria-checked="false">🌙 Dark</button>
+          <button class="seg-btn" data-theme-choice="light" role="radio" aria-checked="false">☀️ Light</button>
+        </div>
+      </div>
+      <div class="setting-row">
+        <div>
+          <div class="setting-name">Compact mode</div>
+          <div class="setting-desc">Less on screen at once — hides side panels, charts and keyword chips, and shows fewer articles per page. Good when the dashboard feels overwhelming.</div>
+        </div>
+        <button id="compact-toggle" class="toggle" role="switch" aria-checked="false" aria-label="Compact mode">
+          <span class="toggle-knob"></span>
+        </button>
+      </div>
+    </div>
+  </dialog>
+
   <div id="toast" class="toast hidden"></div>
 
-  <script src="/static/app.js?v=10"></script>
+  <script src="/static/app.js?v=11"></script>
 </body>
 </html>
