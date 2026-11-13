@@ -45,6 +45,7 @@ And the platform runs itself: a built-in scheduler re-ingests every feed every 3
 | 📰 **Story clustering** | Headlines about the same event from different outlets are grouped automatically (word-overlap similarity within a time window). Cards show "3 reports · 2 sources"; click to see all coverage, and the reader lists "Also covered by" |
 | 📖 **Article reader page** | Clicking an article opens a dedicated reader at `/#/article/{id}`: the straightforward summary up top, then skimmable sections (key points, numbers, quotes, bottom line) with chip navigation |
 | 🌗 **Light & dark themes** | Accessible triadic color system (blue/green/violet) with a settings menu — both themes verified WCAG AA programmatically |
+| 🌡️ **Plain-language sentiment** | Scores read as "Very negative … Very positive" (number on hover), the reader has a labelled −1 / 0 / +1 gauge, and an ⓘ explainer says what sentiment does and does not mean |
 | 🧘 **Compact mode** | A one-switch "calm" mode: hides side panels, charts, and chips, and shows fewer articles — for when the dashboard feels overwhelming |
 | 📱 **Mobile-first UI** | Designed for phones first: bottom-sheet menu, touch-sized targets, responsive 2-up → 5-column stats, then desktop |
 | 🧠 **Zero-dependency NLP** | Deterministic lexicon-based analysis that works offline, with an optional LLM upgrade |
