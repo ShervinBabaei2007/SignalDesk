@@ -22,7 +22,7 @@ from app.seed_data import seed_if_empty  # noqa: E402
 # the schema and seed data explicitly for a hermetic test database.
 Base.metadata.create_all(bind=engine)
 with SessionLocal() as _db:
-    seed_if_empty(_db)
+    seed_if_empty(_db, live=False)
 
 client = TestClient(app)
 

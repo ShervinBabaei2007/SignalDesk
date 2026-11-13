@@ -24,6 +24,7 @@ class ArticleOut(BaseModel):
 
 
 class ArticleDetail(ArticleOut):
+    full_text: str | None = None  # extracted page text for the reader view
     enriched_at: datetime | None = None
 
 

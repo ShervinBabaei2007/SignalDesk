@@ -7,7 +7,7 @@
   <meta name="description" content="SignalDesk ingests news from RSS feeds, analyzes sentiment and topics, and surfaces the signals that matter." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/styles.css?v=2" />
+  <link rel="stylesheet" href="/static/styles.css?v=3" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>" />
 </head>
 <body>
@@ -34,6 +34,7 @@
   </header>
 
   <main class="container">
+    <div id="dashboard-view">
     <!-- KPI row -->
     <section id="stats-row" class="stats-row" aria-label="Key metrics">
       <div class="stat-card">
@@ -125,6 +126,31 @@
         </div>
       </section>
     </div>
+    </div>
+
+    <!-- Article reader page -->
+    <section id="reader-view" class="reader hidden">
+      <a href="#/" id="reader-back" class="reader-back">← Back to feed</a>
+      <div class="reader-card">
+        <div id="reader-meta" class="article-meta reader-meta"></div>
+        <h1 id="reader-title" class="reader-title"></h1>
+        <div class="reader-summary-box">
+          <div class="reader-summary-label">✨ Straightforward summary</div>
+          <p id="reader-summary" class="reader-summary"></p>
+          <button id="reader-generate" class="btn btn-primary hidden">✨ Generate clean summary</button>
+        </div>
+        <div id="reader-body" class="reader-body"></div>
+        <div id="reader-keywords" class="article-chips"></div>
+        <div id="reader-sentiment" class="am-sentiment">
+          <div class="am-sentiment-label">
+            <span>Sentiment analysis</span>
+            <span id="reader-score"></span>
+          </div>
+          <div class="am-sentiment-track"><div id="reader-gauge" class="am-sentiment-gauge"></div></div>
+        </div>
+        <a id="reader-link" class="btn btn-primary reader-link" target="_blank" rel="noopener">↗ Read the original article</a>
+      </div>
+    </section>
   </main>
 
   <footer class="footer">
@@ -148,28 +174,6 @@
 
   <div id="toast" class="toast hidden"></div>
 
-  <!-- Article detail modal -->
-  <dialog id="article-modal" class="modal modal-article">
-    <div class="modal-head">
-      <h2 id="am-topic"></h2>
-      <button id="article-close" class="btn btn-ghost btn-sm">✕</button>
-    </div>
-    <div id="am-meta" class="article-meta am-meta"></div>
-    <h3 id="am-title" class="am-title"></h3>
-    <div class="am-summary-label">✨ Straightforward summary</div>
-    <p id="am-summary" class="am-summary"></p>
-    <button id="am-generate" class="btn btn-primary btn-block hidden">✨ Generate clean summary</button>
-    <div id="am-keywords" class="article-chips"></div>
-    <div id="am-sentiment" class="am-sentiment">
-      <div class="am-sentiment-label">
-        <span>Sentiment analysis</span>
-        <span id="am-score"></span>
-      </div>
-      <div class="am-sentiment-track"><div id="am-gauge" class="am-sentiment-gauge"></div></div>
-    </div>
-    <a id="am-link" class="btn btn-primary am-link" target="_blank" rel="noopener">Read full article →</a>
-  </dialog>
-
-  <script src="/static/app.js?v=5"></script>
+  <script src="/static/app.js?v=6"></script>
 </body>
 </html>

@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .analysis import extract_keywords
-from .ingestion import DEFAULT_FEEDS
+from .ingestion import DEFAULT_FEEDS, ingest_all
 from .models import Article, Feed
 
 SEED_ARTICLES = [
@@ -184,11 +184,32 @@ def backfill_keywords(db: Session) -> int:
     return updated
 
 
-def seed_if_empty(db: Session) -> int:
-    """Populate demo articles + default feeds if the DB is empty. Returns count."""
+def seed_if_empty(db: Session, live: bool = True) -> int:
+    """Populate the database on first boot.
+
+    Prefers real articles: creates the default feeds and runs a live
+    ingestion so every article has a genuine external URL. Falls back to
+    built-in sample articles only when the network is unavailable.
+    """
     existing = db.scalar(select(func.count()).select_from(Article))
     if existing and existing > 0:
         return 0
+
+    if db.scalar(select(func.count()).select_from(Feed)) in (0, None):
+        for feed in DEFAULT_FEEDS:
+            db.add(Feed(name=feed["name"], url=feed["url"]))
+        db.commit()
+
+    if live:
+        try:
+            feeds = [{"name": f.name, "url": f.url}
+                     for f in db.execute(select(Feed).where(Feed.is_active)).scalars().all()]
+            results = ingest_all(db, feeds)
+            added = sum(r["added"] for r in results)
+            if added >= 3:
+                return added
+        except Exception:  # noqa: BLE001 — offline first boot is expected sometimes
+            pass
 
     added = 0
     for row in SEED_ARTICLES:

@@ -112,7 +112,7 @@ async function loadDigest() {
         </div>`)
       .join("");
     $("digest-extremes").querySelectorAll(".digest-item").forEach((el) =>
-      el.addEventListener("click", (e) => { e.preventDefault(); openArticle(+el.dataset.id); }));
+      el.addEventListener("click", (e) => { e.preventDefault(); location.hash = `#/article/${el.dataset.id}`; }));
   } catch (err) {
     $("digest-headline").textContent = "Brief unavailable";
   }
@@ -236,7 +236,7 @@ function renderArticles(items) {
           <span class="sentiment-score">${a.sentiment >= 0 ? "+" : ""}${a.sentiment.toFixed(2)}</span>
           ${a.summary_deep ? '<span class="deep-tag" title="Summary generated from the full article page">✨ deep</span>' : ""}
         </div>
-        <h3 class="article-title"><a href="/#/article/${a.id}" onclick="event.preventDefault(); openArticle(${a.id})">${escapeHtml(a.title)}</a></h3>
+        <h3 class="article-title"><a href="/#/article/${a.id}">${escapeHtml(a.title)}</a></h3>
         ${cleanSummary ? `<p class="article-summary">${escapeHtml(cleanSummary)}</p>` : ""}
         <div class="article-footer">
           <div class="article-chips">
@@ -251,73 +251,130 @@ function renderArticles(items) {
           </div>
         </div>
       </div>`;
-    card.addEventListener("click", () => openArticle(a.id));
+    card.addEventListener("click", () => { location.hash = `#/article/${a.id}`; });
     card.querySelector("[data-summary]").addEventListener("click", (e) => {
       e.stopPropagation();
-      openArticle(a.id);
+      location.hash = `#/article/${a.id}`;
     });
     list.appendChild(card);
   }
 }
 
-/* ---------- Article detail modal ---------- */
+/* ---------- Routing ---------- */
 
-async function openArticle(id) {
+function route() {
+  const match = location.hash.match(/^#\/article\/(\d+)$/);
+  if (match) {
+    showArticle(+match[1]);
+  } else {
+    // Dashboard view: reader hidden, feed restored as-is
+    $("reader-view").classList.add("hidden");
+    $("dashboard-view").classList.remove("hidden");
+  }
+}
+
+/* ---------- Article reader page ---------- */
+
+function renderReaderBody(text) {
+  const body = $("reader-body");
+  body.innerHTML = "";
+  for (const para of text.split(/\n+/)) {
+    const p = para.trim();
+    if (!p) continue;
+    const el = document.createElement("p");
+    el.textContent = p;
+    body.appendChild(el);
+  }
+}
+
+async function showArticle(id) {
+  $("dashboard-view").classList.add("hidden");
+  $("reader-view").classList.remove("hidden");
+  window.scrollTo(0, 0);
+
+  $("reader-title").textContent = "Loading…";
+  $("reader-summary").textContent = "";
+  $("reader-body").innerHTML = "";
+  $("reader-generate").classList.add("hidden");
+  $("reader-link").removeAttribute("href");
+
+  let a;
   try {
-    const a = await api(`/articles/${id}`);
-    $("am-topic").textContent = `${TOPIC_EMOJI[a.topic] || "📰"} ${a.topic}`;
-    $("am-meta").innerHTML = `
-      <span class="article-source">${escapeHtml(a.source)}</span>
-      <span>·</span><span>${timeAgo(a.published_at)}</span>
-      <span class="badge badge-${a.sentiment_label}">${a.sentiment_label}</span>`;
-    $("am-title").textContent = a.title;
+    a = await api(`/articles/${id}`);
+  } catch (err) {
+    $("reader-title").textContent = "Article not found";
+    toast(err.message);
+    return;
+  }
 
-    const summaryEl = $("am-summary");
-    const genBtn = $("am-generate");
-    if (a.summary_deep) {
-      summaryEl.textContent = a.summary_deep;
+  $("reader-meta").innerHTML = `
+    <span class="article-topic-emoji">${TOPIC_EMOJI[a.topic] || "📰"}</span>
+    <span class="article-source">${escapeHtml(a.source)}</span>
+    <span>·</span><span>${timeAgo(a.published_at)}</span>
+    <span class="badge badge-${a.sentiment_label}">${a.sentiment_label}</span>
+    ${a.summary_deep ? '<span class="deep-tag" title="Summary generated from the full article page">✨ deep</span>' : ""}`;
+  $("reader-title").textContent = a.title;
+  const keywords = (a.keywords || "").split(",").map((k) => k.trim()).filter(Boolean);
+  $("reader-keywords").innerHTML = keywords.map((k) => `<span class="chip">${escapeHtml(k)}</span>`).join("");
+  $("reader-score").textContent = `${a.sentiment >= 0 ? "+" : ""}${a.sentiment.toFixed(2)}`;
+  $("reader-gauge").style.left = `${((a.sentiment + 1) / 2) * 90 + 5}%`;
+
+  const link = $("reader-link");
+  if (a.is_seed) {
+    link.classList.add("hidden");
+  } else {
+    link.classList.remove("hidden");
+    link.href = a.url;
+  }
+
+  const genBtn = $("reader-generate");
+  const updateSummary = (article) => {
+    $("reader-summary").textContent = article.summary_deep || article.summary || "No summary available yet.";
+    if (article.summary_deep) {
       genBtn.classList.add("hidden");
     } else {
-      summaryEl.textContent = a.summary || "No summary available yet.";
       genBtn.classList.remove("hidden");
       genBtn.disabled = false;
       genBtn.textContent = "✨ Generate clean summary";
     }
+  };
+  updateSummary(a);
 
-    const keywords = (a.keywords || "").split(",").map((k) => k.trim()).filter(Boolean);
-    $("am-keywords").innerHTML = keywords.map((k) => `<span class="chip">${escapeHtml(k)}</span>`).join("");
-    $("am-score").textContent = `${a.sentiment >= 0 ? "+" : ""}${a.sentiment.toFixed(2)}`;
-    // map [-1, 1] onto the track (5% .. 95%)
-    $("am-gauge").style.left = `${((a.sentiment + 1) / 2) * 90 + 5}%`;
-    // Demo articles have placeholder URLs — don't offer a broken "read more" link
-    const link = $("am-link");
-    if (a.is_seed) {
-      link.classList.add("hidden");
-      link.removeAttribute("href");
-    } else {
-      link.classList.remove("hidden");
-      link.href = a.url;
+  if (a.full_text) {
+    renderReaderBody(a.full_text);
+  } else if (a.summary_deep) {
+    // No full text (e.g. fallback summary) — nothing more to show
+  } else {
+    // First visit, never enriched: pull the page automatically so the
+    // reader shows real content from the article's URL
+    genBtn.disabled = true;
+    genBtn.classList.remove("hidden");
+    genBtn.textContent = "⏳ Reading the article…";
+    try {
+      const updated = await api(`/articles/${id}/summarize`, { method: "POST" });
+      updateSummary(updated);
+      if (updated.full_text) renderReaderBody(updated.full_text);
+      loadArticles(true);
+    } catch (err) {
+      toast(err.message);
+      updateSummary(a);
     }
-    $("article-modal").showModal();
-
-    // On-demand deep summary
-    genBtn.onclick = async () => {
-      genBtn.disabled = true;
-      genBtn.textContent = "⏳ Reading the article…";
-      try {
-        const updated = await api(`/articles/${id}/summarize`, { method: "POST" });
-        summaryEl.textContent = updated.summary_deep || updated.summary || a.summary;
-        genBtn.classList.add("hidden");
-        loadArticles(true);
-      } catch (err) {
-        toast(err.message);
-        genBtn.disabled = false;
-        genBtn.textContent = "✨ Generate clean summary";
-      }
-    };
-  } catch (err) {
-    toast(err.message);
   }
+
+  genBtn.onclick = async () => {
+    genBtn.disabled = true;
+    genBtn.textContent = "⏳ Reading the article…";
+    try {
+      const updated = await api(`/articles/${id}/summarize`, { method: "POST" });
+      updateSummary(updated);
+      if (updated.full_text) renderReaderBody(updated.full_text);
+      loadArticles(true);
+    } catch (err) {
+      toast(err.message);
+      genBtn.disabled = false;
+      genBtn.textContent = "✨ Generate clean summary";
+    }
+  };
 }
 
 const TOPIC_EMOJI = {
@@ -417,7 +474,9 @@ document.addEventListener("DOMContentLoaded", () => {
     loadArticles(true);
   });
 
-  $("article-close").addEventListener("click", () => $("article-modal").close());
+  // hash routing: #/article/{id} → reader page, everything else → dashboard
+  window.addEventListener("hashchange", route);
+  route();
 
   $("feeds-btn").addEventListener("click", () => { loadFeeds(); $("feeds-modal").showModal(); });
   $("feeds-close").addEventListener("click", () => $("feeds-modal").close());

@@ -39,13 +39,14 @@ And the platform runs itself: a built-in scheduler re-ingests every feed every 3
 | 📡 **Live RSS ingestion** | Pull from any RSS feed with one click — 110 real articles in under 2 seconds |
 | 🤖 **Auto-pilot scheduler** | Background task re-fetches every feed on a configurable interval; feeds report health status ("ok: 5 added · 2h ago") |
 | 📄 **Full-text summaries** | Each article's external link is fetched and parsed into a clean, straightforward summary shown on the card — no more gibberish RSS excerpts |
+| 📖 **Article reader page** | Clicking an article opens a dedicated reader at `/#/article/{id}` with the straightforward summary up top and the full extracted article text below — much nicer than the raw site |
 | 🧠 **Zero-dependency NLP** | Deterministic lexicon-based analysis that works offline; clean interface for swapping in an LLM later |
 | ☀️ **Daily Brief** | Auto-generated intelligence headline + most positive/negative signals, refreshed with the stats |
 | 📊 **Intelligence dashboard** | Dark-mode UI: KPI cards, 7-day sentiment trend, topic breakdown, keyword chips, article detail modal with sentiment gauge |
 | 🔍 **Search, filter & sort** | Live search, source/topic/sentiment filters, newest/oldest/most-polarized sorting, and "load more" pagination |
 | 📤 **CSV export** | One click exports the full article dataset |
 | 🗄️ **Zero-config persistence** | SQLite by default, PostgreSQL with one environment variable; automatic column migrations on startup |
-| 🌱 **Demo seeding** | Auto-seeds 28 realistic articles on first boot — the dashboard never looks empty |
+| 🌱 **Real-article seeding** | First boot ingests the real default feeds so every article has a genuine URL; built-in sample articles are only used when the network is unreachable |
 | ✅ **Tested** | 31 pytest tests covering the extractor, analysis engine, API surface, sorting, digest, and export |
 | 🐳 **One-container deploy** | `docker compose up --build` and you're done |
 
@@ -85,6 +86,7 @@ Open **http://localhost:8000** to get:
 - **7-day sentiment trend** — SVG sparkline of daily average sentiment
 - **Topic breakdown** — clickable topic distribution bars
 - **Signal Feed** — every article with sentiment badge, score, topic chip, clean full-text summary, and 📄 Summary / ↗ Visit actions
+- **Article reader** — clicking any article opens a distraction-free reader page with the summary and the full article text
 - **Filters** — live search, source, topic, and sentiment filters
 - **📡 Feeds manager** — add/remove RSS feeds from the UI
 - **⬇ Ingest Feeds** — one-click pipeline run with a live results report

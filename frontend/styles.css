@@ -178,6 +178,33 @@ body {
 
 .sentiment-score { font-family: var(--mono); font-size: 11px; color: var(--text-dim); }
 
+/* ---------- Article reader page ---------- */
+.reader { max-width: 780px; margin: 0 auto; }
+.reader-back {
+  display: inline-block; font-size: 13px; font-weight: 600; color: var(--text-dim);
+  text-decoration: none; margin-bottom: 14px; padding: 6px 12px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--bg-elev);
+}
+.reader-back:hover { color: var(--accent); border-color: var(--accent); }
+.reader-card {
+  background: var(--bg-elev); border: 1px solid var(--border); border-radius: 16px;
+  padding: 34px 38px; line-height: 1.7;
+}
+.reader-meta { margin-bottom: 12px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.article-topic-emoji { font-size: 18px; }
+.reader-title { font-size: 30px; font-weight: 800; line-height: 1.25; margin: 0 0 20px; letter-spacing: -0.01em; }
+.reader-summary-box {
+  background: rgba(99, 102, 241, 0.07); border: 1px solid rgba(129, 140, 248, 0.35);
+  border-radius: 12px; padding: 16px 18px; margin-bottom: 24px;
+}
+.reader-summary-label { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.09em; color: var(--accent); margin-bottom: 6px; }
+.reader-summary { margin: 0 0 12px; font-size: 15.5px; color: var(--text); font-weight: 500; }
+.reader-body p { margin: 0 0 16px; font-size: 15px; color: var(--text-dim); }
+.reader-body { margin-bottom: 8px; }
+#reader-generate { margin-top: 2px; }
+.reader-key-chips { margin: 10px 0 18px; }
+.reader-link { display: inline-block; margin-top: 6px; }
+
 /* ---------- Card actions ---------- */
 .article-footer { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; margin-top: 10px; }
 .card-actions { display: flex; gap: 8px; flex-shrink: 0; }

@@ -72,9 +72,9 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
     ensure_columns()
     with SessionLocal() as db:
-        seeded = seed_if_empty(db)
+        seeded = seed_if_empty(db, live=not os.getenv("SCHEDULER_DISABLED"))
         if seeded:
-            print(f"[seed] Seeded database with {seeded} demo articles")
+            logger.info("[seed] First boot: populated %s articles", seeded)
         backfilled = backfill_keywords(db)
         if backfilled:
             logger.info("[migrate] Backfilled keywords for %s articles", backfilled)
