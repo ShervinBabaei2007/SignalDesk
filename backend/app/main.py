@@ -140,11 +140,18 @@ def list_articles(
     search: str | None = Query(None, max_length=200),
     source: str | None = Query(None, max_length=200),
     topic: str | None = Query(None, max_length=50),
-    sentiment: str | None = Query(None, pattern="^(positive|neutral|negative)$"),
+    sentiment: str | None = Query(None),
     limit: int = Query(25, ge=1, le=100),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
 ):
+    # Tolerate empty query strings (?sentiment=) from clients
+    sentiment = (sentiment or "").strip() or None
+    source = (source or "").strip() or None
+    topic = (topic or "").strip() or None
+    search = (search or "").strip() or None
+    if sentiment and sentiment not in ("positive", "neutral", "negative"):
+        raise HTTPException(422, "sentiment must be positive, neutral, or negative")
     q = select(Article)
     if search:
         like = f"%{search}%"

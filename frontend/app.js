@@ -40,7 +40,13 @@ async function api(path, options = {}) {
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.detail || `${res.status} ${res.statusText}`);
+    let detail = body.detail || `${res.status} ${res.statusText}`;
+    if (Array.isArray(detail)) {
+      detail = detail.map((d) => `${(d.loc || []).join(".")}: ${d.msg}`).join("; ");
+    } else if (typeof detail === "object") {
+      detail = JSON.stringify(detail);
+    }
+    throw new Error(detail);
   }
   return res.status === 204 ? null : res.json();
 }
@@ -150,10 +156,12 @@ function renderTrendChart(points) {
 async function loadArticles() {
   $("loading").classList.remove("hidden");
   $("empty-state").classList.add("hidden");
-  const f = state.filters;
-  const qs = new URLSearchParams({ limit: 40, ...f });
+  const params = new URLSearchParams({ limit: 40 });
+  for (const [key, value] of Object.entries(state.filters)) {
+    if (value && value.trim()) params.set(key, value.trim());
+  }
   try {
-    const page = await api(`/articles?${qs}`);
+    const page = await api(`/articles?${params}`);
     $("result-count").textContent = `${page.total} article${page.total === 1 ? "" : "s"}`;
     renderArticles(page.items);
   } catch (err) {
