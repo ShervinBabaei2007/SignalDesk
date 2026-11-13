@@ -26,10 +26,24 @@ class ArticleOut(BaseModel):
     sentiment_label: str
     published_at: datetime | None
     ingested_at: datetime
+    cluster_id: int | None = None  # shared by articles covering the same story
+    cluster_size: int = 1  # articles in this story (1 = standalone)
+    cluster_sources: list[str] = []  # distinct outlets covering it
     is_seed: bool = False  # demo articles have placeholder URLs — no real page to visit
 
 
+class RelatedArticle(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    title: str
+    source: str
+    url: str
+    published_at: datetime | None
+
+
 class ArticleDetail(ArticleOut):
+    related: list[RelatedArticle] = []  # other coverage of the same story
     full_text: str | None = None  # extracted page text for the reader view
     summary_structured: str | None = None  # skimmable sections (## heading / - bullet)
     enriched_at: datetime | None = None

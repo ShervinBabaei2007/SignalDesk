@@ -6,7 +6,7 @@ const $ = (id) => document.getElementById(id);
 const API = "/api";
 
 const state = {
-  filters: { search: "", source: "", topic: "", sentiment: "", order: "newest" },
+  filters: { search: "", source: "", topic: "", sentiment: "", cluster: "", order: "newest" },
   debounceTimer: null,
   offset: 0,
   limit: 25,
@@ -229,6 +229,7 @@ async function loadArticles(append = false) {
     if (append) state.loaded.push(...page.items);
     else state.loaded = page.items;
     $("result-count").textContent = `${page.total} article${page.total === 1 ? "" : "s"}`;
+    renderStoryBanner(page);
     renderArticles(state.loaded);
     $("load-more").classList.toggle("hidden", state.loaded.length >= state.total);
   } catch (err) {
@@ -236,6 +237,17 @@ async function loadArticles(append = false) {
   } finally {
     $("loading").classList.add("hidden");
   }
+}
+
+/* When the feed is filtered to one story, say so and offer a way out. */
+function renderStoryBanner(page) {
+  const banner = $("story-banner");
+  if (!state.filters.cluster) { banner.classList.add("hidden"); return; }
+  const sources = [...new Set(page.items.map((a) => a.source))];
+  banner.innerHTML = `<span>📰 One story, ${page.total} reports${sources.length ? ` from ${escapeHtml(sources.join(", "))}` : ""}</span>
+    <button type="button" class="btn btn-ghost btn-sm" id="story-clear">✕ Show all</button>`;
+  banner.classList.remove("hidden");
+  $("story-clear").addEventListener("click", () => { state.filters.cluster = ""; loadArticles(); });
 }
 
 function showSkeletons(count = 6) {
@@ -290,6 +302,7 @@ function renderArticles(items) {
           <span class="sentiment-score">${a.sentiment >= 0 ? "+" : ""}${a.sentiment.toFixed(2)}</span>
           ${a.importance ? `<span class="impact-tag" title="Model importance score (1–10)">★ ${a.importance.toFixed(0)}/10</span>` : ""}
           ${a.summary_deep ? '<span class="deep-tag" title="Summary generated from the full article page">✨ deep</span>' : ""}
+          ${a.cluster_size > 1 ? `<button type="button" class="story-tag" data-cluster="${a.cluster_id}" title="Also reported by: ${escapeHtml(a.cluster_sources.join(", "))}. Click to see all coverage">📰 ${a.cluster_size} reports · ${a.cluster_sources.length} source${a.cluster_sources.length === 1 ? "" : "s"}</button>` : ""}
         </div>
         <h3 class="article-title"><a href="/#/article/${a.id}">${escapeHtml(a.title)}</a></h3>
         ${cleanSummary ? `<p class="article-summary">${escapeHtml(cleanSummary)}</p>` : ""}
@@ -308,6 +321,15 @@ function renderArticles(items) {
         </div>
       </div>`;
     card.addEventListener("click", () => { location.hash = `#/article/${a.id}`; });
+    const storyBtn = card.querySelector("[data-cluster]");
+    if (storyBtn) {
+      storyBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        state.filters.cluster = storyBtn.dataset.cluster;
+        loadArticles();
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      });
+    }
     card.querySelector("[data-summary]").addEventListener("click", (e) => {
       e.stopPropagation();
       location.hash = `#/article/${a.id}`;
@@ -435,6 +457,16 @@ async function showArticle(id) {
     ? `${imageTag(a.image_url, "hero-img")}<figcaption>Image from ${escapeHtml(readerDomain)} · <a href="${escapeHtml(a.url)}" target="_blank" rel="noopener">verify at the source ↗</a></figcaption>`
     : "";
   $("reader-hero").classList.toggle("hidden", !$("reader-hero").innerHTML);
+  const related = $("reader-related");
+  if (a.related && a.related.length) {
+    related.innerHTML = `<h3>📰 Also covered by</h3><ul>${a.related.map((r) => `
+      <li><a href="/#/article/${r.id}">${escapeHtml(r.title)}</a>
+        <span class="related-meta">${escapeHtml(r.source)} · ${timeAgo(r.published_at)}</span></li>`).join("")}</ul>`;
+    related.classList.remove("hidden");
+  } else {
+    related.innerHTML = "";
+    related.classList.add("hidden");
+  }
   const readerKeywords = (a.keywords || "").split(",").map((k) => k.trim()).filter(Boolean);
   $("reader-keywords").innerHTML = readerKeywords.map((k) => `<span class="chip">${escapeHtml(k)}</span>`).join("");
   $("reader-score").textContent = `${a.sentiment >= 0 ? "+" : ""}${a.sentiment.toFixed(2)}`;
@@ -731,7 +763,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // empty-state helper: clear every filter in one tap
   $("empty-clear").addEventListener("click", () => {
-    state.filters = { search: "", source: "", topic: "", sentiment: "", order: state.filters.order };
+    state.filters = { search: "", source: "", topic: "", sentiment: "", cluster: "", order: state.filters.order };
     $("f-search").value = ""; $("f-source").value = "";
     $("f-topic").value = ""; $("f-sentiment").value = "";
     loadArticles();

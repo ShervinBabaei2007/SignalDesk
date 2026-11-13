@@ -623,3 +623,23 @@ html[data-compact="on"] .article-thumb { display: none; }
   .article-thumb { width: 150px; aspect-ratio: 4 / 3; }
 }
 .reader-hero.no-img { display: none; }
+
+/* Story clustering */
+.story-tag {
+  font: inherit; font-size: 0.78rem; font-weight: 600; cursor: pointer;
+  color: var(--primary); background: transparent;
+  border: 1px solid var(--primary); border-radius: 999px; padding: 1px 9px;
+}
+.story-tag:hover { background: var(--tertiary-bg); }
+.story-banner {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin-bottom: 10px; padding: 10px 14px; border-radius: var(--radius);
+  background: var(--tertiary-bg); border: 1px solid var(--tertiary-border);
+}
+.story-banner.hidden, .reader-related.hidden { display: none; }
+.reader-related { margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--border); }
+.reader-related h3 { margin: 0 0 8px; font-size: 1rem; }
+.reader-related ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.reader-related a { color: var(--primary); font-weight: 600; }
+.related-meta { display: block; font-size: 0.8rem; color: var(--text-dim); }
+html[data-compact="on"] .story-tag { display: none; }

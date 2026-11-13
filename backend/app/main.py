@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session
 
 from . import config, notifications
 from .database import SessionLocal, ensure_columns, engine, get_db
+from . import clustering
 from .enrichment import enrich_article, enrich_pending_articles
 from .ingestion import ingest_all
 from .models import Article, Base, Feed
@@ -276,6 +277,7 @@ def list_articles(
     source: str | None = Query(None, max_length=200),
     topic: str | None = Query(None, max_length=50),
     sentiment: str | None = Query(None),
+    cluster: int | None = Query(None, ge=1),
     order: str = Query("newest"),
     limit: int = Query(25, ge=1, le=100),
     offset: int = Query(0, ge=0),
@@ -300,6 +302,11 @@ def list_articles(
     if topic:
         q = q.where(Article.topic == topic)
 
+    if cluster is not None:
+        _, by_id = clustering.get_clusters(db)
+        story = by_id.get(cluster)
+        q = q.where(Article.id.in_(story.article_ids if story else [0]))
+
     total = db.scalar(select(func.count()).select_from(q.subquery())) or 0
 
     if sentiment == "positive":
@@ -317,6 +324,7 @@ def list_articles(
     }
     q = q.order_by(*orderings[order])
     items = db.execute(q.offset(offset).limit(limit)).scalars().all()
+    clustering.annotate(db, items)
     return ArticlePage(total=total, items=items, offset=offset, limit=limit)
 
 
@@ -350,6 +358,21 @@ def get_article(article_id: int, db: Session = Depends(get_db)):
     article = db.get(Article, article_id)
     if not article:
         raise HTTPException(404, "Article not found")
+    return _with_related(db, article)
+
+
+def _with_related(db: Session, article: Article) -> Article:
+    """Annotate an article with its story cluster and the other coverage of it."""
+    clustering.annotate(db, [article])
+    others = []
+    if article.cluster_id:
+        _, by_id = clustering.get_clusters(db)
+        ids = [i for i in by_id[article.cluster_id].article_ids if i != article.id]
+        others = db.execute(
+            select(Article).where(Article.id.in_(ids))
+            .order_by(Article.published_at.desc().nullslast())
+        ).scalars().all()
+    article.related = others
     return article
 
 
@@ -368,7 +391,7 @@ def summarize_article(article_id: int, db: Session = Depends(get_db)):
     if article.enriched_at is None:
         enrich_article(db, article)
         db.refresh(article)
-    return article
+    return _with_related(db, article)
 
 
 # --------------------------------------------------------------------------- #
