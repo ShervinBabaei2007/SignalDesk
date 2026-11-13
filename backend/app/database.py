@@ -52,6 +52,12 @@ def ensure_columns():
             "summary_structured": "TEXT",
             "full_text": "TEXT",
             "enriched_at": "TIMESTAMP WITH TIME ZONE",
+            "why_it_matters": "TEXT",
+            "importance": "FLOAT",
+            "relevance": "FLOAT",
+            "content_type": "VARCHAR(40)",
+            "analysis_model": "VARCHAR(100)",
+            "analysis_source": "VARCHAR(20)",
         },
         "feeds": {"last_fetched_at": "TIMESTAMP WITH TIME ZONE", "last_status": "VARCHAR(300)"},
     }

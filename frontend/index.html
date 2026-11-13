@@ -2,13 +2,14 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="color-scheme" content="dark light" />
+  <meta name="theme-color" content="#0a0e1a" />
   <title>SignalDesk — News Intelligence Dashboard</title>
   <meta name="description" content="SignalDesk ingests news from RSS feeds, analyzes sentiment and topics, and surfaces the signals that matter." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/styles.css?v=7" />
+  <link rel="stylesheet" href="/static/styles.css?v=9" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>" />
   <script>
     /* Apply saved theme/compact before first paint to avoid a flash.
@@ -39,12 +40,13 @@
         <span id="health-pill" class="pill pill-muted" title="API status">
           <span class="dot"></span> checking…
         </span>
-        <a href="/api/articles/export.csv" class="btn btn-ghost" title="Export all articles as CSV" download>⬇ CSV</a>
-        <button id="feeds-btn" class="btn btn-ghost" title="Manage RSS feeds">📡 Feeds</button>
-        <button id="settings-btn" class="btn btn-ghost" title="Settings" aria-haspopup="dialog">⚙ Settings</button>
-        <button id="ingest-btn" class="btn btn-primary">
-          <span class="btn-icon">⬇</span> Ingest Feeds
+        <a href="/api/articles/export.csv" id="csv-btn" class="btn btn-ghost" title="Export all articles as CSV" download>⬇ <span class="btn-label">CSV</span></a>
+        <button id="feeds-btn" class="btn btn-ghost" title="Manage RSS feeds">📡 <span class="btn-label">Feeds</span></button>
+        <button id="settings-btn" class="btn btn-ghost" title="Settings" aria-haspopup="dialog">⚙ <span class="btn-label">Settings</span></button>
+        <button id="ingest-btn" class="btn btn-primary" aria-label="Ingest feeds now">
+          <span class="btn-icon">⬇</span> <span class="btn-label-desktop">Ingest Feeds</span>
         </button>
+        <button id="menu-btn" class="btn btn-ghost" title="Menu" aria-haspopup="dialog">☰</button>
       </div>
     </div>
   </header>
@@ -107,6 +109,7 @@
           <h3>☀️ Daily Brief</h3>
           <div id="digest-headline" class="digest-headline">Generating brief…</div>
           <div id="digest-extremes" class="digest-extremes"></div>
+          <button id="digest-send" class="btn btn-ghost btn-sm btn-block digest-send">✉ Send brief</button>
         </div>
         <div class="panel">
           <h3>Topic Breakdown</h3>
@@ -134,7 +137,8 @@
         <div id="empty-state" class="empty hidden">
           <div class="empty-icon">🛰️</div>
           <h3>No signals found</h3>
-          <p>Try clearing filters, or run an ingestion to pull fresh articles.</p>
+          <p>Nothing matches those filters. Try clearing them — or press <strong>Ingest Feeds</strong> to pull the latest stories.</p>
+          <button id="empty-clear" class="btn btn-ghost" style="margin-top:14px">Clear filters</button>
         </div>
         <div id="loading" class="loading">Loading signals…</div>
         <div class="load-more-wrap">
@@ -189,6 +193,22 @@
     </form>
   </dialog>
 
+  <!-- Mobile menu sheet -->
+  <dialog id="menu-modal" class="modal">
+    <div class="modal-head">
+      <h2>☰ Menu</h2>
+      <button id="menu-close" class="btn btn-ghost btn-sm">✕</button>
+    </div>
+    <div class="menu-list">
+      <button class="menu-item menu-item-primary" data-action="ingest">⬇ Ingest Feeds now</button>
+      <button class="menu-item" data-action="feeds"><span class="menu-icon">📡</span> Manage RSS feeds</button>
+      <button class="menu-item" data-action="settings"><span class="menu-icon">⚙</span> Settings</button>
+      <button class="menu-item" data-action="digest"><span class="menu-icon">✉</span> Send daily brief</button>
+      <a class="menu-item" href="/api/articles/export.csv" download><span class="menu-icon">⬇</span> Export articles as CSV</a>
+    </div>
+    <div id="menu-health" class="muted" style="margin-top:14px"></div>
+  </dialog>
+
   <!-- Settings modal -->
   <dialog id="settings-modal" class="modal modal-settings">
     <div class="modal-head">
@@ -215,11 +235,21 @@
           <span class="toggle-knob"></span>
         </button>
       </div>
+      <div id="token-row" class="setting-row hidden">
+        <div>
+          <div class="setting-name">API token</div>
+          <div class="setting-desc">Required for ingest, feed changes and sending the brief when the server sets <code>API_TOKEN</code>.</div>
+        </div>
+        <div class="setting-input-row">
+          <input id="token-input" type="password" placeholder="X-API-Key" autocomplete="off" />
+          <button id="token-save" class="btn btn-ghost btn-sm">Save</button>
+        </div>
+      </div>
     </div>
   </dialog>
 
   <div id="toast" class="toast hidden"></div>
 
-  <script src="/static/app.js?v=11"></script>
+  <script src="/static/app.js?v=13"></script>
 </body>
 </html>

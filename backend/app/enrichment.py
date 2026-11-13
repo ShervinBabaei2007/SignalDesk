@@ -14,6 +14,7 @@ import httpx
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from . import llm
 from .analysis import extract_keywords, structured_summary, summarize
 from .extractor import extract_main_text
 from .ingestion import strip_feed_metadata
@@ -52,8 +53,13 @@ def fetch_full_text(url: str, timeout: float = 12.0) -> str | None:
 
 
 def enrich_article(db: Session, article: Article) -> bool:
-    """Populate full_text + summary_deep for one article. Always succeeds:
-    uses stored feed text as fallback when the page isn't fetchable."""
+    """Populate full_text + a clean summary for one article. Always succeeds:
+    uses stored feed text as fallback when the page isn't fetchable.
+
+    When LLM analysis is enabled, the full text is also sent to the model for
+    a written brief, "why it matters" note, and importance/relevance scores.
+    Any model failure silently keeps the deterministic summary.
+    """
     if article.enriched_at is not None:
         return False
 
@@ -64,26 +70,56 @@ def enrich_article(db: Session, article: Article) -> bool:
     if fetched or article.full_text:
         if fetched:
             article.full_text = fetched
-        article.summary_deep = summarize(article.full_text, max_sentences=4,
-                                         max_chars=500, avoid=article.title)
-        article.summary_structured = structured_summary(article.full_text, article.title)
-        new_keywords = extract_keywords(article.full_text)
-        if new_keywords:
-            article.keywords = ", ".join(new_keywords)
+
+        analysis = None
+        if article.full_text and llm.available():
+            analysis = llm.analyze_article(
+                title=article.title,
+                source=article.source,
+                text=article.full_text,
+                published_at=article.published_at.isoformat() if article.published_at else None,
+            )
+
+        if analysis:
+            article.summary_deep = analysis["summary"]
+            article.summary_structured = llm.build_structured_summary(analysis)
+            article.why_it_matters = analysis["why_it_matters"] or None
+            article.importance = analysis["importance"] or None
+            article.relevance = analysis["relevance"] or None
+            article.content_type = analysis["content_type"]
+            article.analysis_model = analysis["model"]
+            article.analysis_source = "llm"
+            if analysis["keywords"]:
+                article.keywords = ", ".join(analysis["keywords"])
+            if analysis["topic"] != "General":
+                article.topic = analysis["topic"]
+            article.sentiment = analysis["sentiment"]
+        else:
+            article.summary_deep = summarize(article.full_text, max_sentences=4,
+                                             max_chars=500, avoid=article.title)
+            article.summary_structured = structured_summary(article.full_text, article.title)
+            new_keywords = extract_keywords(article.full_text)
+            if new_keywords:
+                article.keywords = ", ".join(new_keywords)
+            article.analysis_source = article.analysis_source or "lexicon"
     else:
         # Fallback: summarize the stored feed text (never repeat the headline —
         # the title is already displayed above the summary in the UI).
         source_text = strip_feed_metadata(article.summary or article.title)
         article.summary_deep = summarize(source_text, max_sentences=3, max_chars=400)
         article.summary_structured = structured_summary(source_text, article.title)
+        article.analysis_source = article.analysis_source or "lexicon"
 
     article.enriched_at = datetime.now(timezone.utc)
     db.commit()
     return True
 
 
-def enrich_pending_articles(db: Session, limit: int = 30) -> dict:
+def enrich_pending_articles(db: Session, limit: int | None = None) -> dict:
     """Enrich up to `limit` articles that don't have a deep summary yet."""
+    from . import config as _config
+
+    limit = limit or _config.ENRICH_BATCH_SIZE
     with _lock:
         pending = db.execute(
             select(Article)

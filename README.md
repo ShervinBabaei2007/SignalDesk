@@ -3,11 +3,13 @@
 > **AI-powered news intelligence, on autopilot.**
 > SignalDesk pulls news from RSS feeds around the web, deduplicates it, scores sentiment, classifies topics, and surfaces it all in a real-time intelligence dashboard.
 
-![Status](https://img.shields.io/badge/status-production--grade-brightgreen) ![Python](https://img.shields.io/badge/python-3.12%2B-blue) ![FastAPI](https://img.shields.io/badge/FastAPI-latest-teal) ![Tests](https://img.shields.io/badge/tests-31%20passing-brightgreen) ![License](https://img.shields.io/badge/license-MIT-lightgrey)
+![Status](https://img.shields.io/badge/status-production--grade-brightgreen) ![Python](https://img.shields.io/badge/python-3.12%2B-blue) ![FastAPI](https://img.shields.io/badge/FastAPI-latest-teal) ![Tests](https://img.shields.io/badge/tests-37%20passing-brightgreen) ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
 ---
 
 ![SignalDesk dashboard](docs/screenshots/dashboard.png)
+
+![SignalDesk mobile](docs/screenshots/mobile-dashboard.png)
 
 ---
 
@@ -39,15 +41,22 @@ And the platform runs itself: a built-in scheduler re-ingests every feed every 3
 | 📡 **Live RSS ingestion** | Pull from any RSS feed with one click — 110 real articles in under 2 seconds |
 | 🤖 **Auto-pilot scheduler** | Background task re-fetches every feed on a configurable interval; feeds report health status ("ok: 5 added · 2h ago") |
 | 📄 **Full-text summaries** | Each article's external link is fetched and parsed into a skimmable brief — TL;DR, key points, key numbers, quotes, and bottom line — so you get 90% of the story without opening the site |
-| 📖 **Article reader page** | Clicking an article opens a dedicated reader at `/#/article/{id}` with the straightforward summary up top and the full extracted article text below — much nicer than the raw site |
-| 🧠 **Zero-dependency NLP** | Deterministic lexicon-based analysis that works offline; clean interface for swapping in an LLM later |
+| 📖 **Article reader page** | Clicking an article opens a dedicated reader at `/#/article/{id}`: the straightforward summary up top, then skimmable sections (key points, numbers, quotes, bottom line) with chip navigation |
+| 🌗 **Light & dark themes** | Accessible triadic color system (blue/green/violet) with a settings menu — both themes verified WCAG AA programmatically |
+| 🧘 **Compact mode** | A one-switch "calm" mode: hides side panels, charts, and chips, and shows fewer articles — for when the dashboard feels overwhelming |
+| 📱 **Mobile-first UI** | Designed for phones first: bottom-sheet menu, touch-sized targets, responsive 2-up → 5-column stats, then desktop |
+| 🧠 **Zero-dependency NLP** | Deterministic lexicon-based analysis that works offline, with an optional LLM upgrade |
 | ☀️ **Daily Brief** | Auto-generated intelligence headline + most positive/negative signals, refreshed with the stats |
-| 📊 **Intelligence dashboard** | Dark-mode UI: KPI cards, 7-day sentiment trend, topic breakdown, keyword chips, article detail modal with sentiment gauge |
+| 📊 **Intelligence dashboard** | KPI cards, 7-day sentiment trend, topic breakdown, keyword chips, article reader with sentiment gauge |
 | 🔍 **Search, filter & sort** | Live search, source/topic/sentiment filters, newest/oldest/most-polarized sorting, and "load more" pagination |
 | 📤 **CSV export** | One click exports the full article dataset |
+| 🔒 **Production hardening** | Security headers, env-driven CORS, ingest cooldown + lock, global error handler, feed URL scheme validation, structured health endpoint with version/uptime |
 | 🗄️ **Zero-config persistence** | SQLite by default, PostgreSQL with one environment variable; automatic column migrations on startup |
 | 🌱 **Real-article seeding** | First boot ingests the real default feeds so every article has a genuine URL; built-in sample articles are only used when the network is unreachable |
-| ✅ **Tested** | 31 pytest tests covering the extractor, analysis engine, API surface, sorting, digest, and export |
+| 🤖 **Optional LLM analysis** | Set `LLM_ENABLED=true` with any OpenAI-compatible endpoint (OpenAI, Ollama, LM Studio…) for written TL;DRs and "why it matters"; falls back to the offline analyzer on any failure |
+| ✉️ **Brief delivery** | Send the daily brief to Slack and/or email from the dashboard, or on a schedule (`DIGEST_HOUR`) |
+| 🔑 **Optional API token** | Set `API_TOKEN` to require `X-API-Key` on all write endpoints; the UI has a field for it |
+| ✅ **Tested** | 37 pytest tests + GitHub Actions CI covering the extractor, analysis engine, API, auth, digest, and export |
 | 🐳 **One-container deploy** | `docker compose up --build` and you're done |
 
 ## Quick start
@@ -75,7 +84,8 @@ That's it — the database creates and seeds itself on first boot. No config fil
 
 ```bash
 docker compose up --build
-# → http://localhost:8000
+# → http://localhost:8000   (data persists in the `signaldesk-data` volume;
+#   copy .env.example to .env to configure LLM, Slack, email, API token)
 ```
 
 ## The dashboard
@@ -97,6 +107,8 @@ Interactive API docs live at **http://localhost:8000/docs** (Swagger UI).
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
+| `GET` | `/api/auth/status` | Whether write endpoints require an API token |
+| `POST` | `/api/digest/send` | Deliver the daily brief to Slack / email |
 | `GET` | `/api/health` | Service health + row counts |
 | `GET` | `/api/stats` | KPIs, sentiment split, topic breakdown, 7-day trend |
 | `GET` | `/api/digest` | Generated daily brief: headline, extremes, topic counts |
@@ -114,7 +126,20 @@ Interactive API docs live at **http://localhost:8000/docs** (Swagger UI).
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `DATABASE_URL` | SQLite (`backend/signaldesk.db`) | Point at PostgreSQL for production |
+| `APP_ENV` | `development` | `production` for deployments (shown in `/api/health`) |
+| `CORS_ORIGINS` | `*` | Comma-separated allowed origins; set explicit origins in production |
+| `LOG_LEVEL` | `INFO` | Python log level |
 | `INGEST_INTERVAL_MINUTES` | `30` | Auto-pilot re-ingest interval; `0` disables the scheduler |
+| `INGEST_COOLDOWN_SECONDS` | `20` | Minimum seconds between manual ingests (429 within the window) |
+| `ENRICH_BATCH_SIZE` | `30` | Articles enriched per background wave |
+| `SCHEDULER_DISABLED` | `false` | Set `true` in tests/CI to prevent boot-time network calls |
+| `MAX_ARTICLE_AGE_DAYS` | `7` | Skip stories older than this (`0` disables) |
+| `LLM_ENABLED` / `LLM_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL` | off | Optional LLM analysis via any OpenAI-compatible API |
+| `SLACK_WEBHOOK_URL`, `DIGEST_EMAILS`, `SMTP_*` | unset | Brief delivery channels |
+| `DIGEST_HOUR` | `-1` | UTC hour for automatic brief delivery (`-1` disables) |
+| `API_TOKEN` | unset | Require `X-API-Key` on POST/DELETE endpoints |
+
+See [.env.example](.env.example) for a annotated template.
 
 ## Project structure
 
@@ -123,6 +148,10 @@ SignalDesk/
 ├── backend/
 │   ├── app/
 │   │   ├── main.py          # FastAPI app, routes, static serving
+│   │   ├── config.py        # Env-driven settings
+│   │   ├── llm.py           # Optional OpenAI-compatible analysis
+│   │   ├── notifications.py # Slack / SMTP brief delivery
+│   │   ├── enrichment.py    # Full-text fetch + structured summaries
 │   │   ├── database.py      # Engine + sessions (SQLite → Postgres switchable)
 │   │   ├── models.py        # SQLAlchemy models (Article, Feed)
 │   │   ├── schemas.py       # Pydantic request/response schemas
@@ -134,6 +163,8 @@ SignalDesk/
 │   ├── index.html
 │   ├── styles.css
 │   └── app.js
+├── tools/devshots.py        # Screenshot helper (desktop + mobile)
+├── .github/workflows/ci.yml # pytest on every push/PR
 ├── Dockerfile
 ├── docker-compose.yml
 └── pytest.ini
@@ -141,7 +172,7 @@ SignalDesk/
 
 ## Design decisions
 
-- **Deterministic NLP over LLM-by-default.** The lexicon-based analyzer runs offline, is instant, and behaves identically on every demo run — ideal for a showcase. The `analyze()` interface is a single function, so dropping in an OpenAI/Anthropic-backed implementation is a one-file change.
+- **Deterministic NLP first, LLM as an upgrade.** The lexicon-based analyzer runs offline and behaves identically on every run, so anyone can clone and try it with no keys. When `LLM_ENABLED` is set, `llm.py` layers richer summaries on top and silently falls back on any malformed or failed response.
 - **Deduplication at the storage layer.** URLs are unique-indexed; ingestion is idempotent, so the pipeline can run on a schedule without supervision.
 - **Forward-safe migrations.** New columns are detected at startup (`ensure_columns`) and added via `ALTER TABLE`, and existing rows are backfilled (e.g. keyword computation) — upgrading a running deployment never breaks it.
 - **No build step for the frontend.** Vanilla JS keeps the project instantly runnable and reviewable — the entire UI is three readable files.
@@ -151,7 +182,7 @@ SignalDesk/
 
 ```bash
 .venv\Scripts\python -m pytest -q
-# 24 passed
+# 37 passed
 ```
 
 ## Roadmap
@@ -161,9 +192,9 @@ SignalDesk/
 - [x] Scheduled background ingestion
 - [x] Daily intelligence brief
 - [x] CSV export
-- [ ] LLM-backed analysis backend (plug into `analysis.analyze`)
+- [x] LLM-backed analysis backend (optional, OpenAI-compatible)
 - [ ] Keyword/entity highlighting in article summaries
-- [ ] Email/Slack digest of daily signals
+- [x] Email/Slack digest of daily signals
 - [ ] Auth + multi-user workspaces
 
 ## License

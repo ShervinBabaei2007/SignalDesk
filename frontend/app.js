@@ -38,8 +38,12 @@ function toast(message, ms = 3200) {
 }
 
 async function api(path, options = {}) {
+  const token = localStorage.getItem("signaldesk-api-token");
   const res = await fetch(`${API}${path}`, {
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { "X-API-Key": token } : {}),
+    },
     ...options,
   });
   if (!res.ok) {
@@ -50,7 +54,9 @@ async function api(path, options = {}) {
     } else if (typeof detail === "object") {
       detail = JSON.stringify(detail);
     }
-    throw new Error(detail);
+    const err = new Error(detail);
+    err.status = res.status;
+    throw err;
   }
   return res.status === 204 ? null : res.json();
 }
@@ -90,6 +96,28 @@ async function loadStats() {
 }
 
 /* ---------- Daily Brief ---------- */
+
+async function sendDigest() {
+  const btn = $("digest-send");
+  btn.disabled = true;
+  const original = btn.innerHTML;
+  btn.innerHTML = "⏳ Sending…";
+  try {
+    const result = await api("/digest/send", { method: "POST" });
+    toast(`Daily brief sent via ${result.sent.join(" + ")}`);
+  } catch (err) {
+    if (err.status === 400) {
+      toast("No delivery channel configured — set Slack or SMTP settings");
+    } else if (err.status === 401) {
+      toast("Add your API token in Settings first");
+    } else {
+      toast(`Could not send brief: ${err.message}`);
+    }
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = original;
+  }
+}
 
 async function loadDigest() {
   try {
@@ -250,17 +278,18 @@ function renderArticles(items) {
     const cleanSummary = a.summary_deep || a.summary;
     const keywords = (a.keywords || "").split(",").map((k) => k.trim()).filter(Boolean).slice(0, 4);
     card.innerHTML = `
-      <div class="article-topic" title="${a.topic}">${TOPIC_EMOJI[a.topic] || "📰"}</div>
       <div class="article-main">
         <div class="article-meta">
           <span class="article-source">${escapeHtml(a.source)}</span>
           <span>·</span><span>${timeAgo(a.published_at)}</span>
           ${badge(a.sentiment_label)}
           <span class="sentiment-score">${a.sentiment >= 0 ? "+" : ""}${a.sentiment.toFixed(2)}</span>
+          ${a.importance ? `<span class="impact-tag" title="Model importance score (1–10)">★ ${a.importance.toFixed(0)}/10</span>` : ""}
           ${a.summary_deep ? '<span class="deep-tag" title="Summary generated from the full article page">✨ deep</span>' : ""}
         </div>
         <h3 class="article-title"><a href="/#/article/${a.id}">${escapeHtml(a.title)}</a></h3>
-        ${cleanSummary ? `<p class="article-summary">${escapeHtml(cleanSummary)}</p>` : ""}
+        ${cleanSummary ? `<p class="article-summary">${highlightKeywords(cleanSummary, keywords)}</p>` : ""}
+        ${a.why_it_matters ? `<p class="article-why"><span class="why-label">Why it matters</span> ${highlightKeywords(a.why_it_matters, keywords)}</p>` : ""}
         <div class="article-footer">
           <div class="article-chips">
             <span class="chip">${TOPIC_EMOJI[a.topic] || "📰"} ${a.topic}</span>
@@ -304,7 +333,7 @@ function slugify(text) {
 
 /* Render the structured summary ("## Heading" / "- bullet" lines) as a
    skimmable hierarchy of section cards, plus a chip TOC for fast navigation. */
-function renderStructured(markdown, container, toc) {
+function renderStructured(markdown, container, toc, keywords = []) {
   container.innerHTML = "";
   if (toc) toc.innerHTML = "";
   const lines = (markdown || "").split("\n");
@@ -324,14 +353,14 @@ function renderStructured(markdown, container, toc) {
       ul.className = "reader-section-list";
       for (const b of section.bullets) {
         const li = document.createElement("li");
-        li.textContent = b;
+        li.innerHTML = highlightKeywords(b, keywords);
         ul.appendChild(li);
       }
       box.appendChild(ul);
     }
     for (const para of section.paras) {
       const p = document.createElement("p");
-      p.textContent = para;
+      p.innerHTML = highlightKeywords(para, keywords);
       box.appendChild(p);
     }
     container.appendChild(box);
@@ -393,10 +422,12 @@ async function showArticle(id) {
     <span class="article-source">${escapeHtml(a.source)}</span>
     <span>·</span><span>${timeAgo(a.published_at)}</span>
     ${badge(a.sentiment_label)}
+    ${a.importance ? `<span class="impact-tag" title="Model importance score (1–10)">★ ${a.importance.toFixed(0)}/10</span>` : ""}
+    ${a.analysis_source === "llm" ? '<span class="deep-tag" title="Analysis written by the configured language model">🤖 AI analysis</span>' : ""}
     ${a.summary_deep ? '<span class="deep-tag" title="Summary generated from the full article page">✨ deep</span>' : ""}`;
   $("reader-title").textContent = a.title;
-  const keywords = (a.keywords || "").split(",").map((k) => k.trim()).filter(Boolean);
-  $("reader-keywords").innerHTML = keywords.map((k) => `<span class="chip">${escapeHtml(k)}</span>`).join("");
+  const readerKeywords = (a.keywords || "").split(",").map((k) => k.trim()).filter(Boolean);
+  $("reader-keywords").innerHTML = readerKeywords.map((k) => `<span class="chip">${escapeHtml(k)}</span>`).join("");
   $("reader-score").textContent = `${a.sentiment >= 0 ? "+" : ""}${a.sentiment.toFixed(2)}`;
   $("reader-gauge").style.left = `${((a.sentiment + 1) / 2) * 90 + 5}%`;
 
@@ -410,7 +441,8 @@ async function showArticle(id) {
 
   const genBtn = $("reader-generate");
   const updateSummary = (article) => {
-    $("reader-summary").textContent = article.summary_deep || article.summary || "No summary available yet.";
+    const summary = article.summary_deep || article.summary || "No summary available yet.";
+    $("reader-summary").innerHTML = highlightKeywords(summary, readerKeywords);
     if (article.summary_deep) {
       genBtn.classList.add("hidden");
     } else {
@@ -427,7 +459,7 @@ async function showArticle(id) {
       // The summary box above already shows the TL;DR — don't repeat it
       let md = article.summary_structured;
       if (article.summary_deep) md = md.replace(/^## TL;DR\n[\s\S]*?(?=## )/, "");
-      renderStructured(md, $("reader-body"), $("reader-toc"));
+      renderStructured(md, $("reader-body"), $("reader-toc"), readerKeywords);
     } else {
       $("reader-toc").classList.add("hidden");
       $("reader-body").innerHTML =
@@ -480,12 +512,31 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
+/* Highlight extracted keywords inside already-escaped text. Terms are
+   matched case-insensitively as whole words, so "AI" won't light up inside
+   "said". Returns safe HTML. */
+function highlightKeywords(text, keywords) {
+  const safe = escapeHtml(text);
+  const terms = (keywords || [])
+    .map((k) => String(k).trim())
+    .filter((k) => k.length >= 3 && /^[\w][\w' -]*$/.test(k) && k.split(/\s+/).length <= 3)
+    .sort((a, b) => b.length - a.length);
+  if (!terms.length) return safe;
+  const escaped = terms.map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  try {
+    return safe.replace(new RegExp(`\\b(${escaped.join("|")})\\b`, "gi"),
+      '<mark class="hl">$1</mark>');
+  } catch {
+    return safe;
+  }
+}
+
 /* ---------- Ingestion ---------- */
 
 async function runIngestion() {
   for (const btn of [ $("ingest-btn"), $("ingest-btn-2") ]) {
     btn.disabled = true;
-    btn.innerHTML = `⏳ Ingesting…`;
+    btn.innerHTML = `⏳ Checking feeds…`;
   }
   $("ingest-result").textContent = "Fetching RSS feeds, deduplicating and analyzing…";
   try {
@@ -494,15 +545,19 @@ async function runIngestion() {
       `✅ <strong>${result.added} new</strong> articles added · ` +
       `${result.fetched} fetched · ${result.skipped} duplicates skipped · ` +
       `${result.duration_seconds}s`;
-    toast(`Ingestion complete — ${result.added} new articles`);
+    toast(result.added
+      ? `Done — ${result.added} new article${result.added === 1 ? "" : "s"} added`
+      : "All caught up — no new articles right now");
     await Promise.all([loadStats(), loadArticles()]);
   } catch (err) {
     $("ingest-result").textContent = `⚠️ ${err.message}`;
-    toast(`Ingestion failed: ${err.message}`);
+    toast(err.status === 429 ? "Just checked — give the feeds a moment 🙂" : `Ingestion failed: ${err.message}`);
   } finally {
     for (const btn of [ $("ingest-btn"), $("ingest-btn-2") ]) {
       btn.disabled = false;
-      btn.innerHTML = btn.id === "ingest-btn" ? `<span class="btn-icon">⬇</span> Ingest Feeds` : "Run Ingestion";
+      btn.innerHTML = btn.id === "ingest-btn"
+        ? `<span class="btn-icon">⬇</span> <span class="btn-label-desktop">Ingest Feeds</span>`
+        : "Run Ingestion";
     }
   }
 }
@@ -571,6 +626,9 @@ function applySettingsToUI(s) {
   const compact = !!s.compact;
   document.documentElement.dataset.theme = theme;
   document.documentElement.dataset.compact = compact ? "on" : "off";
+  // keep the mobile browser chrome in sync with the theme
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.content = theme === "light" ? "#f4f6fb" : "#0a0e1a";
   for (const btn of document.querySelectorAll("[data-theme-choice]")) {
     btn.setAttribute("aria-checked", String(btn.dataset.themeChoice === theme));
   }
@@ -584,6 +642,20 @@ function initSettings() {
   $("settings-close").addEventListener("click", () => $("settings-modal").close());
   // ?settings=1 opens the menu directly (shareable/demo/testing)
   if (new URLSearchParams(location.search).has("settings")) $("settings-modal").showModal();
+
+  // API token for deployments with API_TOKEN set. Kept in localStorage and
+  // attached as X-API-Key by api(); read-only views work without it.
+  const tokenInput = $("token-input");
+  tokenInput.value = localStorage.getItem("signaldesk-api-token") || "";
+  $("token-save").addEventListener("click", () => {
+    const token = tokenInput.value.trim();
+    if (token) localStorage.setItem("signaldesk-api-token", token);
+    else localStorage.removeItem("signaldesk-api-token");
+    toast(token ? "API token saved" : "API token cleared");
+  });
+  api("/auth/status").then((s) => {
+    $("token-row").classList.toggle("hidden", !s.required);
+  }).catch(() => {});
 
   for (const btn of document.querySelectorAll("[data-theme-choice]")) {
     btn.addEventListener("click", () => {
@@ -624,6 +696,44 @@ document.addEventListener("DOMContentLoaded", () => {
 
   $("ingest-btn").addEventListener("click", runIngestion);
   $("ingest-btn-2").addEventListener("click", runIngestion);
+  $("digest-send").addEventListener("click", sendDigest);
+
+  // ---- Mobile menu sheet ----
+  const openMenu = async () => {
+    const health = $("menu-health");
+    health.textContent = "Checking API…";
+    $("menu-modal").showModal();
+    try {
+      const h = await api("/health");
+      health.textContent = `● API healthy · ${h.articles} articles · v${h.version}`;
+      health.style.color = "var(--pos)";
+    } catch {
+      health.textContent = "● API offline";
+      health.style.color = "var(--neg)";
+    }
+  };
+  $("menu-btn").addEventListener("click", openMenu);
+  $("menu-close").addEventListener("click", () => $("menu-modal").close());
+  // ?menu=1 opens the sheet directly (sharing/testing)
+  if (new URLSearchParams(location.search).has("menu")) openMenu();
+  for (const item of document.querySelectorAll("[data-action]")) {
+    item.addEventListener("click", () => {
+      $("menu-modal").close();
+      const action = item.dataset.action;
+      if (action === "feeds") { loadFeeds(); $("feeds-modal").showModal(); }
+      if (action === "settings") $("settings-modal").showModal();
+      if (action === "ingest") runIngestion();
+      if (action === "digest") sendDigest();
+    });
+  }
+
+  // empty-state helper: clear every filter in one tap
+  $("empty-clear").addEventListener("click", () => {
+    state.filters = { search: "", source: "", topic: "", sentiment: "", order: state.filters.order };
+    $("f-search").value = ""; $("f-source").value = "";
+    $("f-topic").value = ""; $("f-sentiment").value = "";
+    loadArticles();
+  });
 
   $("load-more").addEventListener("click", () => {
     state.offset += state.limit;

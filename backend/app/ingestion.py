@@ -2,7 +2,7 @@
 
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from time import mktime
 
@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from . import config
 from .analysis import analyze
 from .models import Article, Feed
 
@@ -111,6 +112,12 @@ def ingest_feed(
             continue
 
         text = _entry_text(entry)
+        published_at = _parse_published(entry)
+        if config.MAX_ARTICLE_AGE_DAYS > 0 and published_at is not None:
+            cutoff = datetime.now(timezone.utc) - timedelta(days=config.MAX_ARTICLE_AGE_DAYS)
+            if published_at < cutoff:
+                stats["skipped"] += 1
+                continue
         result = analyze(text)
         article = Article(
             title=title[:500],
@@ -120,7 +127,8 @@ def ingest_feed(
             keywords=", ".join(result["keywords"]),
             topic=result["topic"],
             sentiment=result["sentiment"],
-            published_at=_parse_published(entry),
+            analysis_source="lexicon",
+            published_at=published_at,
         )
         db.add(article)
         try:

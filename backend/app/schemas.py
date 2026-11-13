@@ -15,6 +15,11 @@ class ArticleOut(BaseModel):
     summary: str | None
     summary_deep: str | None = None
     keywords: str | None = None
+    why_it_matters: str | None = None
+    importance: float | None = None
+    relevance: float | None = None
+    content_type: str | None = None
+    analysis_source: str | None = None
     topic: str
     sentiment: float
     sentiment_label: str
@@ -27,6 +32,7 @@ class ArticleDetail(ArticleOut):
     full_text: str | None = None  # extracted page text for the reader view
     summary_structured: str | None = None  # skimmable sections (## heading / - bullet)
     enriched_at: datetime | None = None
+    analysis_model: str | None = None
 
 
 class ArticlePage(BaseModel):

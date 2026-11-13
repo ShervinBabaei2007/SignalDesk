@@ -24,6 +24,12 @@ class Article(Base):
     summary_structured: Mapped[str | None] = mapped_column(Text, nullable=True)  # skimmable sections
     full_text: Mapped[str | None] = mapped_column(Text, nullable=True)  # extracted page text
     keywords: Mapped[str | None] = mapped_column(String(500), nullable=True)  # comma-separated
+    why_it_matters: Mapped[str | None] = mapped_column(Text, nullable=True)  # LLM significance note
+    importance: Mapped[float | None] = mapped_column(Float, nullable=True)  # 0..10
+    relevance: Mapped[float | None] = mapped_column(Float, nullable=True)  # 0..10
+    content_type: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    analysis_model: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    analysis_source: Mapped[str | None] = mapped_column(String(20), nullable=True)  # llm | lexicon
     topic: Mapped[str] = mapped_column(String(50), default="General", index=True)
     sentiment: Mapped[float] = mapped_column(Float, default=0.0)  # -1.0 .. +1.0
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
