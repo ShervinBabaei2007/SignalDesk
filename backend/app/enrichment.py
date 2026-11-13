@@ -14,7 +14,7 @@ import httpx
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .analysis import extract_keywords, summarize
+from .analysis import extract_keywords, structured_summary, summarize
 from .extractor import extract_main_text
 from .ingestion import strip_feed_metadata
 from .models import Article
@@ -61,10 +61,13 @@ def enrich_article(db: Session, article: Article) -> bool:
     if not article.is_seed:
         fetched = fetch_full_text(article.url)
 
-    if fetched:
-        article.full_text = fetched
-        article.summary_deep = summarize(fetched, max_sentences=4, max_chars=500)
-        new_keywords = extract_keywords(fetched)
+    if fetched or article.full_text:
+        if fetched:
+            article.full_text = fetched
+        article.summary_deep = summarize(article.full_text, max_sentences=4,
+                                         max_chars=500, avoid=article.title)
+        article.summary_structured = structured_summary(article.full_text, article.title)
+        new_keywords = extract_keywords(article.full_text)
         if new_keywords:
             article.keywords = ", ".join(new_keywords)
     else:
@@ -72,6 +75,7 @@ def enrich_article(db: Session, article: Article) -> bool:
         # the title is already displayed above the summary in the UI).
         source_text = strip_feed_metadata(article.summary or article.title)
         article.summary_deep = summarize(source_text, max_sentences=3, max_chars=400)
+        article.summary_structured = structured_summary(source_text, article.title)
 
     article.enriched_at = datetime.now(timezone.utc)
     db.commit()

@@ -38,7 +38,7 @@ And the platform runs itself: a built-in scheduler re-ingests every feed every 3
 |---|---|
 | 📡 **Live RSS ingestion** | Pull from any RSS feed with one click — 110 real articles in under 2 seconds |
 | 🤖 **Auto-pilot scheduler** | Background task re-fetches every feed on a configurable interval; feeds report health status ("ok: 5 added · 2h ago") |
-| 📄 **Full-text summaries** | Each article's external link is fetched and parsed into a clean, straightforward summary shown on the card — no more gibberish RSS excerpts |
+| 📄 **Full-text summaries** | Each article's external link is fetched and parsed into a skimmable brief — TL;DR, key points, key numbers, quotes, and bottom line — so you get 90% of the story without opening the site |
 | 📖 **Article reader page** | Clicking an article opens a dedicated reader at `/#/article/{id}` with the straightforward summary up top and the full extracted article text below — much nicer than the raw site |
 | 🧠 **Zero-dependency NLP** | Deterministic lexicon-based analysis that works offline; clean interface for swapping in an LLM later |
 | ☀️ **Daily Brief** | Auto-generated intelligence headline + most positive/negative signals, refreshed with the stats |

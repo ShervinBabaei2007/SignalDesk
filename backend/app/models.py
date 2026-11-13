@@ -20,7 +20,8 @@ class Article(Base):
     url: Mapped[str] = mapped_column(String(1000), unique=True, nullable=False, index=True)
     source: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)  # from RSS feed
-    summary_deep: Mapped[str | None] = mapped_column(Text, nullable=True)  # from fetched full text
+    summary_deep: Mapped[str | None] = mapped_column(Text, nullable=True)  # TL;DR from full text
+    summary_structured: Mapped[str | None] = mapped_column(Text, nullable=True)  # skimmable sections
     full_text: Mapped[str | None] = mapped_column(Text, nullable=True)  # extracted page text
     keywords: Mapped[str | None] = mapped_column(String(500), nullable=True)  # comma-separated
     topic: Mapped[str] = mapped_column(String(50), default="General", index=True)

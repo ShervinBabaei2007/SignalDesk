@@ -49,6 +49,7 @@ def ensure_columns():
         "articles": {
             "keywords": "VARCHAR(500)",
             "summary_deep": "TEXT",
+            "summary_structured": "TEXT",
             "full_text": "TEXT",
             "enriched_at": "TIMESTAMP WITH TIME ZONE",
         },

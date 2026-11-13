@@ -66,3 +66,33 @@ def test_strip_feed_metadata():
     hn = "Some title. Article URL: https://x.com/y Comments URL: https://a Points: 5 # Comments"
     assert strip_feed_metadata(hn) == "Some title."
     assert strip_feed_metadata("normal text") == "normal text"
+
+
+def test_structured_summary_sections():
+    from app.analysis import structured_summary
+
+    body = (
+        "OpenAI released a new browser today with built-in agent features. "
+        "The company says the browser will ship to all users next month, and it "
+        "includes an assistant that can complete purchases on the user's behalf. "
+        "Privacy groups immediately criticized the move as risky for consumers. "
+        "The launch follows two years of declining search traffic across the web. "
+        "Analysts estimate the browser could reach 100 million users within a year. "
+        "\"We built this because people deserve a faster web,\" said the CEO at the "
+        "launch event in San Francisco on Tuesday. The browser is free and open to "
+        "everyone starting next week. Regulators in the EU are reportedly reviewing "
+        "the feature set for compliance concerns."
+    )
+    title = "OpenAI launches a browser with agent features"
+    result = structured_summary(body, title)
+    assert result.startswith("## TL;DR")
+    assert "## Key points" in result
+    assert "## By the numbers" in result
+    assert "## Notable quotes" in result
+    assert title not in result  # never parrot the headline
+    assert result.count("- ") >= 4
+
+
+def test_structured_summary_short_text():
+    from app.analysis import structured_summary
+    assert structured_summary("Too short.") == ""

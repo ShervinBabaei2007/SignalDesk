@@ -275,16 +275,61 @@ function route() {
 
 /* ---------- Article reader page ---------- */
 
-function renderReaderBody(text) {
-  const body = $("reader-body");
-  body.innerHTML = "";
+function renderParagraphs(text, container) {
+  container.innerHTML = "";
   for (const para of text.split(/\n+/)) {
     const p = para.trim();
     if (!p) continue;
     const el = document.createElement("p");
     el.textContent = p;
-    body.appendChild(el);
+    container.appendChild(el);
   }
+}
+
+/* Render the structured summary ("## Heading" / "- bullet" lines) as a
+   skimmable hierarchy of sections. */
+function renderStructured(markdown, container) {
+  container.innerHTML = "";
+  const lines = (markdown || "").split("\n");
+  let section = null;
+  const flush = () => {
+    if (!section) return;
+    const box = document.createElement("div");
+    box.className = "reader-section";
+    const h = document.createElement("h4");
+    h.className = "reader-section-title";
+    h.textContent = section.title;
+    box.appendChild(h);
+    if (section.bullets.length) {
+      const ul = document.createElement("ul");
+      ul.className = "reader-section-list";
+      for (const b of section.bullets) {
+        const li = document.createElement("li");
+        li.textContent = b;
+        ul.appendChild(li);
+      }
+      box.appendChild(ul);
+    }
+    for (const para of section.paras) {
+      const p = document.createElement("p");
+      p.textContent = para;
+      box.appendChild(p);
+    }
+    container.appendChild(box);
+  };
+  for (const line of lines) {
+    if (line.startsWith("## ")) {
+      flush();
+      section = { title: line.slice(3).trim(), bullets: [], paras: [] };
+    } else if (!line.trim()) {
+      continue;
+    } else if (line.startsWith("- ")) {
+      if (section) section.bullets.push(line.slice(2).trim());
+    } else if (section) {
+      section.paras.push(line.trim());
+    }
+  }
+  flush();
 }
 
 async function showArticle(id) {
@@ -340,11 +385,30 @@ async function showArticle(id) {
   };
   updateSummary(a);
 
-  if (a.full_text) {
-    renderReaderBody(a.full_text);
-  } else if (a.summary_deep) {
-    // No full text (e.g. fallback summary) — nothing more to show
-  } else {
+  // Body: structured skimmable sections when available, full text in a
+  // collapsible underneath; otherwise fall back to the raw page text.
+  const renderBody = (article) => {
+    const full = $("reader-full");
+    if (article.summary_structured) {
+      // The summary box above already shows the TL;DR — don't repeat it
+      let md = article.summary_structured;
+      if (article.summary_deep) md = md.replace(/^## TL;DR\n[\s\S]*?(?=## )/, "");
+      renderStructured(md, $("reader-body"));
+      if (article.full_text) {
+        full.classList.remove("hidden");
+        renderParagraphs(article.full_text, $("reader-fulltext"));
+      } else {
+        full.classList.add("hidden");
+      }
+    } else {
+      full.classList.add("hidden");
+      if (article.full_text) renderParagraphs(article.full_text, $("reader-body"));
+      else $("reader-body").innerHTML = "";
+    }
+  };
+  renderBody(a);
+
+  if (!a.full_text && !a.summary_structured && !a.summary_deep) {
     // First visit, never enriched: pull the page automatically so the
     // reader shows real content from the article's URL
     genBtn.disabled = true;
@@ -353,7 +417,7 @@ async function showArticle(id) {
     try {
       const updated = await api(`/articles/${id}/summarize`, { method: "POST" });
       updateSummary(updated);
-      if (updated.full_text) renderReaderBody(updated.full_text);
+      renderBody(updated);
       loadArticles(true);
     } catch (err) {
       toast(err.message);
@@ -367,7 +431,7 @@ async function showArticle(id) {
     try {
       const updated = await api(`/articles/${id}/summarize`, { method: "POST" });
       updateSummary(updated);
-      if (updated.full_text) renderReaderBody(updated.full_text);
+      renderBody(updated);
       loadArticles(true);
     } catch (err) {
       toast(err.message);

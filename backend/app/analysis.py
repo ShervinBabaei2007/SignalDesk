@@ -121,9 +121,11 @@ def classify_topic(text: str) -> str:
     return best_topic
 
 
-def summarize(text: str, max_sentences: int = 2, max_chars: int = 280) -> str:
+def summarize(text: str, max_sentences: int = 2, max_chars: int = 280,
+              avoid: str | None = None) -> str:
     """Extractive summary: keep the leading sentences up to the char budget.
-    Skips duplicate sentences (common when pages repeat the headline)."""
+    Skips duplicate sentences and sentences that merely restate `avoid`
+    (usually the headline, which the UI already shows)."""
     text = re.sub(r"\s+", " ", text).strip()
     if len(text) <= max_chars:
         return text
@@ -135,10 +137,156 @@ def summarize(text: str, max_sentences: int = 2, max_chars: int = 280) -> str:
         if key in seen:
             continue
         seen.add(key)
+        if avoid and _overlap(sentence, avoid) > 0.6:
+            continue
         if len(out) + len(sentence) > max_chars:
             break
         out += (" " if out else "") + sentence
     return out.strip() or text[:max_chars]
+
+
+# --- Structured (skimmable) summary ------------------------------------------
+
+_JUNK_SENTENCE = re.compile(
+    r"(appeared first on|read more|continue reading|share this|advertisement|"
+    r"all rights reserved|photo credit|image credit|image:)", re.IGNORECASE)
+_QUOTE_CHARS = "“”\"«»"
+_NUMBER_HINT = re.compile(r"(\d+%|[$€£]\s?\d|\b\d[\d.,]*\b)")
+_WORD = re.compile(r"[a-zA-Z']{3,}")
+
+
+def _overlap(a: str, b: str) -> float:
+    """Word-overlap ratio between two strings (0..1)."""
+    aw = set(_WORD.findall(a.lower()))
+    bw = set(_WORD.findall(b.lower()))
+    if not aw or not bw:
+        return 0.0
+    return len(aw & bw) / min(len(aw), len(bw))
+
+
+def _clean_sentences(text: str) -> list[str]:
+    text = re.sub(r"\s+", " ", text).strip()
+    out = []
+    for sentence in re.split(r"(?<=[.!?])\s+", text):
+        sentence = sentence.strip()
+        if len(sentence) < 40 or len(sentence) > 420:
+            continue
+        if _JUNK_SENTENCE.search(sentence):
+            continue
+        out.append(sentence)
+    return out
+
+
+def _score_sentence(sentence: str, position: float) -> float:
+    """Information-density heuristic for ranking sentences as key points."""
+    score = 1.0
+    if _NUMBER_HINT.search(sentence):
+        score += 1.5
+    if any(c in sentence for c in _QUOTE_CHARS):
+        score += 1.0
+    # prefer sentences in the informative first half of the body
+    score += max(0.0, 0.8 - position) * 1.2
+    words = _WORD.findall(sentence)
+    score += min(len(words), 32) / 32 * 0.8
+    return score
+
+
+def structured_summary(text: str, title: str = "", max_points: int = 5) -> str:
+    """Build a skimmable, hierarchical brief from an article's full text:
+
+    ## TL;DR           — 1-2 leading sentences that say something new
+    ## Key points      — the most information-dense sentences as bullets
+    ## By the numbers  — sentences containing figures/statistics
+    ## Notable quotes  — direct quotes from the piece
+    ## Bottom line     — the closing takeaway
+
+    Sections are emitted in a light markdown-ish format ("## Heading",
+    "- bullet") that the frontend renders with clear hierarchy.
+    """
+    sentences = _clean_sentences(text)
+    if not sentences:
+        return ""
+    n = len(sentences)
+    used: list[str] = []
+    sections: list[tuple[str, list[str], bool]] = []  # (heading, items, is_bullets)
+
+    def is_used(sentence: str) -> bool:
+        return any(_overlap(sentence, u) > 0.55 for u in used)
+
+    # TL;DR — lead the reader with the first sentences that aren't just the
+    # headline restated (the title is already on screen).
+    lead: list[str] = []
+    lead_chars = 0
+    for sentence in sentences[:6]:
+        if title and _overlap(sentence, title) > 0.65:
+            continue
+        if is_used(sentence):
+            continue
+        lead.append(sentence)
+        used.append(sentence)
+        lead_chars += len(sentence)
+        if lead_chars >= 200:
+            break
+    if lead:
+        sections.append(("TL;DR", lead, False))
+
+    # Rank the remaining sentences once, then pull different views from it
+    ranked = sorted(
+        ((i, s, _score_sentence(s, i / n)) for i, s in enumerate(sentences)),
+        key=lambda t: -t[2],
+    )
+    remaining = [(s, i) for i, s, _ in ranked if not is_used(s)]
+
+    def take(pred, count):
+        picked = []
+        for s, i in remaining:
+            if not pred(s) or is_used(s):
+                continue
+            picked.append((s, i))
+            used.append(s)
+            if len(picked) >= count:
+                break
+        return picked
+
+    if len(lead) < 1:
+        points = take(lambda s: True, max_points)
+        sections.append(("Key points", [s for s, _ in points], True))
+    else:
+        # Key points — top general-information sentences (numbers/quotes go
+        # to their own sections so they don't dominate)
+        points = take(
+            lambda s: not _NUMBER_HINT.search(s) and not any(c in s for c in _QUOTE_CHARS),
+            max_points)
+        if len(points) < 2:  # short articles: allow anything
+            points = take(lambda s: True, max_points - len(points))
+        if points:
+            sections.append(("Key points", [s for s, _ in points], True))
+
+        numbers = take(
+            lambda s: bool(_NUMBER_HINT.search(s)) and not any(c in s for c in _QUOTE_CHARS),
+            3)
+        if numbers:
+            sections.append(("By the numbers", [s for s, _ in numbers], True))
+
+        quotes = take(lambda s: any(c in s for c in _QUOTE_CHARS), 2)
+        if quotes:
+            sections.append(("Notable quotes", [s for s, _ in quotes], True))
+
+    # Bottom line — closing takeaway from the end of the piece
+    for sentence in reversed(sentences[-4:]):
+        if not is_used(sentence) and len(sentence) > 60:
+            sections.append(("Bottom line", [sentence], False))
+            used.append(sentence)
+            break
+
+    if not sections:
+        return ""
+    lines = []
+    for heading, items, is_bullets in sections:
+        lines.append(f"## {heading}")
+        for item in items:
+            lines.append(f"- {item}" if is_bullets else item)
+    return "\n".join(lines)
 
 
 def extract_keywords(text: str, top_n: int = 5) -> list[str]:

@@ -25,6 +25,7 @@ class ArticleOut(BaseModel):
 
 class ArticleDetail(ArticleOut):
     full_text: str | None = None  # extracted page text for the reader view
+    summary_structured: str | None = None  # skimmable sections (## heading / - bullet)
     enriched_at: datetime | None = None
 
 
