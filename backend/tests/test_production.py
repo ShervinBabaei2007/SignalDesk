@@ -38,3 +38,23 @@ def test_ingest_cooldown_returns_429():
     second = client.post("/api/ingest")
     assert second.status_code == 429
     assert "ingestion" in second.json()["detail"].lower()
+
+
+def test_add_default_feeds_is_idempotent():
+    from app.ingestion import DEFAULT_FEEDS
+
+    assert len(DEFAULT_FEEDS) == 12
+    first = client.post("/api/feeds/defaults")
+    assert first.status_code == 200
+    urls = {f["url"] for f in client.get("/api/feeds").json()}
+    assert {f["url"] for f in DEFAULT_FEEDS} <= urls
+    assert client.post("/api/feeds/defaults").json() == []  # nothing left to add
+
+
+def test_add_default_feeds_requires_token_when_configured(monkeypatch):
+    from app import config
+
+    monkeypatch.setattr(config, "API_TOKEN", "s3cret")
+    assert client.post("/api/feeds/defaults").status_code == 401
+    ok = client.post("/api/feeds/defaults", headers={"X-API-Key": "s3cret"})
+    assert ok.status_code == 200

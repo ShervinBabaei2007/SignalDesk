@@ -19,7 +19,7 @@ from pathlib import Path
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -28,7 +28,7 @@ from . import config, notifications
 from .database import SessionLocal, ensure_columns, engine, get_db
 from . import clustering
 from .enrichment import enrich_article, enrich_pending_articles
-from .ingestion import ingest_all
+from .ingestion import add_missing_default_feeds, ingest_all
 from .models import Article, Base, Feed
 from .schemas import (ArticleDetail, ArticlePage, Digest, DigestItem,
                       FeedCreate, FeedOut, FeedIngestResult, IngestResult,
@@ -181,12 +181,31 @@ def require_api_token(request: Request) -> None:
 # Static frontend
 # --------------------------------------------------------------------------- #
 
-if FRONTEND_DIR.exists():
-    app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
+DIST_DIR = FRONTEND_DIR / "dist"   # production build of the React app (npm run build)
+_NO_CACHE = {"Cache-Control": "no-cache"}
+
+if (DIST_DIR / "index.html").exists():
+    app.mount("/assets", StaticFiles(directory=DIST_DIR / "assets"), name="assets")
 
     @app.get("/", include_in_schema=False)
     def index():
+        return FileResponse(DIST_DIR / "index.html", headers=_NO_CACHE)
+elif (FRONTEND_DIR / "index.html").exists():  # legacy vanilla UI (removed once the React build lands)
+    app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
+
+    @app.get("/", include_in_schema=False)
+    def index_legacy():
         return FileResponse(FRONTEND_DIR / "index.html")
+else:
+    @app.get("/", include_in_schema=False)
+    def index_missing():
+        return HTMLResponse(
+            "<h1>SignalDesk API is running</h1>"
+            "<p>The dashboard hasn't been built yet. Run <code>cd frontend &amp;&amp; npm install "
+            "&amp;&amp; npm run build</code>, or <code>npm run dev</code> for development. "
+            "API docs: <a href='/docs'>/docs</a></p>",
+            status_code=200,
+        )
 
 
 # --------------------------------------------------------------------------- #
@@ -503,6 +522,13 @@ def create_feed(body: FeedCreate, db: Session = Depends(get_db)):
         raise HTTPException(409, "A feed with this name or URL already exists")
     db.refresh(feed)
     return feed
+
+
+@app.post("/api/feeds/defaults", response_model=list[FeedOut], tags=["Feeds"],
+          dependencies=[Depends(require_api_token)])
+def add_default_feeds(db: Session = Depends(get_db)):
+    """Add the recommended feeds that are missing. Returns only the newly added ones."""
+    return add_missing_default_feeds(db)
 
 
 @app.delete("/api/feeds/{feed_id}", status_code=204, tags=["Feeds"],

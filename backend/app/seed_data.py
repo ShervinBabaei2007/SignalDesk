@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .analysis import extract_keywords
-from .ingestion import DEFAULT_FEEDS, ingest_all
+from .ingestion import add_missing_default_feeds, ingest_all
 from .models import Article, Feed
 
 SEED_ARTICLES = [
@@ -196,9 +196,7 @@ def seed_if_empty(db: Session, live: bool = True) -> int:
         return 0
 
     if db.scalar(select(func.count()).select_from(Feed)) in (0, None):
-        for feed in DEFAULT_FEEDS:
-            db.add(Feed(name=feed["name"], url=feed["url"]))
-        db.commit()
+        add_missing_default_feeds(db)
 
     if live:
         try:

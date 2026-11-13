@@ -25,7 +25,37 @@ DEFAULT_FEEDS = [
     {"name": "The Verge", "url": "https://www.theverge.com/rss/index.xml"},
     {"name": "TechCrunch", "url": "https://techcrunch.com/feed/"},
     {"name": "Hacker News", "url": "https://hnrss.org/frontpage"},
+    # Broad, reputable coverage across the topics SignalDesk classifies
+    {"name": "NPR News", "url": "https://feeds.npr.org/1001/rss.xml"},
+    {"name": "The Guardian", "url": "https://www.theguardian.com/world/rss"},
+    {"name": "Politico", "url": "https://rss.politico.com/politics-news.xml"},
+    {"name": "STAT News", "url": "https://www.statnews.com/feed/"},
+    {"name": "BBC Science", "url": "https://feeds.bbci.co.uk/news/science_and_environment/rss.xml"},
+    {"name": "CNBC", "url": "https://www.cnbc.com/id/100003114/device/rss/rss.html"},
 ]
+
+
+def add_missing_default_feeds(db: Session) -> list[Feed]:
+    """Insert any recommended feed that isn't stored yet (matched by URL or name).
+
+    Idempotent, so it is safe to call from first-boot seeding and from the
+    "Add recommended feeds" action on databases created with the older,
+    shorter default list.
+    """
+    urls = set(db.execute(select(Feed.url)).scalars())
+    names = set(db.execute(select(Feed.name)).scalars())
+    added = []
+    for spec in DEFAULT_FEEDS:
+        if spec["url"] in urls or spec["name"] in names:
+            continue
+        feed = Feed(name=spec["name"], url=spec["url"])
+        db.add(feed)
+        added.append(feed)
+    if added:
+        db.commit()
+        for feed in added:
+            db.refresh(feed)
+    return added
 
 
 def _parse_published(entry) -> datetime | None:
