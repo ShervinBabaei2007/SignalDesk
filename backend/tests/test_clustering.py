@@ -98,3 +98,40 @@ def test_related_items_carry_sentiment_and_snippet():
     storm = next(a for a in items if a["cluster_size"] == 2)
     related = client.get(f"/api/articles/{storm['id']}").json()["related"][0]
     assert {"sentiment", "summary", "summary_deep"} <= related.keys()
+
+
+def test_lead_headline_is_the_most_representative_one():
+    clusters = cluster_rows([
+        (1, "Microsoft outage hits Outlook and Teams worldwide", "A", NOW),
+        (2, "Microsoft global outage takes down Outlook and Teams", "B", NOW),
+        (3, "Why is Microsoft's outage lasting so long, and will Outlook emails be lost", "C", NOW),
+    ])
+    assert len(clusters) == 1
+    assert clusters[0].title in ("Microsoft outage hits Outlook and Teams worldwide",
+                                 "Microsoft global outage takes down Outlook and Teams")
+    assert clusters[0].lead_id in (1, 2)
+
+
+def test_trending_api_ranks_multi_outlet_stories_and_skips_single_source():
+    Base.metadata.create_all(bind=engine)
+    with SessionLocal() as db:
+        for i, (title, src) in enumerate([
+            ("Volcano eruption closes Iceland airspace for travellers", "Alpha"),
+            ("Iceland volcano eruption closes airspace for travellers", "Beta"),
+            ("Iceland airspace closed after volcano eruption", "Gamma"),
+            ("Quarterly tax filing deadline extended for small firms", "Alpha"),
+            ("Small firms get extended quarterly tax filing deadline", "Alpha"),
+        ]):
+            db.add(Article(title=title, url=f"https://t.example/{i}", source=src, topic="World",
+                           sentiment=-0.3, published_at=NOW, is_seed=False))
+        db.commit()
+    clustering._cache["key"] = None
+    client = TestClient(app)
+    stories = client.get("/api/trending?limit=5").json()
+    top = stories[0]
+    assert top["outlets"] == 3 and top["reports"] == 3
+    assert "volcano" in top["title"].lower()
+    assert {"cluster_id", "article_id", "topic", "avg_sentiment", "latest_at"} <= top.keys()
+    # the two-article story from a single outlet is not "hot"
+    assert all("tax" not in s["title"].lower() for s in stories)
+    assert client.get(f"/api/articles?cluster={top['cluster_id']}").json()["total"] == 3

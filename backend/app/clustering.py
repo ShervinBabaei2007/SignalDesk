@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import re
 import threading
+from collections import Counter
 from html import unescape
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -74,10 +75,20 @@ class Cluster:
     id: int                      # smallest article id in the story (stable as it grows)
     article_ids: tuple[int, ...]
     sources: tuple[str, ...]     # distinct source names, first-seen order
+    title: str = ""              # the most representative headline (see _lead)
+    lead_id: int = 0             # article that headline belongs to
 
     @property
     def size(self) -> int:
         return len(self.article_ids)
+
+
+def _lead(members: list[int], items: list) -> int:
+    """Index of the headline most like all the others in the story (the medoid)."""
+    def jaccard(a: frozenset[str], b: frozenset[str]) -> float:
+        return len(a & b) / len(a | b) if a | b else 0.0
+
+    return max(members, key=lambda m: (sum(jaccard(items[m][1], items[o][1]) for o in members if o != m), -items[m][0]))
 
 
 def cluster_rows(rows: list[tuple[int, str, str, datetime | None]]) -> list[Cluster]:
@@ -113,7 +124,9 @@ def cluster_rows(rows: list[tuple[int, str, str, datetime | None]]) -> list[Clus
             if items[m][2] not in sources:
                 sources.append(items[m][2])
         ids = tuple(items[m][0] for m in members)
-        clusters.append(Cluster(id=ids[0], article_ids=ids, sources=tuple(sources)))
+        lead = _lead(members, items)
+        clusters.append(Cluster(id=ids[0], article_ids=ids, sources=tuple(sources),
+                                title=rows[lead][1], lead_id=rows[lead][0]))
     return clusters
 
 
@@ -156,3 +169,51 @@ def annotate(db: Session, articles) -> None:
         a.cluster_id = c.id if c else None
         a.cluster_size = c.size if c else 1
         a.cluster_sources = list(c.sources) if c else []
+
+
+def to_hrs(dt: datetime | None, now: datetime) -> float:
+    if dt is None:
+        return 0.0
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return max((now - dt).total_seconds() / 3600, 0.0)
+
+
+def trending(db: Session, limit: int = 6) -> list[dict]:
+    """The biggest stories right now: covered by several outlets and recent.
+
+    score = (2 x distinct outlets + reports) x 0.5^(age / 24h), so a story that
+    many outlets are running today beats a bigger one from two days ago.
+    """
+    _, by_id = get_clusters(db)
+    if not by_id:
+        return []
+    ids = {i for c in by_id.values() for i in c.article_ids}
+    info = {r.id: r for r in db.execute(
+        select(Article.id, Article.topic, Article.sentiment, Article.published_at, Article.ingested_at)
+        .where(Article.id.in_(ids))).all()}
+    now = datetime.now(timezone.utc)
+    ranked = []
+    for c in by_id.values():
+        if len(c.sources) < 2:  # "hot" means more than one outlet is running it
+            continue
+        members = [info[i] for i in c.article_ids if i in info]
+        if not members:
+            continue
+        stamps = [m.published_at or m.ingested_at for m in members]
+        latest = max(stamps, key=lambda d: d if d.tzinfo else d.replace(tzinfo=timezone.utc))
+        age = min(to_hrs(d, now) for d in stamps)
+        score = (len(c.sources) * 2 + c.size) * 0.5 ** (age / 24)
+        ranked.append((score, {
+            "cluster_id": c.id,
+            "article_id": c.lead_id,
+            "title": c.title,
+            "reports": c.size,
+            "outlets": len(c.sources),
+            "sources": list(c.sources),
+            "topic": Counter(m.topic for m in members).most_common(1)[0][0],
+            "avg_sentiment": round(sum(m.sentiment for m in members) / len(members), 3),
+            "latest_at": latest if latest.tzinfo else latest.replace(tzinfo=timezone.utc),
+        }))
+    ranked.sort(key=lambda t: t[0], reverse=True)
+    return [story for _, story in ranked[:limit]]

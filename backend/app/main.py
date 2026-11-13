@@ -32,7 +32,7 @@ from .ingestion import add_missing_default_feeds, ingest_all
 from .models import Article, Base, Feed
 from .schemas import (ArticleDetail, ArticlePage, Digest, DigestItem,
                       FeedCreate, FeedOut, FeedIngestResult, IngestResult,
-                      Stats)
+                      Stats, TrendingStory)
 from .seed_data import backfill_keywords, seed_if_empty
 
 logger = logging.getLogger("signaldesk")
@@ -265,7 +265,7 @@ def stats(db: Session = Depends(get_db)):
         day = published.astimezone(timezone.utc).strftime("%Y-%m-%d")
         buckets.setdefault(day, []).append(sentiment)
     sentiment_7d = [
-        {"date": day, "avg_sentiment": round(sum(vals) / len(vals), 3)}
+        {"date": day, "avg_sentiment": round(sum(vals) / len(vals), 3), "count": len(vals)}
         for day, vals in sorted(buckets.items())
     ]
 
@@ -283,6 +283,12 @@ def stats(db: Session = Depends(get_db)):
 # --------------------------------------------------------------------------- #
 # Articles
 # --------------------------------------------------------------------------- #
+
+@app.get("/api/trending", response_model=list[TrendingStory], tags=["Intelligence"])
+def trending_stories(limit: int = Query(6, ge=1, le=20), db: Session = Depends(get_db)):
+    """Hot topics: the stories the most outlets are covering right now."""
+    return clustering.trending(db, limit)
+
 
 @app.get("/api/articles", response_model=ArticlePage, tags=["Articles"])
 def list_articles(

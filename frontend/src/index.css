@@ -174,3 +174,10 @@ html[data-compact="on"] .compact-hide { display: none; }
 @media (prefers-reduced-motion: reduce) {
   *, ::before, ::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
+
+/* Sticky sidebar scrolls on its own when taller than the screen */
+.sidebar-scroll { scrollbar-width: thin; scrollbar-color: var(--border) transparent; overscroll-behavior: contain; }
+
+/* Calm mode: no trend card, so the four KPIs span the row */
+html[data-compact="on"] .stats-grid { grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 640px) { html[data-compact="on"] .stats-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); } }

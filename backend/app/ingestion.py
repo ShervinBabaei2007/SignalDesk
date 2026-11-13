@@ -25,7 +25,6 @@ DEFAULT_FEEDS = [
     {"name": "BBC Business", "url": "https://feeds.bbci.co.uk/news/business/rss.xml"},
     {"name": "The Verge", "url": "https://www.theverge.com/rss/index.xml"},
     {"name": "TechCrunch", "url": "https://techcrunch.com/feed/"},
-    {"name": "Hacker News", "url": "https://hnrss.org/frontpage"},
     # Broad, reputable coverage across the topics SignalDesk classifies
     {"name": "NPR News", "url": "https://feeds.npr.org/1001/rss.xml"},
     {"name": "The Guardian", "url": "https://www.theguardian.com/world/rss"},
@@ -33,6 +32,10 @@ DEFAULT_FEEDS = [
     {"name": "STAT News", "url": "https://www.statnews.com/feed/"},
     {"name": "BBC Science", "url": "https://feeds.bbci.co.uk/news/science_and_environment/rss.xml"},
     {"name": "CNBC", "url": "https://www.cnbc.com/id/100003114/device/rss/rss.html"},
+    {"name": "Al Jazeera", "url": "https://www.aljazeera.com/xml/rss/all.xml"},
+    {"name": "Ars Technica", "url": "https://feeds.arstechnica.com/arstechnica/index"},
+    {"name": "ScienceDaily", "url": "https://www.sciencedaily.com/rss/all.xml"},
+    {"name": "BBC Health", "url": "https://feeds.bbci.co.uk/news/health/rss.xml"},
 ]
 
 

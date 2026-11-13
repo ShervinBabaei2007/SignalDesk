@@ -62,7 +62,7 @@ export interface Stats {
   neutral: number
   negative: number
   topic_breakdown: Record<string, number>
-  sentiment_7d: { date?: string; avg_sentiment: number }[]
+  sentiment_7d: { date: string; avg_sentiment: number; count?: number }[]
 }
 
 export interface DigestItem {
@@ -72,6 +72,18 @@ export interface DigestItem {
   sentiment: number
   topic: string
   url: string
+}
+
+export interface TrendingStory {
+  cluster_id: number
+  article_id: number
+  title: string
+  reports: number
+  outlets: number
+  sources: string[]
+  topic: string
+  avg_sentiment: number
+  latest_at: string
 }
 
 export interface Digest {
@@ -173,6 +185,7 @@ export const api = {
   health: () => request<Health>('/health'),
   stats: () => request<Stats>('/stats'),
   digest: () => request<Digest>('/digest'),
+  trending: (limit = 5) => request<TrendingStory[]>(`/trending?limit=${limit}`),
   sendDigest: () => request<{ sent: string[] }>('/digest/send', { method: 'POST' }),
   articles: (filters: Filters, offset: number, limit: number) => {
     const params = new URLSearchParams({ limit: String(limit), offset: String(offset), order: filters.order })

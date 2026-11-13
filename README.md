@@ -3,7 +3,7 @@
 > **AI-powered news intelligence, on autopilot.**
 > SignalDesk pulls news from RSS feeds around the web, deduplicates it, scores sentiment, classifies topics, and surfaces it all in a real-time intelligence dashboard.
 
-![Status](https://img.shields.io/badge/status-production--grade-brightgreen) ![Python](https://img.shields.io/badge/python-3.12%2B-blue) ![FastAPI](https://img.shields.io/badge/FastAPI-latest-teal) ![React](https://img.shields.io/badge/React-19-61dafb) ![Tests](https://img.shields.io/badge/tests-62%20passing-brightgreen) ![License](https://img.shields.io/badge/license-MIT-lightgrey)
+![Status](https://img.shields.io/badge/status-production--grade-brightgreen) ![Python](https://img.shields.io/badge/python-3.12%2B-blue) ![FastAPI](https://img.shields.io/badge/FastAPI-latest-teal) ![React](https://img.shields.io/badge/React-19-61dafb) ![Tests](https://img.shields.io/badge/tests-71%20passing-brightgreen) ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
 ---
 
@@ -17,7 +17,7 @@
 
 ```mermaid
 graph LR
-    A["📡 RSS Feeds<br/>(BBC, The Verge, TechCrunch, HN…)"] --> B["📥 Ingestion Pipeline<br/>fetch → dedupe (unique URL)"]
+    A["📡 RSS Feeds<br/>(BBC, Guardian, NPR, Al Jazeera, Ars Technica…)"] --> B["📥 Ingestion Pipeline<br/>fetch → dedupe (unique URL)"]
     B --> C["🧠 Analysis Engine<br/>sentiment · topic · summary · keywords"]
     C --> D[("🗄️ Database<br/>SQLite / PostgreSQL")]
     D --> E["📊 Dashboard<br/>KPIs · trend chart · filters"]
@@ -60,8 +60,10 @@ And the platform runs itself: a built-in scheduler re-ingests every feed every 3
 | 🤖 **Optional LLM analysis** | Set `LLM_ENABLED=true` with any OpenAI-compatible endpoint (OpenAI, Ollama, LM Studio…) for written TL;DRs and "why it matters"; falls back to the offline analyzer on any failure |
 | ✉️ **Brief delivery** | Send the daily brief to Slack and/or email from the dashboard, or on a schedule (`DIGEST_HOUR`) |
 | 🔑 **Optional API token** | Set `API_TOKEN` to require `X-API-Key` on all write endpoints; the UI has a field for it |
-| 📡 **12 curated feeds** | BBC (World, Technology, Business, Science), The Guardian, NPR, Politico, STAT News, CNBC, The Verge, TechCrunch and Hacker News — one click adds any that are missing to an existing install |
-| ✅ **Tested** | 49 pytest tests, 13 Vitest tests, and GitHub Actions CI for both the backend and the frontend build |
+| 📡 **15 curated feeds** | BBC (World, Technology, Business, Science, Health), The Guardian, NPR, Al Jazeera, Politico, STAT News, CNBC, Ars Technica, ScienceDaily, The Verge and TechCrunch: free-to-read sources chosen for topic and viewpoint spread. One click adds any that are missing to an existing install |
+| 🔥 **Hot topics** | The stories the most outlets are covering right now, ranked by outlets × recency from the story clusters, in the sticky sidebar. Click one to read every report of it |
+| 📄 **Numbered pages** | Page 1, 2, 3… navigation with a windowed page list instead of an endless "load more" |
+| ✅ **Tested** | 51 pytest tests, 20 Vitest tests, and GitHub Actions CI for both the backend and the frontend build |
 | 🐳 **One-container deploy** | `docker compose up --build` and you're done |
 
 ## Quick start
@@ -125,6 +127,7 @@ Interactive API docs live at **http://localhost:8000/docs** (Swagger UI).
 | `POST` | `/api/digest/send` | Deliver the daily brief to Slack / email |
 | `GET` | `/api/health` | Service health + row counts |
 | `GET` | `/api/stats` | KPIs, sentiment split, topic breakdown, 7-day trend |
+| `GET` | `/api/trending` | Hot topics: the stories the most outlets cover right now |
 | `GET` | `/api/digest` | Generated daily brief: headline, extremes, topic counts |
 | `GET` | `/api/articles` | Search/filter/sort/paginate articles (`cluster=<id>` shows one story) |
 | `GET` | `/api/articles/{id}` | Article detail (incl. keywords and `related` coverage of the same story) |

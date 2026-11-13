@@ -93,6 +93,18 @@ class IngestResult(BaseModel):
     enrich_queued: int = 0
 
 
+class TrendingStory(BaseModel):
+    cluster_id: int
+    article_id: int  # the representative report, for "open this story"
+    title: str
+    reports: int
+    outlets: int
+    sources: list[str]
+    topic: str
+    avg_sentiment: float
+    latest_at: datetime
+
+
 class Stats(BaseModel):
     total_articles: int
     total_sources: int

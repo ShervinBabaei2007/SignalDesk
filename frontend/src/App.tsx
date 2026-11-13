@@ -13,7 +13,7 @@ function Dashboard() {
       <StatsRow />
       <Filters />
       <div className="grid items-start gap-5 lg:grid-cols-[20rem_minmax(0,1fr)]">
-        <div className="compact-hide order-2 lg:order-1">
+        <div className="compact-hide sidebar-scroll order-2 lg:sticky lg:top-[4.5rem] lg:order-1 lg:max-h-[calc(100dvh-5.5rem)] lg:overflow-y-auto lg:pr-1">
           <Sidebar />
         </div>
         <div className="order-1 min-w-0 lg:order-2 lg:[html[data-compact=on]_&]:col-span-2">

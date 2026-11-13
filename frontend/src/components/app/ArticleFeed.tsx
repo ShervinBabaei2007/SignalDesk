@@ -1,18 +1,21 @@
-import { ExternalLink, FileText, Link2, Loader2, Newspaper, Satellite, Sparkles, Sprout, Star, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ExternalLink, FileText, Link2, Newspaper, Satellite, Sparkles, Sprout, Star, X } from 'lucide-react'
+import { useRef } from 'react'
 import { Alert, AlertAction, AlertDescription } from '@/components/ui/alert'
 import { BlurFade } from '@/components/ui/blur-fade'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem } from '@/components/ui/pagination'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { SentimentBadge } from '@/components/app/Sentiment'
-import { useDashboard } from '@/hooks/useDashboard'
+import { PAGE_SIZE, useDashboard } from '@/hooks/useDashboard'
 import type { Article } from '@/lib/api'
 import { domainOf, keywordList, timeAgo, TOPIC_EMOJI } from '@/lib/format'
+import { pageWindow } from '@/lib/pagination'
 
 function StoryChip({ article }: { article: Article }) {
-  const { setFilter } = useDashboard()
+  const { openStory } = useDashboard()
   const sources = article.cluster_sources
   return (
     <Tooltip>
@@ -22,7 +25,7 @@ function StoryChip({ article }: { article: Article }) {
             type="button"
             onClick={(e) => {
               e.stopPropagation()
-              setFilter({ cluster: String(article.cluster_id) })
+              openStory(article.cluster_id!)
               window.scrollTo({ top: 0, behavior: 'smooth' })
             }}
             className="inline-flex h-5 items-center gap-1 rounded-full border border-link/40 px-2 text-xs font-semibold text-link transition-colors hover:bg-link/10 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
@@ -146,13 +149,68 @@ function FeedSkeleton() {
   )
 }
 
+function FeedPagination({ onNavigate }: { onNavigate: () => void }) {
+  const { page, pageCount, setPage, total } = useDashboard()
+  if (pageCount <= 1) return null
+  const go = (p: number) => {
+    setPage(p)
+    onNavigate()
+  }
+  const from = (page - 1) * PAGE_SIZE + 1
+  const to = Math.min(page * PAGE_SIZE, total)
+  return (
+    <div className="mt-5 space-y-2">
+      <Pagination aria-label="Article pages">
+        <PaginationContent className="flex-wrap justify-center gap-1">
+          <PaginationItem>
+            <Button variant="ghost" size="sm" disabled={page === 1} onClick={() => go(page - 1)} aria-label="Previous page">
+              <ChevronLeft data-icon="inline-start" />
+              <span className="hidden sm:inline">Previous</span>
+            </Button>
+          </PaginationItem>
+          {pageWindow(page, pageCount).map((item, i) =>
+            item === 'gap' ? (
+              <PaginationItem key={`gap-${i}`}>
+                <PaginationEllipsis />
+              </PaginationItem>
+            ) : (
+              <PaginationItem key={item}>
+                <Button
+                  variant={item === page ? 'default' : 'ghost'}
+                  size="icon"
+                  aria-label={`Page ${item}`}
+                  aria-current={item === page ? 'page' : undefined}
+                  onClick={() => go(item)}
+                  className="tabular-nums"
+                >
+                  {item}
+                </Button>
+              </PaginationItem>
+            ),
+          )}
+          <PaginationItem>
+            <Button variant="ghost" size="sm" disabled={page === pageCount} onClick={() => go(page + 1)} aria-label="Next page">
+              <span className="hidden sm:inline">Next</span>
+              <ChevronRight data-icon="inline-end" />
+            </Button>
+          </PaginationItem>
+        </PaginationContent>
+      </Pagination>
+      <p className="text-center text-xs text-muted-foreground">
+        Page {page} of {pageCount} · showing {from}–{to} of {total}
+      </p>
+    </div>
+  )
+}
+
 export function ArticleFeed() {
-  const { articles, total, loading, loadingMore, loadMore, filters, setFilter, clearFilters, hasActiveFilters } =
-    useDashboard()
+  const { articles, total, loading, filters, setFilter, clearFilters, hasActiveFilters } = useDashboard()
   const sources = filters.cluster ? [...new Set(articles.map((a) => a.source))] : []
+  const top = useRef<HTMLElement>(null)
+  const toTop = () => top.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 
   return (
-    <section aria-labelledby="feed-title">
+    <section ref={top} aria-labelledby="feed-title" className="scroll-mt-20">
       <div className="mb-3 flex items-baseline gap-2.5">
         <h2 id="feed-title" className="text-lg font-semibold tracking-tight">
           Signal Feed
@@ -161,7 +219,6 @@ export function ArticleFeed() {
           {total} article{total === 1 ? '' : 's'}
         </span>
       </div>
-
       {filters.cluster && (
         <Alert className="mb-3">
           <Newspaper />
@@ -200,14 +257,7 @@ export function ArticleFeed() {
         </div>
       )}
 
-      {articles.length > 0 && articles.length < total && (
-        <div className="mt-4 flex justify-center">
-          <Button variant="outline" size="lg" onClick={loadMore} disabled={loadingMore}>
-            {loadingMore && <Loader2 className="animate-spin" data-icon="inline-start" />}
-            Load more
-          </Button>
-        </div>
-      )}
+      {articles.length > 0 && <FeedPagination onNavigate={toTop} />}
     </section>
   )
 }

@@ -43,7 +43,8 @@ def test_ingest_cooldown_returns_429():
 def test_add_default_feeds_is_idempotent():
     from app.ingestion import DEFAULT_FEEDS
 
-    assert len(DEFAULT_FEEDS) == 12
+    assert len(DEFAULT_FEEDS) == 15
+    assert not any("hnrss" in f["url"] for f in DEFAULT_FEEDS)  # aggregator: too noisy
     first = client.post("/api/feeds/defaults")
     assert first.status_code == 200
     urls = {f["url"] for f in client.get("/api/feeds").json()}
