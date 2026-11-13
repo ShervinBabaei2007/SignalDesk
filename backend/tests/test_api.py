@@ -124,6 +124,16 @@ def test_backfill_keywords():
     assert missing == []
 
 
+def test_summarize_endpoint_always_returns_summary():
+    """Seeds skip network fetch and get a clean summary from stored text."""
+    article = client.get("/api/articles?limit=1").json()["items"][0]
+    res = client.post(f"/api/articles/{article['id']}/summarize")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["summary_deep"]
+    assert body["enriched_at"]
+
+
 def test_csv_export():
     res = client.get("/api/articles/export.csv")
     assert res.status_code == 200

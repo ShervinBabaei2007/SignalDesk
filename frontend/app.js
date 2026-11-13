@@ -224,6 +224,7 @@ function renderArticles(items) {
     card.className = "article-card";
     card.dataset.id = a.id;
     card.style.cursor = "pointer";
+    const cleanSummary = a.summary_deep || a.summary;
     const keywords = (a.keywords || "").split(",").map((k) => k.trim()).filter(Boolean).slice(0, 4);
     card.innerHTML = `
       <div class="article-topic" title="${a.topic}">${TOPIC_EMOJI[a.topic] || "📰"}</div>
@@ -233,15 +234,26 @@ function renderArticles(items) {
           <span>·</span><span>${timeAgo(a.published_at)}</span>
           <span class="badge badge-${a.sentiment_label}">${a.sentiment_label}</span>
           <span class="sentiment-score">${a.sentiment >= 0 ? "+" : ""}${a.sentiment.toFixed(2)}</span>
+          ${a.summary_deep ? '<span class="deep-tag" title="Summary generated from the full article page">✨ deep</span>' : ""}
         </div>
-        <h3 class="article-title"><a href="${escapeHtml(a.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${escapeHtml(a.title)}</a></h3>
-        ${a.summary ? `<p class="article-summary">${escapeHtml(a.summary)}</p>` : ""}
-        <div class="article-chips">
-          <span class="chip">${TOPIC_EMOJI[a.topic] || "📰"} ${a.topic}</span>
-          ${keywords.map((k) => `<span class="chip">${escapeHtml(k)}</span>`).join("")}
+        <h3 class="article-title"><a href="/#/article/${a.id}" onclick="event.preventDefault(); openArticle(${a.id})">${escapeHtml(a.title)}</a></h3>
+        ${cleanSummary ? `<p class="article-summary">${escapeHtml(cleanSummary)}</p>` : ""}
+        <div class="article-footer">
+          <div class="article-chips">
+            <span class="chip">${TOPIC_EMOJI[a.topic] || "📰"} ${a.topic}</span>
+            ${keywords.map((k) => `<span class="chip">${escapeHtml(k)}</span>`).join("")}
+          </div>
+          <div class="card-actions">
+            <button class="card-action" data-summary="${a.id}" title="Straight-to-the-point summary">📄 Summary</button>
+            <a class="card-action" href="${escapeHtml(a.url)}" target="_blank" rel="noopener" title="Open the original website" onclick="event.stopPropagation()">↗ Visit</a>
+          </div>
         </div>
       </div>`;
     card.addEventListener("click", () => openArticle(a.id));
+    card.querySelector("[data-summary]").addEventListener("click", (e) => {
+      e.stopPropagation();
+      openArticle(a.id);
+    });
     list.appendChild(card);
   }
 }
@@ -257,7 +269,19 @@ async function openArticle(id) {
       <span>·</span><span>${timeAgo(a.published_at)}</span>
       <span class="badge badge-${a.sentiment_label}">${a.sentiment_label}</span>`;
     $("am-title").textContent = a.title;
-    $("am-summary").textContent = a.summary || "No summary available.";
+
+    const summaryEl = $("am-summary");
+    const genBtn = $("am-generate");
+    if (a.summary_deep) {
+      summaryEl.textContent = a.summary_deep;
+      genBtn.classList.add("hidden");
+    } else {
+      summaryEl.textContent = a.summary || "No summary available yet.";
+      genBtn.classList.remove("hidden");
+      genBtn.disabled = false;
+      genBtn.textContent = "✨ Generate clean summary";
+    }
+
     const keywords = (a.keywords || "").split(",").map((k) => k.trim()).filter(Boolean);
     $("am-keywords").innerHTML = keywords.map((k) => `<span class="chip">${escapeHtml(k)}</span>`).join("");
     $("am-score").textContent = `${a.sentiment >= 0 ? "+" : ""}${a.sentiment.toFixed(2)}`;
@@ -265,6 +289,22 @@ async function openArticle(id) {
     $("am-gauge").style.left = `${((a.sentiment + 1) / 2) * 90 + 5}%`;
     $("am-link").href = a.url;
     $("article-modal").showModal();
+
+    // On-demand deep summary
+    genBtn.onclick = async () => {
+      genBtn.disabled = true;
+      genBtn.textContent = "⏳ Reading the article…";
+      try {
+        const updated = await api(`/articles/${id}/summarize`, { method: "POST" });
+        summaryEl.textContent = updated.summary_deep || updated.summary || a.summary;
+        genBtn.classList.add("hidden");
+        loadArticles(true);
+      } catch (err) {
+        toast(err.message);
+        genBtn.disabled = false;
+        genBtn.textContent = "✨ Generate clean summary";
+      }
+    };
   } catch (err) {
     toast(err.message);
   }

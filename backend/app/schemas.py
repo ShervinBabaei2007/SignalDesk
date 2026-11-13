@@ -13,6 +13,7 @@ class ArticleOut(BaseModel):
     url: str
     source: str
     summary: str | None
+    summary_deep: str | None = None
     keywords: str | None = None
     topic: str
     sentiment: float
@@ -23,6 +24,7 @@ class ArticleOut(BaseModel):
 
 class ArticleDetail(ArticleOut):
     is_seed: bool
+    enriched_at: datetime | None = None
 
 
 class ArticlePage(BaseModel):
@@ -62,6 +64,7 @@ class IngestResult(BaseModel):
     skipped: int
     results: list[FeedIngestResult]
     duration_seconds: float
+    enrich_queued: int = 0
 
 
 class Stats(BaseModel):

@@ -121,20 +121,24 @@ def classify_topic(text: str) -> str:
     return best_topic
 
 
-def summarize(text: str, max_sentences: int = 2) -> str:
-    """Extractive summary: keep the first sentences up to ~280 chars."""
+def summarize(text: str, max_sentences: int = 2, max_chars: int = 280) -> str:
+    """Extractive summary: keep the leading sentences up to the char budget.
+    Skips duplicate sentences (common when pages repeat the headline)."""
     text = re.sub(r"\s+", " ", text).strip()
-    if len(text) <= 280:
+    if len(text) <= max_chars:
         return text
     sentences = re.split(r"(?<=[.!?])\s+", text)
     out = ""
-    for sentence in sentences[: max_sentences * 2]:
-        if len(out) + len(sentence) > 280:
+    seen: set[str] = set()
+    for sentence in sentences:
+        key = sentence.strip().lower()[:80]
+        if key in seen:
+            continue
+        seen.add(key)
+        if len(out) + len(sentence) > max_chars:
             break
         out += (" " if out else "") + sentence
-        if len(out.split(".")) > max_sentences:
-            break
-    return out.strip() or text[:280]
+    return out.strip() or text[:max_chars]
 
 
 def extract_keywords(text: str, top_n: int = 5) -> list[str]:

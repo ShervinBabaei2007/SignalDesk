@@ -178,6 +178,19 @@ body {
 
 .sentiment-score { font-family: var(--mono); font-size: 11px; color: var(--text-dim); }
 
+/* ---------- Card actions ---------- */
+.article-footer { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; margin-top: 10px; }
+.card-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.card-action {
+  font-size: 11.5px; font-weight: 600; padding: 5px 11px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--bg-elev); color: var(--text-dim);
+  cursor: pointer; text-decoration: none; transition: all 0.15s; white-space: nowrap;
+}
+.card-action:hover { border-color: var(--accent); color: var(--accent); }
+.deep-tag { font-size: 10px; font-weight: 700; color: var(--accent); }
+.am-summary-label { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.09em; color: var(--accent); margin-bottom: 6px; }
+#am-generate { margin-bottom: 14px; }
+
 /* ---------- Daily Brief ---------- */
 .panel-brief { border-color: rgba(108, 140, 255, 0.35); background: linear-gradient(160deg, rgba(108,140,255,0.08), var(--panel)); }
 .digest-headline { font-size: 13.5px; line-height: 1.55; font-weight: 500; }

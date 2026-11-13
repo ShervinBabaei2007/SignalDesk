@@ -3,7 +3,7 @@
 > **AI-powered news intelligence, on autopilot.**
 > SignalDesk pulls news from RSS feeds around the web, deduplicates it, scores sentiment, classifies topics, and surfaces it all in a real-time intelligence dashboard.
 
-![Status](https://img.shields.io/badge/status-production--grade-brightgreen) ![Python](https://img.shields.io/badge/python-3.12%2B-blue) ![FastAPI](https://img.shields.io/badge/FastAPI-latest-teal) ![Tests](https://img.shields.io/badge/tests-24%20passing-brightgreen) ![License](https://img.shields.io/badge/license-MIT-lightgrey)
+![Status](https://img.shields.io/badge/status-production--grade-brightgreen) ![Python](https://img.shields.io/badge/python-3.12%2B-blue) ![FastAPI](https://img.shields.io/badge/FastAPI-latest-teal) ![Tests](https://img.shields.io/badge/tests-31%20passing-brightgreen) ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
 ---
 
@@ -38,6 +38,7 @@ And the platform runs itself: a built-in scheduler re-ingests every feed every 3
 |---|---|
 | 📡 **Live RSS ingestion** | Pull from any RSS feed with one click — 110 real articles in under 2 seconds |
 | 🤖 **Auto-pilot scheduler** | Background task re-fetches every feed on a configurable interval; feeds report health status ("ok: 5 added · 2h ago") |
+| 📄 **Full-text summaries** | Each article's external link is fetched and parsed into a clean, straightforward summary shown on the card — no more gibberish RSS excerpts |
 | 🧠 **Zero-dependency NLP** | Deterministic lexicon-based analysis that works offline; clean interface for swapping in an LLM later |
 | ☀️ **Daily Brief** | Auto-generated intelligence headline + most positive/negative signals, refreshed with the stats |
 | 📊 **Intelligence dashboard** | Dark-mode UI: KPI cards, 7-day sentiment trend, topic breakdown, keyword chips, article detail modal with sentiment gauge |
@@ -45,7 +46,7 @@ And the platform runs itself: a built-in scheduler re-ingests every feed every 3
 | 📤 **CSV export** | One click exports the full article dataset |
 | 🗄️ **Zero-config persistence** | SQLite by default, PostgreSQL with one environment variable; automatic column migrations on startup |
 | 🌱 **Demo seeding** | Auto-seeds 28 realistic articles on first boot — the dashboard never looks empty |
-| ✅ **Tested** | 24 pytest tests covering the analysis engine, API surface, sorting, digest, and export |
+| ✅ **Tested** | 31 pytest tests covering the extractor, analysis engine, API surface, sorting, digest, and export |
 | 🐳 **One-container deploy** | `docker compose up --build` and you're done |
 
 ## Quick start
@@ -83,7 +84,7 @@ Open **http://localhost:8000** to get:
 - **KPI row** — total articles, sources, last-24h volume, average sentiment, sentiment split
 - **7-day sentiment trend** — SVG sparkline of daily average sentiment
 - **Topic breakdown** — clickable topic distribution bars
-- **Signal Feed** — every article with sentiment badge, score, topic chip, and summary
+- **Signal Feed** — every article with sentiment badge, score, topic chip, clean full-text summary, and 📄 Summary / ↗ Visit actions
 - **Filters** — live search, source, topic, and sentiment filters
 - **📡 Feeds manager** — add/remove RSS feeds from the UI
 - **⬇ Ingest Feeds** — one-click pipeline run with a live results report
@@ -99,6 +100,7 @@ Interactive API docs live at **http://localhost:8000/docs** (Swagger UI).
 | `GET` | `/api/digest` | Generated daily brief: headline, extremes, topic counts |
 | `GET` | `/api/articles` | Search/filter/sort/paginate articles |
 | `GET` | `/api/articles/{id}` | Article detail (incl. keywords) |
+| `POST` | `/api/articles/{id}/summarize` | Fetch the linked page and generate a clean full-text summary on demand |
 | `GET` | `/api/articles/export.csv` | Download all articles as CSV |
 | `GET` | `/api/feeds` | List feeds with last-fetch health |
 | `POST` | `/api/feeds` | Add a feed (`{"name", "url"}`) |

@@ -44,6 +44,14 @@ def _parse_published(entry) -> datetime | None:
     return None
 
 
+def strip_feed_metadata(text: str) -> str:
+    """Remove feed-provider metadata junk (e.g. Hacker News embeds)."""
+    for marker in ("Article URL:", "Comments URL:", "Points:"):
+        if marker in text:
+            text = text.split(marker)[0]
+    return text.strip()
+
+
 def _entry_text(entry) -> str:
     title = getattr(entry, "title", "") or ""
     body = ""
@@ -55,6 +63,7 @@ def _entry_text(entry) -> str:
         body = entry.summary
     # feedparser can leave HTML entities/links in text; keep it readable
     body = re.sub(r"<[^>]+>", " ", body)
+    body = strip_feed_metadata(body)
     return f"{title}. {body}".strip()
 
 

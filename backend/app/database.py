@@ -46,7 +46,12 @@ def ensure_columns():
 
     inspector = inspect(engine)
     migrations = {
-        "articles": {"keywords": "VARCHAR(500)"},
+        "articles": {
+            "keywords": "VARCHAR(500)",
+            "summary_deep": "TEXT",
+            "full_text": "TEXT",
+            "enriched_at": "TIMESTAMP WITH TIME ZONE",
+        },
         "feeds": {"last_fetched_at": "TIMESTAMP WITH TIME ZONE", "last_status": "VARCHAR(300)"},
     }
     for table, columns in migrations.items():

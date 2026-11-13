@@ -15,7 +15,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
@@ -24,6 +24,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .database import SessionLocal, ensure_columns, engine, get_db
+from .enrichment import enrich_article, enrich_pending_articles
 from .ingestion import ingest_all
 from .models import Article, Base, Feed
 from .schemas import (ArticleDetail, ArticlePage, Digest, DigestItem,
@@ -265,6 +266,23 @@ def get_article(article_id: int, db: Session = Depends(get_db)):
     return article
 
 
+@app.post("/api/articles/{article_id}/summarize", response_model=ArticleDetail, tags=["Articles"])
+def summarize_article(article_id: int, db: Session = Depends(get_db)):
+    """Generate a clean, straightforward summary for one article on demand.
+
+    Fetches the linked page (unless already enriched or a demo seed), extracts
+    the readable text, and writes a deep summary. Falls back to stored feed
+    text when the page can't be fetched — a summary is always returned.
+    """
+    article = db.get(Article, article_id)
+    if not article:
+        raise HTTPException(404, "Article not found")
+    if article.enriched_at is None:
+        enrich_article(db, article)
+        db.refresh(article)
+    return article
+
+
 # --------------------------------------------------------------------------- #
 # Digest
 # --------------------------------------------------------------------------- #
@@ -359,17 +377,41 @@ def delete_feed(feed_id: int, db: Session = Depends(get_db)):
 
 
 @app.post("/api/ingest", response_model=IngestResult, tags=["Ingestion"])
-def ingest(db: Session = Depends(get_db)):
-    """Fetch every active RSS feed, dedupe by URL, analyze, and store new articles."""
+def ingest(db: Session = Depends(get_db), background_tasks: BackgroundTasks = None):
+    """Fetch every active RSS feed, dedupe by URL, analyze, and store new articles.
+
+    Full-text enrichment (fetching the linked pages and writing clean
+    summaries) runs in the background right after the response.
+    """
     feed_rows = {f.name: f for f in db.execute(select(Feed).where(Feed.is_active)).scalars().all()}
     feeds = [{"name": f.name, "url": f.url} for f in feed_rows.values()]
     started = time.perf_counter()
     results = ingest_all(db, feeds, feed_rows=feed_rows)
     duration = time.perf_counter() - started
+
+    pending = db.scalar(
+        select(func.count()).select_from(Article).where(
+            Article.enriched_at.is_(None), Article.is_seed.is_(False))
+    ) or 0
+    if background_tasks and pending:
+        background_tasks.add_task(_enrich_background)
+
     return IngestResult(
         added=sum(r["added"] for r in results),
         fetched=sum(r["fetched"] for r in results),
         skipped=sum(r["skipped"] for r in results),
         results=[FeedIngestResult(**r) for r in results],
         duration_seconds=round(duration, 2),
+        enrich_queued=pending,
     )
+
+
+def _enrich_background():
+    """Background worker: enrich pending articles with full-text summaries."""
+    with SessionLocal() as db:
+        try:
+            stats = enrich_pending_articles(db)
+            logger.info("[enrich] deep summaries generated for %s articles (%s remaining)",
+                        stats["enriched"], stats["remaining"])
+        except Exception:  # noqa: BLE001
+            logger.exception("[enrich] enrichment failed")
