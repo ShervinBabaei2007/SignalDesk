@@ -121,12 +121,36 @@ def classify_topic(text: str) -> str:
     return best_topic
 
 
+# Page furniture that survives HTML extraction and ends up inside summaries.
+_BOILERPLATE = [re.compile(p, re.IGNORECASE) for p in (
+    # \s+ between words: extracted page text often has line breaks inside these phrases
+    r"Story\s+text\s+Size\s+Width\s+Links\s*\*?\s*Subscribers\s+only\s+Learn\s+more",
+    r"Skip\s+Navigation(?:\s+(?:Markets|Business|Investing(?:\s+Club)?|Tech|Politics(?:\s+&\s+Policy)?|Video"
+    r"|Watchlist|PRO|Livestream|Menu|Key\s+Points|Related\s+Stories|Search))*",
+    r"In\s+Brief\s+Posted:\s*[^.]{0,80}?\d{4}",
+    r"Image\s+source,\s*[^.]{0,160}?Image\s+caption,\s*",
+    r"Published\s+\d+\s+(?:minutes?|hours?)\s+ago",
+    r"(?:Image|Photo)\s+credits?:\s*[^.]{0,120}?(?:Getty\s+Images|Anadolu|Reuters|AFP|AP\s+Photo|Bloomberg)",
+)]
+
+
+def has_boilerplate(text: str) -> bool:
+    return any(p.search(text) for p in _BOILERPLATE)
+
+
+def strip_boilerplate(text: str) -> str:
+    """Remove scraped navigation, paywall and credit furniture from article text."""
+    for pattern in _BOILERPLATE:
+        text = pattern.sub(" ", text)
+    return re.sub(r"[ \t]{2,}", " ", text)
+
+
 def summarize(text: str, max_sentences: int = 2, max_chars: int = 280,
               avoid: str | None = None) -> str:
     """Extractive summary: keep the leading sentences up to the char budget.
     Skips duplicate sentences and sentences that merely restate `avoid`
     (usually the headline, which the UI already shows)."""
-    text = re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r"\s+", " ", strip_boilerplate(text)).strip()
     if len(text) <= max_chars:
         return text
     sentences = re.split(r"(?<=[.!?])\s+", text)
@@ -165,7 +189,7 @@ def _overlap(a: str, b: str) -> float:
 
 
 def _clean_sentences(text: str) -> list[str]:
-    text = re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r"\s+", " ", strip_boilerplate(text)).strip()
     out = []
     for sentence in re.split(r"(?<=[.!?])\s+", text):
         sentence = sentence.strip()
@@ -292,7 +316,7 @@ def structured_summary(text: str, title: str = "", max_points: int = 6) -> str:
 def extract_keywords(text: str, top_n: int = 5) -> list[str]:
     """Simple frequency-based keyword extraction (stopwords removed)."""
     counts: dict[str, int] = {}
-    for token in _tokenize(text):
+    for token in _tokenize(strip_boilerplate(text)):
         if token in STOPWORDS or len(token) < 4:
             continue
         counts[token] = counts.get(token, 0) + 1

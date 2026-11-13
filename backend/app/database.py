@@ -49,6 +49,7 @@ def ensure_columns():
         "articles": {
             "keywords": "VARCHAR(500)",
             "image_url": "VARCHAR(1000)",
+            "info_score": "FLOAT",
             "summary_deep": "TEXT",
             "summary_structured": "TEXT",
             "full_text": "TEXT",

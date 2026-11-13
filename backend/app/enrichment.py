@@ -15,10 +15,11 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from . import llm
-from .analysis import extract_keywords, structured_summary, summarize
+from .analysis import extract_keywords, strip_boilerplate, structured_summary, summarize
 from .extractor import extract_image_url, extract_main_text
 from .ingestion import strip_feed_metadata
 from .models import Article
+from .quality import information_score
 
 # Serialize enrichment: SQLite dislikes concurrent writers
 _lock = threading.Lock()
@@ -80,7 +81,7 @@ def enrich_article(db: Session, article: Article) -> bool:
 
     if fetched or article.full_text:
         if fetched:
-            article.full_text = fetched
+            article.full_text = strip_boilerplate(fetched)
 
         analysis = None
         if article.full_text and llm.available():
@@ -122,6 +123,7 @@ def enrich_article(db: Session, article: Article) -> bool:
         article.analysis_source = article.analysis_source or "lexicon"
 
     article.enriched_at = datetime.now(timezone.utc)
+    article.info_score = information_score(article)
     db.commit()
     return True
 

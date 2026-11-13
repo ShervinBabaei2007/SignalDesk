@@ -33,6 +33,7 @@ from .models import Article, Base, Feed
 from .schemas import (ArticleDetail, ArticlePage, Digest, DigestItem,
                       FeedCreate, FeedOut, FeedIngestResult, IngestResult,
                       Stats, TrendingStory)
+from .quality import backfill_info_scores
 from .seed_data import backfill_keywords, seed_if_empty
 
 logger = logging.getLogger("signaldesk")
@@ -106,6 +107,9 @@ async def lifespan(app: FastAPI):
         backfilled = backfill_keywords(db)
         if backfilled:
             logger.info("[migrate] Backfilled keywords for %s articles", backfilled)
+        scores = backfill_info_scores(db)
+        if scores["scored"]:
+            logger.info("[migrate] Scored %s articles for information quality", scores["scored"])
     scheduler_task = None
     if INGEST_INTERVAL_MINUTES > 0 and not config.SCHEDULER_DISABLED:
         scheduler_task = asyncio.create_task(_scheduled_ingestion())
@@ -595,8 +599,13 @@ def _enrich_background():
     """Background worker: enrich pending articles with full-text summaries."""
     with SessionLocal() as db:
         try:
-            stats = enrich_pending_articles(db)
-            logger.info("[enrich] deep summaries generated for %s articles (%s remaining)",
-                        stats["enriched"], stats["remaining"])
+            # Keep going wave by wave so a big ingest (many feeds) is fully enriched,
+            # but stop if a wave makes no progress.
+            for _ in range(12):
+                stats = enrich_pending_articles(db)
+                logger.info("[enrich] deep summaries generated for %s articles (%s remaining)",
+                            stats["enriched"], stats["remaining"])
+                if not stats["enriched"] or not stats["remaining"]:
+                    break
         except Exception:  # noqa: BLE001
             logger.exception("[enrich] enrichment failed")

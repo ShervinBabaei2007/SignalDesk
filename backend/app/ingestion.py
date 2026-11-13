@@ -16,6 +16,7 @@ from . import config
 from .analysis import analyze
 from .extractor import clean_image_url
 from .models import Article, Feed
+from .quality import information_score
 
 logger = logging.getLogger("signaldesk.ingestion")
 
@@ -185,6 +186,7 @@ def ingest_feed(
             analysis_source="lexicon",
             published_at=published_at,
         )
+        article.info_score = information_score(article)
         db.add(article)
         try:
             db.commit()

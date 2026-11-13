@@ -16,6 +16,7 @@ class ArticleOut(BaseModel):
     summary_deep: str | None = None
     keywords: str | None = None
     image_url: str | None = None
+    info_score: float | None = None  # 0-100, how much real information this report carries
     why_it_matters: str | None = None
     importance: float | None = None
     relevance: float | None = None
