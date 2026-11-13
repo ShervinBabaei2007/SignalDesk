@@ -71,10 +71,10 @@ async function loadStats() {
   $("stat-24h").textContent = s.ingested_last_24h;
 
   const avg = s.avg_sentiment;
-  const avgLabel = avg >= 0.5 ? "Very positive" : avg > 0.15 ? "Leaning positive"
-    : avg >= -0.15 ? "Mostly neutral" : avg > -0.5 ? "Leaning negative" : "Very negative";
+  const avgLabel = avg >= 0.5 ? "Very positive" : avg > 0.15 ? "Mostly positive"
+    : avg >= -0.15 ? "Mixed or neutral" : avg > -0.5 ? "Mostly negative" : "Very negative";
   $("stat-sentiment").textContent = avgLabel;
-  $("stat-sentiment-num").textContent = `average score ${describeSentiment(avg).n}`;
+  $("stat-sentiment-num").textContent = `Score ${describeSentiment(avg).n} (−1 to +1)`;
   const arrow = $("stat-sentiment-arrow");
   if (avg > 0.15) { arrow.textContent = "▲"; arrow.style.color = "var(--pos)"; }
   else if (avg < -0.15) { arrow.textContent = "▼"; arrow.style.color = "var(--neg)"; }
@@ -137,7 +137,7 @@ async function loadDigest() {
           <div class="digest-group-title" style="color:${color}">${label}</div>
           ${items.map((item) => `
             <a class="digest-item ${cls}" href="/#/article/${item.id}" data-id="${item.id}">
-              <span class="digest-score" title="${describeSentiment(item.sentiment).n} on a −1 to +1 scale">${describeSentiment(item.sentiment).label}</span>
+              <span class="digest-score" title="Score ${describeSentiment(item.sentiment).n} (scale: −1 to +1)">${describeSentiment(item.sentiment).label}</span>
               ${escapeHtml(item.title.length > 60 ? item.title.slice(0, 60) + "…" : item.title)}
             </a>`).join("")}
         </div>`)
@@ -273,22 +273,31 @@ function showSkeletons(count = 6) {
 
 const SENTIMENT_GLYPH = { positive: "▲", neutral: "●", negative: "▼" };
 
-/* Plain-language reading of a sentiment score (-1 … +1). The score measures
-   the emotional tone of the *wording*, not whether the news itself is good. */
+/* Plain-English reading of a sentiment score (-1 … +1). Sentiment counts the
+   positive and negative *words* in an article; it does not judge the news. */
+const SENTIMENT_LEVELS = [
+  { label: "Very positive", tone: "positive",
+    blurb: "Mostly positive words, like “win”, “record” or “breakthrough”." },
+  { label: "Positive", tone: "positive",
+    blurb: "More positive words than negative ones." },
+  { label: "Neutral", tone: "neutral",
+    blurb: "A balanced mix of positive and negative words, or plain factual wording." },
+  { label: "Negative", tone: "negative",
+    blurb: "More negative words than positive ones." },
+  { label: "Very negative", tone: "negative",
+    blurb: "Mostly negative words, like “crisis”, “collapse” or “outage”." },
+];
+
 function describeSentiment(score) {
+  const L = SENTIMENT_LEVELS;
+  const level = score >= 0.5 ? L[0] : score > 0.15 ? L[1] : score >= -0.15 ? L[2] : score > -0.5 ? L[3] : L[4];
   const n = `${score >= 0 ? "+" : "−"}${Math.abs(score).toFixed(2)}`;
-  let label, tone;
-  if (score >= 0.5) { label = "Very positive"; tone = "positive"; }
-  else if (score > 0.15) { label = "Positive"; tone = "positive"; }
-  else if (score >= -0.15) { label = "Neutral"; tone = "neutral"; }
-  else if (score > -0.5) { label = "Negative"; tone = "negative"; }
-  else { label = "Very negative"; tone = "negative"; }
-  return { label, tone, n, glyph: SENTIMENT_GLYPH[tone] };
+  return { ...level, n, glyph: SENTIMENT_GLYPH[level.tone] };
 }
 
 function sentimentBadge(score) {
   const d = describeSentiment(score);
-  return `<span class="badge badge-${d.tone}" title="Tone of the writing: ${d.label.toLowerCase()} (${d.n} on a −1 to +1 scale).">${d.glyph} ${d.label}</span>`;
+  return `<span class="badge badge-${d.tone}" tabindex="0" data-tip="${d.label}: ${escapeHtml(d.blurb)} Score ${d.n} (scale: −1 to +1).">${d.glyph} ${d.label}</span>`;
 }
 
 function badge(label) {
@@ -489,13 +498,7 @@ async function showArticle(id) {
   $("reader-keywords").innerHTML = readerKeywords.map((k) => `<span class="chip">${escapeHtml(k)}</span>`).join("");
   const sd = describeSentiment(a.sentiment);
   $("reader-score").textContent = `${sd.label} (${sd.n})`;
-  $("reader-sentiment-note").textContent = {
-    "Very positive": "The wording of this article is strongly upbeat.",
-    "Positive": "The wording of this article leans upbeat.",
-    "Neutral": "The wording of this article is balanced or factual, neither upbeat nor gloomy.",
-    "Negative": "The wording of this article leans gloomy or critical.",
-    "Very negative": "The wording of this article is strongly negative.",
-  }[sd.label] + " This measures tone, not whether the news is good or bad.";
+  $("reader-sentiment-note").textContent = `${sd.blurb} This is about the words used, not whether the news is good or bad.`;
   $("reader-gauge").style.left = `${((a.sentiment + 1) / 2) * 90 + 5}%`;
 
   const link = $("reader-link");

@@ -1,6 +1,7 @@
 """Mobile-emulation screenshot tool via Chrome DevTools Protocol.
 
-Usage: python tools/devshots.py <url> <out.png> [width] [height] [wait_s]
+Usage: python tools/devshots.py <url> <out.png> [width] [height] [wait_s] [js]
+(optional js runs after load, e.g. to open a dialog before the shot)
 Launches its own headless Chrome instance with a throwaway profile.
 """
 import base64
@@ -60,6 +61,9 @@ try:
     cmd("Page.enable")
     cmd("Page.navigate", {"url": url})
     time.sleep(wait_s)
+    if len(sys.argv) > 6:
+        cmd("Runtime.evaluate", {"expression": sys.argv[6]})
+        time.sleep(0.8)
     shot = cmd("Page.captureScreenshot", {"format": "png"})
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(base64.b64decode(shot["data"]))

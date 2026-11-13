@@ -9,7 +9,8 @@
   <meta name="description" content="SignalDesk ingests news from RSS feeds, analyzes sentiment and topics, and surfaces the signals that matter." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/styles.css?v=9" />
+  <link rel="stylesheet" href="/static/styles.css?v=10" />
+  <link rel="stylesheet" href="/static/components.css?v=3" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>" />
   <script>
     /* Apply saved theme/compact before first paint to avoid a flash.
@@ -68,8 +69,8 @@
         <div class="stat-value" id="stat-24h">—</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">Avg Sentiment
-          <button type="button" class="info-btn" data-open-sentiment aria-label="What does sentiment mean?" title="What does sentiment mean?">ⓘ</button></div>
+        <div class="stat-label">Average sentiment
+          <button type="button" class="info-btn" data-open-sentiment aria-label="What does sentiment mean?" data-tip="What does sentiment mean?">ⓘ</button></div>
         <div class="stat-value stat-value-text"><span id="stat-sentiment">—</span>
           <span id="stat-sentiment-arrow" class="sentiment-arrow"></span></div>
         <div id="stat-sentiment-num" class="stat-sub"></div>
@@ -91,7 +92,7 @@
       <select id="f-source"><option value="">All sources</option></select>
       <select id="f-topic"><option value="">All topics</option></select>
       <select id="f-sentiment">
-        <option value="">Any tone</option>
+        <option value="">Any sentiment</option>
         <option value="positive">Positive</option>
         <option value="neutral">Neutral</option>
         <option value="negative">Negative</option>
@@ -169,8 +170,8 @@
         <section id="reader-related" class="reader-related hidden"></section>
         <div id="reader-sentiment" class="am-sentiment">
           <div class="am-sentiment-label">
-            <span>Tone of the writing
-              <button type="button" class="info-btn" data-open-sentiment aria-label="What does sentiment mean?" title="What does sentiment mean?">ⓘ</button></span>
+            <span>Sentiment: how positive or negative are the words?
+              <button type="button" class="info-btn" data-open-sentiment aria-label="What does sentiment mean?" data-tip="What does sentiment mean?">ⓘ</button></span>
             <span id="reader-score"></span>
           </div>
           <div class="am-sentiment-track"><div id="reader-gauge" class="am-sentiment-gauge"></div></div>
@@ -189,20 +190,20 @@
   <!-- Sentiment explainer -->
   <dialog id="sentiment-modal" class="modal">
     <div class="modal-head">
-      <h2>What is sentiment?</h2>
+      <h2>What does “sentiment” mean?</h2>
       <button id="sentiment-close" class="btn btn-ghost btn-sm" aria-label="Close">✕</button>
     </div>
-    <p class="muted modal-sub">Sentiment is the <strong>emotional tone of the words</strong> an article uses, scored from −1 to +1. It is <em>not</em> a fact-check, and it does not say whether the news is good or bad: a calmly written report on a disaster can score near 0.</p>
+    <p class="modal-sub">Sentiment shows how <strong>positive or negative the words</strong> in an article are. SignalDesk counts words like <em>win, growth, success</em> (positive) and <em>crash, fail, attack</em> (negative), then gives the article a score from <strong>−1</strong> (all negative words) to <strong>+1</strong> (all positive words). <strong>0</strong> means balanced.</p>
     <div class="sent-scale" aria-hidden="true"></div>
-    <div class="sent-scale-ends"><span>−1</span><span>0</span><span>+1</span></div>
+    <div class="sent-scale-ends"><span>−1 Negative</span><span>0</span><span>Positive +1</span></div>
     <ul class="sent-legend">
-      <li><span class="badge badge-positive">▲ Very positive</span> <strong>+0.50 to +1</strong> strongly upbeat wording: &ldquo;record growth&rdquo;, &ldquo;breakthrough&rdquo;</li>
-      <li><span class="badge badge-positive">▲ Positive</span> <strong>+0.15 to +0.50</strong> leans upbeat</li>
-      <li><span class="badge badge-neutral">● Neutral</span> <strong>−0.15 to +0.15</strong> factual, balanced, or mixed</li>
-      <li><span class="badge badge-negative">▼ Negative</span> <strong>−0.50 to −0.15</strong> leans gloomy or critical</li>
-      <li><span class="badge badge-negative">▼ Very negative</span> <strong>−1 to −0.50</strong> strongly negative wording: &ldquo;crisis&rdquo;, &ldquo;collapse&rdquo;, &ldquo;outage&rdquo;</li>
+      <li><div><span class="badge badge-positive">▲ Very positive</span><span class="sent-range">+0.50 to +1</span></div><span>Mostly positive words, like “win”, “record” or “breakthrough”.</span></li>
+      <li><div><span class="badge badge-positive">▲ Positive</span><span class="sent-range">+0.15 to +0.50</span></div><span>More positive words than negative ones.</span></li>
+      <li><div><span class="badge badge-neutral">● Neutral</span><span class="sent-range">−0.15 to +0.15</span></div><span>A balanced mix, or plain factual wording.</span></li>
+      <li><div><span class="badge badge-negative">▼ Negative</span><span class="sent-range">−0.50 to −0.15</span></div><span>More negative words than positive ones.</span></li>
+      <li><div><span class="badge badge-negative">▼ Very negative</span><span class="sent-range">−1 to −0.50</span></div><span>Mostly negative words, like “crisis”, “collapse” or “outage”.</span></li>
     </ul>
-    <p class="muted modal-sub">Scores come from a word-based analyzer that handles negation (&ldquo;not good&rdquo;) and intensifiers (&ldquo;very bad&rdquo;), or from your configured language model if one is enabled. Treat it as a quick signal, not a verdict.</p>
+    <p class="sent-callout"><strong>Keep in mind:</strong> the score is about the <em>words</em>, not the facts. A calmly written report about a disaster can still score Neutral, and a score can&rsquo;t tell sarcasm. Use it as a quick hint, not a verdict. (If a language model is switched on in your settings, it assigns the score instead.)</p>
   </dialog>
 
   <!-- Feeds modal -->
@@ -277,6 +278,6 @@
 
   <div id="toast" class="toast hidden"></div>
 
-  <script src="/static/app.js?v=13"></script>
+  <script src="/static/app.js?v=16"></script>
 </body>
 </html>

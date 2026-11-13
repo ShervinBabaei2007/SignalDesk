@@ -46,6 +46,7 @@ And the platform runs itself: a built-in scheduler re-ingests every feed every 3
 | 📖 **Article reader page** | Clicking an article opens a dedicated reader at `/#/article/{id}`: the straightforward summary up top, then skimmable sections (key points, numbers, quotes, bottom line) with chip navigation |
 | 🌗 **Light & dark themes** | Accessible triadic color system (blue/green/violet) with a settings menu — both themes verified WCAG AA programmatically |
 | 🌡️ **Plain-language sentiment** | Scores read as "Very negative … Very positive" (number on hover), the reader has a labelled −1 / 0 / +1 gauge, and an ⓘ explainer says what sentiment does and does not mean |
+| 🧩 **shadcn/ui-style components** | Cards, buttons, badges, inputs, dialog, tooltip and alert follow shadcn/ui conventions, written as plain CSS (`frontend/components.css`) on top of the theme tokens — no framework or build step |
 | 🧘 **Compact mode** | A one-switch "calm" mode: hides side panels, charts, and chips, and shows fewer articles — for when the dashboard feels overwhelming |
 | 📱 **Mobile-first UI** | Designed for phones first: bottom-sheet menu, touch-sized targets, responsive 2-up → 5-column stats, then desktop |
 | 🧠 **Zero-dependency NLP** | Deterministic lexicon-based analysis that works offline, with an optional LLM upgrade |
@@ -166,6 +167,7 @@ SignalDesk/
 ├── frontend/                # Zero-build dashboard (vanilla HTML/CSS/JS)
 │   ├── index.html
 │   ├── styles.css
+│   ├── components.css   # shadcn-style UI primitives
 │   └── app.js
 ├── tools/devshots.py        # Screenshot helper (desktop + mobile)
 ├── .github/workflows/ci.yml # pytest on every push/PR

@@ -1,0 +1,165 @@
+/* ============================================================
+   SignalDesk UI components — shadcn/ui-style primitives in plain CSS.
+
+   Same anatomy and conventions as shadcn/ui (Card, Button, Badge, Input,
+   Select, Dialog, Tooltip, Alert), built on the theme tokens in styles.css
+   so light/dark and the AA contrast guarantees keep working. No framework
+   or build step: loaded after styles.css, so it wins on equal specificity.
+   ============================================================ */
+
+:root {
+  --radius: 10px;                 /* shadcn "lg" */
+  --radius-md: 8px;
+  --radius-sm: 6px;
+  --ring: var(--primary);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.18);
+  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.45);
+  --popover: var(--bg-elev);
+}
+:root[data-theme="light"] {
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.08);
+  --shadow-lg: 0 16px 40px rgba(15, 23, 42, 0.18);
+}
+
+/* Shared focus ring (shadcn: ring-2 + offset) */
+:where(.btn, .card-action, .story-tag, .info-btn, .seg-btn, .toggle, .menu-item,
+       .filters input, .filters select, .feed-form input, #token-input):focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* ---------- Button ---------- */
+.btn {
+  min-height: 40px; padding: 8px 16px; border-radius: var(--radius-md);
+  font-size: 14px; font-weight: 500; line-height: 1;
+  background: transparent; border: 1px solid var(--border-strong); box-shadow: var(--shadow-sm);
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+}
+.btn:active { transform: none; }
+.btn:hover { background: var(--bg-elev); border-color: var(--border-strong); }
+.btn-primary { background: var(--primary-deep); border-color: transparent; color: #fff; box-shadow: var(--shadow-sm); }
+.btn-primary:hover { background: var(--primary-deep-hover); }
+.btn-ghost { border-color: transparent; box-shadow: none; }
+.btn-ghost:hover { background: var(--bg-elev); }
+.btn-sm { min-height: 34px; padding: 6px 12px; font-size: 13px; }
+.btn-danger { color: var(--neg); }
+.btn-danger:hover { background: var(--neg-bg); border-color: transparent; }
+.card-action {
+  border-radius: var(--radius-md); font-weight: 500; background: transparent; min-height: 34px; padding: 6px 12px;
+}
+.card-action:hover { background: var(--bg-elev); border-color: var(--border-strong); color: var(--text); }
+
+/* ---------- Card (header / title / description / content) ---------- */
+.stat-card, .panel, .article-card, .reader-card {
+  border-radius: var(--radius); box-shadow: var(--shadow-sm);
+}
+.stat-card:hover, .article-card:hover { border-color: var(--border-strong); }
+.stat-label {
+  font-size: 13px; font-weight: 500; text-transform: none; letter-spacing: 0; color: var(--text-dim);
+  display: flex; align-items: center; gap: 4px;
+}
+.stat-value { font-size: 28px; font-weight: 700; letter-spacing: -0.03em; }
+.stat-value-text { font-size: 20px; letter-spacing: -0.02em; }
+.panel h3 {
+  font-size: 15px; font-weight: 600; text-transform: none; letter-spacing: -0.01em;
+  color: var(--text); margin-bottom: 14px; line-height: 1;
+}
+
+/* ---------- Badge ---------- */
+.badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  border: 1px solid transparent; border-radius: 999px; padding: 2px 10px;
+  font-size: 12px; font-weight: 600; text-transform: none; line-height: 1.5;
+}
+.badge-positive { border-color: color-mix(in srgb, var(--pos) 35%, transparent); }
+.badge-neutral { border-color: color-mix(in srgb, var(--neu) 35%, transparent); }
+.badge-negative { border-color: color-mix(in srgb, var(--neg) 35%, transparent); }
+.chip, .impact-tag, .deep-tag {
+  border-radius: var(--radius-sm); font-weight: 500; padding: 2px 8px; font-size: 12px;
+}
+.story-tag {
+  border-radius: 999px; font-weight: 600; font-size: 12px; padding: 2px 10px;
+  border-color: color-mix(in srgb, var(--primary) 45%, transparent);
+}
+
+/* ---------- Input & Select ---------- */
+.filters input, .filters select, .feed-form input, #token-input {
+  min-height: 40px; border-radius: var(--radius-md); background-color: transparent;
+  border: 1px solid var(--border-strong); box-shadow: var(--shadow-sm); font-size: 14px;
+}
+.filters input:focus, .filters select:focus, .feed-form input:focus, #token-input:focus {
+  border-color: var(--ring); box-shadow: 0 0 0 3px var(--accent-glow);
+}
+.filters select {
+  appearance: none; -webkit-appearance: none; padding-right: 34px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239aa4bd' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 12px center;
+}
+.filters select option { background: var(--bg-elev); color: var(--text); }
+
+/* ---------- Dialog ---------- */
+.modal {
+  border-radius: var(--radius) var(--radius) 0 0; background: var(--popover);
+  box-shadow: var(--shadow-lg); padding: 22px 20px;
+}
+.modal::backdrop { background: rgba(5, 8, 12, 0.6); backdrop-filter: blur(3px); }
+.modal-head h2 { font-size: 18px; font-weight: 600; letter-spacing: -0.01em; }
+.modal-sub { font-size: 14px; line-height: 1.55; }
+.modal-head .btn-ghost { min-height: 32px; width: 32px; padding: 0; justify-content: center; border-radius: var(--radius-sm); }
+@media (min-width: 720px) {
+  .modal { border-radius: var(--radius); }
+}
+
+/* ---------- Tooltip (hover / keyboard focus) ---------- */
+[data-tip] { position: relative; }
+[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute; z-index: 60; left: 50%; bottom: calc(100% + 8px);
+  transform: translateX(-50%) translateY(2px);
+  width: max-content; max-width: min(260px, 70vw);
+  padding: 7px 11px; border-radius: var(--radius-md);
+  background: var(--popover); color: var(--text);
+  border: 1px solid var(--border-strong); box-shadow: var(--shadow-lg);
+  font-size: 12.5px; font-weight: 500; line-height: 1.45; text-align: left; white-space: normal;
+  text-transform: none; letter-spacing: 0;
+  opacity: 0; pointer-events: none; transition: opacity 0.12s, transform 0.12s;
+}
+[data-tip]:hover::after, [data-tip]:focus-visible::after { opacity: 1; transform: translateX(-50%); }
+@media (hover: none) { [data-tip]::after { display: none; } }
+
+/* ---------- Alert ---------- */
+.story-banner {
+  border-radius: var(--radius); background: var(--bg-elev); border: 1px solid var(--border-strong);
+  font-size: 14px; padding: 10px 12px 10px 16px; box-shadow: var(--shadow-sm);
+}
+
+/* ---------- Progress (segmented sentiment bar) ---------- */
+.mini-bar { height: 6px; border-radius: 999px; }
+
+/* ---------- Sentiment explainer content ---------- */
+.sent-scale { height: 8px; border-radius: 999px; margin-top: 2px; }
+.sent-legend { gap: 0; margin: 4px 0 14px; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.sent-legend li {
+  display: grid; grid-template-columns: 130px 1fr; gap: 2px 14px; align-items: center;
+  padding: 11px 14px; font-size: 13.5px; line-height: 1.45;
+}
+.sent-legend li + li { border-top: 1px solid var(--border); }
+.sent-legend .sent-range { display: block; font-family: var(--mono); font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+.sent-callout {
+  border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px;
+  background: var(--bg); font-size: 13.5px; line-height: 1.55; color: var(--text-dim);
+}
+.sent-callout strong { color: var(--text); }
+@media (max-width: 480px) { .sent-legend li { grid-template-columns: 1fr; } }
+
+/* Average-sentiment card: the label already says it, so no arrow; compact caption */
+#stat-sentiment-arrow { display: none; }
+.stat-sub { font-family: var(--font); font-size: 12px; margin-top: 4px; }
+
+/* Reader gauge: visible zones (negative | neutral | positive) behind the marker */
+.am-sentiment-track {
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--neg) 45%, transparent) 0 42.5%,
+    color-mix(in srgb, var(--neu) 40%, transparent) 42.5% 57.5%,
+    color-mix(in srgb, var(--pos) 45%, transparent) 57.5% 100%);
+}

@@ -442,16 +442,16 @@ def compute_digest(db: Session) -> Digest:
 
     avg = round(sum(a.sentiment for a in recent) / len(recent), 3)
     if avg > 0.15:
-        tone = "predominantly positive"
+        tone = "mostly positive wording"
     elif avg < -0.15:
-        tone = "predominantly negative"
+        tone = "mostly negative wording"
     else:
-        tone = "broadly mixed"
+        tone = "a mix of positive and negative wording"
 
     topics = Counter(a.topic for a in recent)
     lead_topic = topics.most_common(1)[0][0] if topics else "General"
     headline = (
-        f"{len(recent)} signals in the last 24h — sentiment {avg:+.2f} ({tone}). "
+        f"{len(recent)} signals in the last 24h — overall {tone} (average score {avg:+.2f}). "
         f"Hottest topic: {lead_topic}."
     )
 
