@@ -1,5 +1,6 @@
 import { AnimatePresence, MotionConfig, motion } from 'motion/react'
 import { ArticleFeed } from '@/components/app/ArticleFeed'
+import { DailyBrief } from '@/components/app/DailyBrief'
 import { Filters } from '@/components/app/Filters'
 import { Header } from '@/components/app/Header'
 import { Reader } from '@/components/app/Reader'
@@ -12,11 +13,13 @@ function Dashboard() {
     <div className="space-y-4">
       <StatsRow />
       <Filters />
-      <div className="grid items-start gap-5 lg:grid-cols-[20rem_minmax(0,1fr)]">
-        <div className="compact-hide sidebar-scroll order-2 lg:sticky lg:top-[4.5rem] lg:order-1 lg:max-h-[calc(100dvh-5.5rem)] lg:overflow-y-auto lg:pr-1">
+      <div className="grid items-start gap-5 lg:grid-cols-[17rem_minmax(0,1fr)]">
+        {/* Categories only: short enough to stay on screen, so no inner scrollbar */}
+        <div className="compact-hide sidebar-sticky hidden lg:block">
           <Sidebar />
         </div>
-        <div className="order-1 min-w-0 lg:order-2 lg:[html[data-compact=on]_&]:col-span-2">
+        <div className="min-w-0 lg:[html[data-compact=on]_&]:col-span-2">
+          <DailyBrief />
           <ArticleFeed />
         </div>
       </div>

@@ -73,6 +73,11 @@ export function StatsRow() {
           <span className="bg-neutral transition-[width] duration-500" style={{ width: `${(stats.neutral / total) * 100}%` }} />
           <span className="bg-negative transition-[width] duration-500" style={{ width: `${(stats.negative / total) * 100}%` }} />
         </div>
+        <div className="mt-1.5 flex justify-between text-[11px] font-medium tabular-nums">
+          <span className="text-positive" title={`${stats.positive} positive articles`}>▲ {Math.round((stats.positive / total) * 100)}%</span>
+          <span className="text-neutral" title={`${stats.neutral} neutral articles`}>● {Math.round((stats.neutral / total) * 100)}%</span>
+          <span className="text-negative" title={`${stats.negative} negative articles`}>▼ {Math.round((stats.negative / total) * 100)}%</span>
+        </div>
       </Stat>
       </div>
       <BlurFade delay={0.2} className="compact-hide">

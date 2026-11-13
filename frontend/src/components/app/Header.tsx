@@ -3,6 +3,7 @@ import { Download, Loader2, Mail, Menu, Radio, Settings as SettingsIcon, Zap } f
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { ShimmerButton } from '@/components/ui/shimmer-button'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { FeedsDialog } from '@/components/app/FeedsDialog'
 import { SettingsSheet } from '@/components/app/SettingsSheet'
@@ -34,10 +35,18 @@ export function Header() {
   }
 
   const ingest = (
-    <Button onClick={() => void runIngest()} disabled={ingesting} size="lg">
-      {ingesting ? <Loader2 className="animate-spin" data-icon="inline-start" /> : <Download data-icon="inline-start" />}
-      <span className="hidden sm:inline">Ingest feeds</span>
-    </Button>
+    <ShimmerButton
+      onClick={() => void runIngest()}
+      disabled={ingesting}
+      aria-label="Ingest feeds"
+      background="var(--primary)"
+      shimmerColor="#ffffff"
+      borderRadius="0.625rem"
+      className="h-9 px-3 text-sm font-medium disabled:opacity-70"
+    >
+      {ingesting ? <Loader2 className="size-4 animate-spin sm:mr-1.5" /> : <Download className="size-4 sm:mr-1.5" />}
+      <span className="hidden sm:inline">{ingesting ? 'Checking feeds…' : 'Ingest feeds'}</span>
+    </ShimmerButton>
   )
 
   return (
