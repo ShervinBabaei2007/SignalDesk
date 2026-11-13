@@ -190,12 +190,6 @@ if (DIST_DIR / "index.html").exists():
     @app.get("/", include_in_schema=False)
     def index():
         return FileResponse(DIST_DIR / "index.html", headers=_NO_CACHE)
-elif (FRONTEND_DIR / "index.html").exists():  # legacy vanilla UI (removed once the React build lands)
-    app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
-
-    @app.get("/", include_in_schema=False)
-    def index_legacy():
-        return FileResponse(FRONTEND_DIR / "index.html")
 else:
     @app.get("/", include_in_schema=False)
     def index_missing():

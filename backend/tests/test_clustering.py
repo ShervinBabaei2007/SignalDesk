@@ -90,3 +90,11 @@ def test_api_exposes_cluster_fields_filter_and_related():
 
     detail = client.get(f"/api/articles/{storm['id']}").json()
     assert [r["source"] for r in detail["related"]] == ["Alpha"]
+
+
+def test_related_items_carry_sentiment_and_snippet():
+    client = TestClient(app)
+    items = client.get("/api/articles?limit=50").json()["items"]
+    storm = next(a for a in items if a["cluster_size"] == 2)
+    related = client.get(f"/api/articles/{storm['id']}").json()["related"][0]
+    assert {"sentiment", "summary", "summary_deep"} <= related.keys()

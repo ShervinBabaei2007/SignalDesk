@@ -20,3 +20,8 @@ _archive/
 
 # Logs
 *.log
+
+# Frontend
+node_modules/
+frontend/dist/
+*.tsbuildinfo

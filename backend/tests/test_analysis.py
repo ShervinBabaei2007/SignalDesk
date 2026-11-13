@@ -1,5 +1,11 @@
 """Unit tests for the SignalDesk analysis engine."""
 
+import os
+import tempfile
+
+# Any test here that touches the database must never use the developer's real one.
+os.environ.setdefault("DATABASE_URL", f"sqlite:///{tempfile.mkdtemp()}/analysis.db")
+
 from app.analysis import analyze, classify_topic, extract_keywords, score_sentiment, summarize
 
 
@@ -55,3 +61,21 @@ def test_analyze_pipeline():
     assert set(result) == {"sentiment", "topic", "summary", "keywords"}
     assert result["topic"] == "Science"
     assert result["sentiment"] > 0
+
+
+def test_ingest_decodes_html_entities_in_titles(monkeypatch):
+    """Feeds that send &#8217; in titles must not leak raw entities into the UI."""
+    from types import SimpleNamespace
+
+    from app import ingestion
+    from app.database import Base, SessionLocal, engine
+    from app.models import Article
+
+    Base.metadata.create_all(bind=engine)
+    entry = SimpleNamespace(title="Microsoft&#8217;s outage &amp; fallout", link="https://x.example/entity-test",
+                            summary="It&#8217;s big", published_parsed=None, updated_parsed=None)
+    monkeypatch.setattr(ingestion.feedparser, "parse", lambda url: SimpleNamespace(entries=[entry]))
+    with SessionLocal() as db:
+        ingestion.ingest_feed(db, "https://feed.example/rss", "Test")
+        art = db.query(Article).filter_by(url="https://x.example/entity-test").one()
+        assert art.title == "Microsoft\u2019s outage & fallout"

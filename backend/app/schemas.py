@@ -40,6 +40,9 @@ class RelatedArticle(BaseModel):
     source: str
     url: str
     published_at: datetime | None
+    sentiment: float = 0.0
+    summary: str | None = None
+    summary_deep: str | None = None
 
 
 class ArticleDetail(ArticleOut):

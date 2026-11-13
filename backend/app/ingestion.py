@@ -2,6 +2,7 @@
 
 import logging
 import re
+from html import unescape
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from time import mktime
@@ -95,6 +96,7 @@ def _entry_text(entry) -> str:
         body = entry.summary
     # feedparser can leave HTML entities/links in text; keep it readable
     body = re.sub(r"<[^>]+>", " ", body)
+    body = unescape(body)
     body = strip_feed_metadata(body)
     return f"{title}. {body}".strip()
 
@@ -150,7 +152,7 @@ def ingest_feed(
 
     for entry in entries:
         url = getattr(entry, "link", None)
-        title = (getattr(entry, "title", None) or "").strip()
+        title = unescape(getattr(entry, "title", None) or "").strip()
         if not url or not title:
             stats["skipped"] += 1
             continue

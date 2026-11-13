@@ -3,7 +3,7 @@
 > **AI-powered news intelligence, on autopilot.**
 > SignalDesk pulls news from RSS feeds around the web, deduplicates it, scores sentiment, classifies topics, and surfaces it all in a real-time intelligence dashboard.
 
-![Status](https://img.shields.io/badge/status-production--grade-brightgreen) ![Python](https://img.shields.io/badge/python-3.12%2B-blue) ![FastAPI](https://img.shields.io/badge/FastAPI-latest-teal) ![Tests](https://img.shields.io/badge/tests-45%20passing-brightgreen) ![License](https://img.shields.io/badge/license-MIT-lightgrey)
+![Status](https://img.shields.io/badge/status-production--grade-brightgreen) ![Python](https://img.shields.io/badge/python-3.12%2B-blue) ![FastAPI](https://img.shields.io/badge/FastAPI-latest-teal) ![React](https://img.shields.io/badge/React-19-61dafb) ![Tests](https://img.shields.io/badge/tests-62%20passing-brightgreen) ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
 ---
 
@@ -46,7 +46,7 @@ And the platform runs itself: a built-in scheduler re-ingests every feed every 3
 | 📖 **Article reader page** | Clicking an article opens a dedicated reader at `/#/article/{id}`: the straightforward summary up top, then skimmable sections (key points, numbers, quotes, bottom line) with chip navigation |
 | 🌗 **Light & dark themes** | Accessible triadic color system (blue/green/violet) with a settings menu — both themes verified WCAG AA programmatically |
 | 🌡️ **Plain-language sentiment** | Scores read as "Very negative … Very positive" (number on hover), the reader has a labelled −1 / 0 / +1 gauge, and an ⓘ explainer says what sentiment does and does not mean |
-| 🧩 **shadcn/ui-style components** | Cards, buttons, badges, inputs, dialog, tooltip and alert follow shadcn/ui conventions, written as plain CSS (`frontend/components.css`) on top of the theme tokens — no framework or build step |
+| 🧩 **shadcn/ui · Magic UI · Motion** | The dashboard is a React + Vite + TypeScript + Tailwind app built from real shadcn/ui components (card, dialog, sheet, popover, tooltip, hover-card, select…), Magic UI effects (number ticker, blur-fade, border beam, shimmer button) and Motion page transitions, with `prefers-reduced-motion` respected |
 | 🧘 **Compact mode** | A one-switch "calm" mode: hides side panels, charts, and chips, and shows fewer articles — for when the dashboard feels overwhelming |
 | 📱 **Mobile-first UI** | Designed for phones first: bottom-sheet menu, touch-sized targets, responsive 2-up → 5-column stats, then desktop |
 | 🧠 **Zero-dependency NLP** | Deterministic lexicon-based analysis that works offline, with an optional LLM upgrade |
@@ -60,29 +60,37 @@ And the platform runs itself: a built-in scheduler re-ingests every feed every 3
 | 🤖 **Optional LLM analysis** | Set `LLM_ENABLED=true` with any OpenAI-compatible endpoint (OpenAI, Ollama, LM Studio…) for written TL;DRs and "why it matters"; falls back to the offline analyzer on any failure |
 | ✉️ **Brief delivery** | Send the daily brief to Slack and/or email from the dashboard, or on a schedule (`DIGEST_HOUR`) |
 | 🔑 **Optional API token** | Set `API_TOKEN` to require `X-API-Key` on all write endpoints; the UI has a field for it |
-| ✅ **Tested** | 45 pytest tests + GitHub Actions CI covering the extractor, analysis engine, API, auth, digest, and export |
+| 📡 **12 curated feeds** | BBC (World, Technology, Business, Science), The Guardian, NPR, Politico, STAT News, CNBC, The Verge, TechCrunch and Hacker News — one click adds any that are missing to an existing install |
+| ✅ **Tested** | 49 pytest tests, 13 Vitest tests, and GitHub Actions CI for both the backend and the frontend build |
 | 🐳 **One-container deploy** | `docker compose up --build` and you're done |
 
 ## Quick start
+
+You need **Python 3.12+** and **Node 20+**.
 
 ```bash
 git clone https://github.com/<you>/SignalDesk.git
 cd SignalDesk
 
-# 1. Install dependencies
+# 1. Backend dependencies
 python -m venv .venv
 .venv\Scripts\pip install -r backend/requirements.txt   # Windows
 # source .venv/bin/activate && pip install -r backend/requirements.txt  # macOS/Linux
 
-# 2. Run the server
+# 2. Build the dashboard (once)
+cd frontend && npm install && npm run build && cd ..
+
+# 3. Run the server
 cd backend
 ..\.venv\Scripts\python -m uvicorn app.main:app --reload
 
-# 3. Open the dashboard
+# 4. Open the dashboard
 start http://localhost:8000
 ```
 
-That's it — the database creates and seeds itself on first boot. No config files, no API keys, no external services.
+That's it: the database creates and seeds itself on first boot. No config files, no API keys, no external services.
+
+**Developing the UI?** Run the API as above, then `cd frontend && npm run dev` and open http://localhost:5173. It hot-reloads and proxies `/api` to the backend.
 
 ### Docker
 
@@ -91,6 +99,8 @@ docker compose up --build
 # → http://localhost:8000   (data persists in the `signaldesk-data` volume;
 #   copy .env.example to .env to configure LLM, Slack, email, API token)
 ```
+
+The image builds the dashboard in a Node stage, so you don't need Node installed for this route.
 
 ## The dashboard
 
@@ -164,13 +174,14 @@ SignalDesk/
 │   │   ├── ingestion.py     # RSS fetch → dedupe → analyze → store
 │   │   └── seed_data.py     # Demo data auto-seeded on first boot
 │   └── tests/               # pytest: analysis unit tests + API integration
-├── frontend/                # Zero-build dashboard (vanilla HTML/CSS/JS)
-│   ├── index.html
-│   ├── styles.css
-│   ├── components.css   # shadcn-style UI primitives
-│   └── app.js
+├── frontend/                # React + Vite + TypeScript dashboard
+│   └── src/
+│       ├── components/ui/   # shadcn/ui + Magic UI components
+│       ├── components/app/  # Header, feed, sidebar, reader, dialogs
+│       ├── hooks/           # Dashboard state, settings, hash routing
+│       └── lib/             # API client, sentiment wording, formatters
 ├── tools/devshots.py        # Screenshot helper (desktop + mobile)
-├── .github/workflows/ci.yml # pytest on every push/PR
+├── .github/workflows/ci.yml # pytest + frontend typecheck/test/build
 ├── Dockerfile
 ├── docker-compose.yml
 └── pytest.ini
@@ -181,14 +192,15 @@ SignalDesk/
 - **Deterministic NLP first, LLM as an upgrade.** The lexicon-based analyzer runs offline and behaves identically on every run, so anyone can clone and try it with no keys. When `LLM_ENABLED` is set, `llm.py` layers richer summaries on top and silently falls back on any malformed or failed response.
 - **Deduplication at the storage layer.** URLs are unique-indexed; ingestion is idempotent, so the pipeline can run on a schedule without supervision.
 - **Forward-safe migrations.** New columns are detected at startup (`ensure_columns`) and added via `ALTER TABLE`, and existing rows are backfilled (e.g. keyword computation) — upgrading a running deployment never breaks it.
-- **No build step for the frontend.** Vanilla JS keeps the project instantly runnable and reviewable — the entire UI is three readable files.
+- **A real component stack for the UI.** shadcn/ui gives accessible primitives (Radix/Base UI under the hood), Magic UI and Motion add restrained polish, and the API stays a plain REST contract so the frontend is replaceable. FastAPI serves the built files, so production is still one container.
+- **Plain-English sentiment.** All labels, thresholds and explanations live in `frontend/src/lib/sentiment.ts` (unit-tested), so the wording can't drift between the feed, the reader and the explainer.
 - **SQLite-first.** The default needs zero infrastructure; `DATABASE_URL=postgresql://…` is the only change required for Postgres.
 
 ## Testing
 
 ```bash
-.venv\Scripts\python -m pytest -q
-# 45 passed
+.venv\Scripts\python -m pytest -q      # backend
+cd frontend && npm test               # frontend (Vitest)
 ```
 
 ## Roadmap

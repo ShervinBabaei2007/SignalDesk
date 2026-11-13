@@ -1,0 +1,92 @@
+import { ChevronRight, Newspaper } from 'lucide-react'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Badge } from '@/components/ui/badge'
+import { BlurFade } from '@/components/ui/blur-fade'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
+import { SentimentBadge } from '@/components/app/Sentiment'
+import type { RelatedArticle } from '@/lib/api'
+import { domainOf, sourceHue, timeAgo } from '@/lib/format'
+
+function SourceAvatar({ name }: { name: string }) {
+  const hue = sourceHue(name)
+  return (
+    <Avatar size="lg">
+      <AvatarFallback
+        className="font-semibold"
+        style={{ background: `hsl(${hue} 70% 45% / 0.18)`, color: `hsl(${hue} 80% 62%)` }}
+      >
+        {name.trim().charAt(0).toUpperCase()}
+      </AvatarFallback>
+    </Avatar>
+  )
+}
+
+function Row({ item, index }: { item: RelatedArticle; index: number }) {
+  const snippet = item.summary_deep || item.summary
+  return (
+    <BlurFade delay={0.05 * index} duration={0.3} offset={6}>
+      <HoverCard>
+        <HoverCardTrigger
+          delay={250}
+          render={
+            <a
+              href={`#/article/${item.id}`}
+              className="group flex items-center gap-3 rounded-lg border bg-background/50 px-3 py-2.5 transition-colors hover:border-foreground/20 hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+            />
+          }
+        >
+          <SourceAvatar name={item.source} />
+          <div className="min-w-0 flex-1">
+            <div className="line-clamp-2 text-sm leading-snug font-medium">{item.title}</div>
+            <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
+              <span className="font-medium text-foreground/80">{item.source}</span>
+              <span>·</span>
+              <span>{timeAgo(item.published_at)}</span>
+            </div>
+          </div>
+          <SentimentBadge score={item.sentiment} className="hidden sm:inline-flex" />
+          <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" aria-hidden />
+        </HoverCardTrigger>
+        <HoverCardContent className="w-80 space-y-2" align="start">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span className="font-semibold text-foreground">{item.source}</span>
+            {domainOf(item.url) && <span>{domainOf(item.url)}</span>}
+          </div>
+          <div className="text-sm leading-snug font-semibold">{item.title}</div>
+          {snippet && <p className="line-clamp-4 text-[13px] leading-relaxed text-muted-foreground">{snippet}</p>}
+          <div className="flex items-center justify-between pt-1">
+            <SentimentBadge score={item.sentiment} />
+            <span className="text-xs text-link">Open summary →</span>
+          </div>
+        </HoverCardContent>
+      </HoverCard>
+    </BlurFade>
+  )
+}
+
+/** Other outlets' coverage of the same story. */
+export function AlsoCoveredBy({ items }: { items: RelatedArticle[] }) {
+  if (!items.length) return null
+  const outlets = new Set(items.map((i) => i.source)).size
+  return (
+    <Card className="gap-3 bg-muted/30 shadow-none">
+      <CardHeader className="gap-1">
+        <div className="flex items-center justify-between gap-2">
+          <CardTitle className="flex items-center gap-2 text-[15px]">
+            <Newspaper className="size-4 text-link" aria-hidden /> Also covered by
+          </CardTitle>
+          <Badge variant="secondary">{items.length} more {items.length === 1 ? 'report' : 'reports'}</Badge>
+        </div>
+        <CardDescription>
+          The same story from {outlets} other {outlets === 1 ? 'outlet' : 'outlets'}. Compare how each one tells it.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {items.map((item, i) => (
+          <Row key={item.id} item={item} index={i} />
+        ))}
+      </CardContent>
+    </Card>
+  )
+}

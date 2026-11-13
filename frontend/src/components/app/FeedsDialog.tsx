@@ -1,0 +1,102 @@
+import { useState, type FormEvent } from 'react'
+import { Loader2, Plus, Sparkles, Trash2 } from 'lucide-react'
+import { toast } from 'sonner'
+import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { Separator } from '@/components/ui/separator'
+import { useDashboard } from '@/hooks/useDashboard'
+import { api, ApiError, type Feed } from '@/lib/api'
+import { timeAgo } from '@/lib/format'
+import { cn } from '@/lib/utils'
+
+function FeedRow({ feed, onDelete }: { feed: Feed; onDelete: () => void }) {
+  const failed = !!feed.last_status && feed.last_status.startsWith('error')
+  return (
+    <li className="flex items-center justify-between gap-3 rounded-lg border bg-background/50 px-3 py-2.5">
+      <div className="min-w-0">
+        <div className="text-sm font-medium">{feed.name}</div>
+        <div className="truncate font-mono text-[11px] text-muted-foreground">{feed.url}</div>
+        <div className={cn('mt-0.5 text-[11px]', failed ? 'text-negative' : 'text-positive')}>
+          {feed.last_status ? `${feed.last_status}${feed.last_fetched_at ? ` · ${timeAgo(feed.last_fetched_at)}` : ''}` : 'Not fetched yet'}
+        </div>
+      </div>
+      <Button variant="ghost" size="icon" aria-label={`Remove ${feed.name}`} className="text-negative hover:text-negative" onClick={onDelete}>
+        <Trash2 />
+      </Button>
+    </li>
+  )
+}
+
+export function FeedsDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
+  const { feeds, refreshFeeds } = useDashboard()
+  const [name, setName] = useState('')
+  const [url, setUrl] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const guard = async (fn: () => Promise<void>) => {
+    setBusy(true)
+    try {
+      await fn()
+      await refreshFeeds()
+    } catch (err) {
+      const e = err as ApiError
+      toast.error(e.status === 401 ? 'Add your API token in Settings first' : e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const add = (e: FormEvent) => {
+    e.preventDefault()
+    void guard(async () => {
+      await api.addFeed(name.trim(), url.trim())
+      setName('')
+      setUrl('')
+      toast.success('Feed added')
+    })
+  }
+
+  const addRecommended = () =>
+    void guard(async () => {
+      const added = await api.addDefaultFeeds()
+      toast.success(added.length ? `Added ${added.length} recommended feed${added.length === 1 ? '' : 's'}` : 'You already have all recommended feeds')
+    })
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="text-base">RSS feeds</DialogTitle>
+          <DialogDescription>
+            Every active feed is fetched when you run an ingest, and automatically every 30 minutes. {feeds.length} feeds configured.
+          </DialogDescription>
+        </DialogHeader>
+
+        <ScrollArea className="max-h-72 pr-3">
+          <ul className="space-y-2">
+            {feeds.map((f) => (
+              <FeedRow key={f.id} feed={f} onDelete={() => void guard(async () => { await api.deleteFeed(f.id) })} />
+            ))}
+          </ul>
+        </ScrollArea>
+
+        <Button variant="secondary" onClick={addRecommended} disabled={busy}>
+          {busy ? <Loader2 className="animate-spin" data-icon="inline-start" /> : <Sparkles data-icon="inline-start" />}
+          Add recommended feeds
+        </Button>
+
+        <Separator />
+
+        <form onSubmit={add} className="grid gap-2">
+          <Input placeholder="Feed name" aria-label="Feed name" value={name} onChange={(e) => setName(e.target.value)} required maxLength={200} />
+          <Input type="url" placeholder="https://example.com/rss.xml" aria-label="Feed URL" value={url} onChange={(e) => setUrl(e.target.value)} required />
+          <Button type="submit" disabled={busy}>
+            <Plus data-icon="inline-start" /> Add feed
+          </Button>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
