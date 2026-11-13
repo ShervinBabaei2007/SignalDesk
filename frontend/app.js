@@ -288,8 +288,8 @@ function renderArticles(items) {
           ${a.summary_deep ? '<span class="deep-tag" title="Summary generated from the full article page">✨ deep</span>' : ""}
         </div>
         <h3 class="article-title"><a href="/#/article/${a.id}">${escapeHtml(a.title)}</a></h3>
-        ${cleanSummary ? `<p class="article-summary">${highlightKeywords(cleanSummary, keywords)}</p>` : ""}
-        ${a.why_it_matters ? `<p class="article-why"><span class="why-label">Why it matters</span> ${highlightKeywords(a.why_it_matters, keywords)}</p>` : ""}
+        ${cleanSummary ? `<p class="article-summary">${escapeHtml(cleanSummary)}</p>` : ""}
+        ${a.why_it_matters ? `<p class="article-why"><span class="why-label">Why it matters</span> ${escapeHtml(a.why_it_matters)}</p>` : ""}
         <div class="article-footer">
           <div class="article-chips">
             <span class="chip">${TOPIC_EMOJI[a.topic] || "📰"} ${a.topic}</span>
@@ -353,14 +353,14 @@ function renderStructured(markdown, container, toc, keywords = []) {
       ul.className = "reader-section-list";
       for (const b of section.bullets) {
         const li = document.createElement("li");
-        li.innerHTML = highlightKeywords(b, keywords);
+        li.innerHTML = escapeHtml(b);
         ul.appendChild(li);
       }
       box.appendChild(ul);
     }
     for (const para of section.paras) {
       const p = document.createElement("p");
-      p.innerHTML = highlightKeywords(para, keywords);
+      p.innerHTML = escapeHtml(para);
       box.appendChild(p);
     }
     container.appendChild(box);
@@ -442,7 +442,7 @@ async function showArticle(id) {
   const genBtn = $("reader-generate");
   const updateSummary = (article) => {
     const summary = article.summary_deep || article.summary || "No summary available yet.";
-    $("reader-summary").innerHTML = highlightKeywords(summary, readerKeywords);
+    $("reader-summary").innerHTML = escapeHtml(summary);
     if (article.summary_deep) {
       genBtn.classList.add("hidden");
     } else {
@@ -510,25 +510,6 @@ function escapeHtml(str) {
   const div = document.createElement("div");
   div.textContent = str ?? "";
   return div.innerHTML;
-}
-
-/* Highlight extracted keywords inside already-escaped text. Terms are
-   matched case-insensitively as whole words, so "AI" won't light up inside
-   "said". Returns safe HTML. */
-function highlightKeywords(text, keywords) {
-  const safe = escapeHtml(text);
-  const terms = (keywords || [])
-    .map((k) => String(k).trim())
-    .filter((k) => k.length >= 3 && /^[\w][\w' -]*$/.test(k) && k.split(/\s+/).length <= 3)
-    .sort((a, b) => b.length - a.length);
-  if (!terms.length) return safe;
-  const escaped = terms.map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-  try {
-    return safe.replace(new RegExp(`\\b(${escaped.join("|")})\\b`, "gi"),
-      '<mark class="hl">$1</mark>');
-  } catch {
-    return safe;
-  }
 }
 
 /* ---------- Ingestion ---------- */
