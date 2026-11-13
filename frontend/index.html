@@ -68,9 +68,11 @@
         <div class="stat-value" id="stat-24h">—</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">Avg Sentiment</div>
-        <div class="stat-value"><span id="stat-sentiment">—</span>
+        <div class="stat-label">Avg Sentiment
+          <button type="button" class="info-btn" data-open-sentiment aria-label="What does sentiment mean?" title="What does sentiment mean?">ⓘ</button></div>
+        <div class="stat-value stat-value-text"><span id="stat-sentiment">—</span>
           <span id="stat-sentiment-arrow" class="sentiment-arrow"></span></div>
+        <div id="stat-sentiment-num" class="stat-sub"></div>
         <div class="mini-bar">
           <span id="bar-positive" class="bar-pos"></span>
           <span id="bar-neutral" class="bar-neu"></span>
@@ -89,7 +91,7 @@
       <select id="f-source"><option value="">All sources</option></select>
       <select id="f-topic"><option value="">All topics</option></select>
       <select id="f-sentiment">
-        <option value="">All sentiment</option>
+        <option value="">Any tone</option>
         <option value="positive">Positive</option>
         <option value="neutral">Neutral</option>
         <option value="negative">Negative</option>
@@ -167,10 +169,13 @@
         <section id="reader-related" class="reader-related hidden"></section>
         <div id="reader-sentiment" class="am-sentiment">
           <div class="am-sentiment-label">
-            <span>Sentiment analysis</span>
+            <span>Tone of the writing
+              <button type="button" class="info-btn" data-open-sentiment aria-label="What does sentiment mean?" title="What does sentiment mean?">ⓘ</button></span>
             <span id="reader-score"></span>
           </div>
           <div class="am-sentiment-track"><div id="reader-gauge" class="am-sentiment-gauge"></div></div>
+          <div class="am-sentiment-ends"><span>Negative −1</span><span>Neutral 0</span><span>Positive +1</span></div>
+          <p id="reader-sentiment-note" class="am-sentiment-note"></p>
         </div>
         <a id="reader-link" class="btn btn-primary reader-link" target="_blank" rel="noopener">↗ Read the original article</a>
       </div>
@@ -180,6 +185,25 @@
   <footer class="footer">
     <p><strong>SignalDesk</strong> · FastAPI + SQLAlchemy + feedparser · Sentiment, topics &amp; summaries computed on ingest</p>
   </footer>
+
+  <!-- Sentiment explainer -->
+  <dialog id="sentiment-modal" class="modal">
+    <div class="modal-head">
+      <h2>What is sentiment?</h2>
+      <button id="sentiment-close" class="btn btn-ghost btn-sm" aria-label="Close">✕</button>
+    </div>
+    <p class="muted modal-sub">Sentiment is the <strong>emotional tone of the words</strong> an article uses, scored from −1 to +1. It is <em>not</em> a fact-check, and it does not say whether the news is good or bad: a calmly written report on a disaster can score near 0.</p>
+    <div class="sent-scale" aria-hidden="true"></div>
+    <div class="sent-scale-ends"><span>−1</span><span>0</span><span>+1</span></div>
+    <ul class="sent-legend">
+      <li><span class="badge badge-positive">▲ Very positive</span> <strong>+0.50 to +1</strong> strongly upbeat wording: &ldquo;record growth&rdquo;, &ldquo;breakthrough&rdquo;</li>
+      <li><span class="badge badge-positive">▲ Positive</span> <strong>+0.15 to +0.50</strong> leans upbeat</li>
+      <li><span class="badge badge-neutral">● Neutral</span> <strong>−0.15 to +0.15</strong> factual, balanced, or mixed</li>
+      <li><span class="badge badge-negative">▼ Negative</span> <strong>−0.50 to −0.15</strong> leans gloomy or critical</li>
+      <li><span class="badge badge-negative">▼ Very negative</span> <strong>−1 to −0.50</strong> strongly negative wording: &ldquo;crisis&rdquo;, &ldquo;collapse&rdquo;, &ldquo;outage&rdquo;</li>
+    </ul>
+    <p class="muted modal-sub">Scores come from a word-based analyzer that handles negation (&ldquo;not good&rdquo;) and intensifiers (&ldquo;very bad&rdquo;), or from your configured language model if one is enabled. Treat it as a quick signal, not a verdict.</p>
+  </dialog>
 
   <!-- Feeds modal -->
   <dialog id="feeds-modal" class="modal">

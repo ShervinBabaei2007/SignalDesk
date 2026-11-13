@@ -71,7 +71,10 @@ async function loadStats() {
   $("stat-24h").textContent = s.ingested_last_24h;
 
   const avg = s.avg_sentiment;
-  $("stat-sentiment").textContent = avg.toFixed(2);
+  const avgLabel = avg >= 0.5 ? "Very positive" : avg > 0.15 ? "Leaning positive"
+    : avg >= -0.15 ? "Mostly neutral" : avg > -0.5 ? "Leaning negative" : "Very negative";
+  $("stat-sentiment").textContent = avgLabel;
+  $("stat-sentiment-num").textContent = `average score ${describeSentiment(avg).n}`;
   const arrow = $("stat-sentiment-arrow");
   if (avg > 0.15) { arrow.textContent = "▲"; arrow.style.color = "var(--pos)"; }
   else if (avg < -0.15) { arrow.textContent = "▼"; arrow.style.color = "var(--neg)"; }
@@ -134,7 +137,7 @@ async function loadDigest() {
           <div class="digest-group-title" style="color:${color}">${label}</div>
           ${items.map((item) => `
             <a class="digest-item ${cls}" href="/#/article/${item.id}" data-id="${item.id}">
-              <span class="digest-score">${item.sentiment >= 0 ? "+" : ""}${item.sentiment.toFixed(2)}</span>
+              <span class="digest-score" title="${describeSentiment(item.sentiment).n} on a −1 to +1 scale">${describeSentiment(item.sentiment).label}</span>
               ${escapeHtml(item.title.length > 60 ? item.title.slice(0, 60) + "…" : item.title)}
             </a>`).join("")}
         </div>`)
@@ -270,6 +273,24 @@ function showSkeletons(count = 6) {
 
 const SENTIMENT_GLYPH = { positive: "▲", neutral: "●", negative: "▼" };
 
+/* Plain-language reading of a sentiment score (-1 … +1). The score measures
+   the emotional tone of the *wording*, not whether the news itself is good. */
+function describeSentiment(score) {
+  const n = `${score >= 0 ? "+" : "−"}${Math.abs(score).toFixed(2)}`;
+  let label, tone;
+  if (score >= 0.5) { label = "Very positive"; tone = "positive"; }
+  else if (score > 0.15) { label = "Positive"; tone = "positive"; }
+  else if (score >= -0.15) { label = "Neutral"; tone = "neutral"; }
+  else if (score > -0.5) { label = "Negative"; tone = "negative"; }
+  else { label = "Very negative"; tone = "negative"; }
+  return { label, tone, n, glyph: SENTIMENT_GLYPH[tone] };
+}
+
+function sentimentBadge(score) {
+  const d = describeSentiment(score);
+  return `<span class="badge badge-${d.tone}" title="Tone of the writing: ${d.label.toLowerCase()} (${d.n} on a −1 to +1 scale).">${d.glyph} ${d.label}</span>`;
+}
+
 function badge(label) {
   return `<span class="badge badge-${label}">${SENTIMENT_GLYPH[label] || "●"} ${label}</span>`;
 }
@@ -296,8 +317,7 @@ function renderArticles(items) {
           <span class="article-source">${escapeHtml(a.source)}</span>
           ${domain ? `<span class="article-domain" title="The story's real address">${escapeHtml(domain)}</span>` : ""}
           <span>·</span><span>${timeAgo(a.published_at)}</span>
-          ${badge(a.sentiment_label)}
-          <span class="sentiment-score">${a.sentiment >= 0 ? "+" : ""}${a.sentiment.toFixed(2)}</span>
+          ${sentimentBadge(a.sentiment)}
           ${a.importance ? `<span class="impact-tag" title="Model importance score (1–10)">★ ${a.importance.toFixed(0)}/10</span>` : ""}
           ${a.summary_deep ? '<span class="deep-tag" title="Summary generated from the full article page">✨ deep</span>' : ""}
           ${a.cluster_size > 1 ? `<button type="button" class="story-tag" data-cluster="${a.cluster_id}" title="Also reported by: ${escapeHtml(a.cluster_sources.join(", "))}. Click to see all coverage">📰 ${a.cluster_size} reports · ${a.cluster_sources.length} source${a.cluster_sources.length === 1 ? "" : "s"}</button>` : ""}
@@ -445,7 +465,7 @@ async function showArticle(id) {
     <span class="article-topic-emoji">${TOPIC_EMOJI[a.topic] || "📰"}</span>
     <span class="article-source">${escapeHtml(a.source)}</span>
     <span>·</span><span>${timeAgo(a.published_at)}</span>
-    ${badge(a.sentiment_label)}
+    ${sentimentBadge(a.sentiment)}
     ${a.importance ? `<span class="impact-tag" title="Model importance score (1–10)">★ ${a.importance.toFixed(0)}/10</span>` : ""}
     ${a.analysis_source === "llm" ? '<span class="deep-tag" title="Analysis written by the configured language model">🤖 AI analysis</span>' : ""}
     ${a.summary_deep ? '<span class="deep-tag" title="Summary generated from the full article page">✨ deep</span>' : ""}`;
@@ -467,7 +487,15 @@ async function showArticle(id) {
   }
   const readerKeywords = (a.keywords || "").split(",").map((k) => k.trim()).filter(Boolean);
   $("reader-keywords").innerHTML = readerKeywords.map((k) => `<span class="chip">${escapeHtml(k)}</span>`).join("");
-  $("reader-score").textContent = `${a.sentiment >= 0 ? "+" : ""}${a.sentiment.toFixed(2)}`;
+  const sd = describeSentiment(a.sentiment);
+  $("reader-score").textContent = `${sd.label} (${sd.n})`;
+  $("reader-sentiment-note").textContent = {
+    "Very positive": "The wording of this article is strongly upbeat.",
+    "Positive": "The wording of this article leans upbeat.",
+    "Neutral": "The wording of this article is balanced or factual, neither upbeat nor gloomy.",
+    "Negative": "The wording of this article leans gloomy or critical.",
+    "Very negative": "The wording of this article is strongly negative.",
+  }[sd.label] + " This measures tone, not whether the news is good or bad.";
   $("reader-gauge").style.left = `${((a.sentiment + 1) / 2) * 90 + 5}%`;
 
   const link = $("reader-link");
@@ -776,6 +804,10 @@ document.addEventListener("DOMContentLoaded", () => {
   window.addEventListener("hashchange", route);
   route();
 
+  document.addEventListener("click", (e) => {
+    if (e.target.closest("[data-open-sentiment]")) { e.preventDefault(); $("sentiment-modal").showModal(); }
+  });
+  $("sentiment-close").addEventListener("click", () => $("sentiment-modal").close());
   $("feeds-btn").addEventListener("click", () => { loadFeeds(); $("feeds-modal").showModal(); });
   $("feeds-close").addEventListener("click", () => $("feeds-modal").close());
 
