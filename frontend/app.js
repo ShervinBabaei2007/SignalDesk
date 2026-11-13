@@ -245,7 +245,9 @@ function renderArticles(items) {
           </div>
           <div class="card-actions">
             <button class="card-action" data-summary="${a.id}" title="Straight-to-the-point summary">📄 Summary</button>
-            <a class="card-action" href="${escapeHtml(a.url)}" target="_blank" rel="noopener" title="Open the original website" onclick="event.stopPropagation()">↗ Visit</a>
+            ${a.is_seed
+              ? '<span class="card-action demo-tag" title="Demo article — placeholder content, no external page">🌱 Demo</span>'
+              : `<a class="card-action" href="${escapeHtml(a.url)}" target="_blank" rel="noopener" title="Open the original website" onclick="event.stopPropagation()">↗ Visit</a>`}
           </div>
         </div>
       </div>`;
@@ -287,7 +289,15 @@ async function openArticle(id) {
     $("am-score").textContent = `${a.sentiment >= 0 ? "+" : ""}${a.sentiment.toFixed(2)}`;
     // map [-1, 1] onto the track (5% .. 95%)
     $("am-gauge").style.left = `${((a.sentiment + 1) / 2) * 90 + 5}%`;
-    $("am-link").href = a.url;
+    // Demo articles have placeholder URLs — don't offer a broken "read more" link
+    const link = $("am-link");
+    if (a.is_seed) {
+      link.classList.add("hidden");
+      link.removeAttribute("href");
+    } else {
+      link.classList.remove("hidden");
+      link.href = a.url;
+    }
     $("article-modal").showModal();
 
     // On-demand deep summary

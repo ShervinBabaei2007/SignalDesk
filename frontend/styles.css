@@ -187,6 +187,8 @@ body {
   cursor: pointer; text-decoration: none; transition: all 0.15s; white-space: nowrap;
 }
 .card-action:hover { border-color: var(--accent); color: var(--accent); }
+.demo-tag { opacity: 0.75; cursor: default; border-style: dashed; }
+.demo-tag:hover { border-color: var(--border); color: var(--text-dim); }
 .deep-tag { font-size: 10px; font-weight: 700; color: var(--accent); }
 .am-summary-label { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.09em; color: var(--accent); margin-bottom: 6px; }
 #am-generate { margin-bottom: 14px; }

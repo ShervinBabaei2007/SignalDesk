@@ -20,10 +20,10 @@ class ArticleOut(BaseModel):
     sentiment_label: str
     published_at: datetime | None
     ingested_at: datetime
+    is_seed: bool = False  # demo articles have placeholder URLs — no real page to visit
 
 
 class ArticleDetail(ArticleOut):
-    is_seed: bool
     enriched_at: datetime | None = None
 
 
