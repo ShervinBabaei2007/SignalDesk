@@ -25,7 +25,7 @@ from typing import Callable
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from . import config, enrichment, watches
+from . import config, enrichment, observability, watches
 from .database import SessionLocal
 from .ingestion import ingest_all
 from .models import Article, Feed
@@ -77,7 +77,12 @@ def ingest_cycle(db: Session, *, manual: bool,
             select(Feed).where(Feed.is_active, Feed.workspace_id == workspace)).scalars().all()}
         feeds = [{"name": f.name, "url": f.url} for f in feed_rows.values()]
         started = time.perf_counter()
-        results = (ingest or ingest_all)(db, feeds, feed_rows=feed_rows)
+        try:
+            results = (ingest or ingest_all)(db, feeds, feed_rows=feed_rows)
+        except Exception as exc:
+            observability.record_cycle(db, kind="manual" if manual else "scheduled",
+                                       duration_seconds=time.perf_counter() - started, results=[], error=repr(exc))
+            raise
         duration = time.perf_counter() - started
         if manual:
             if workspace:
@@ -97,6 +102,8 @@ def ingest_cycle(db: Session, *, manual: bool,
         logger.exception("[watch] check failed")
         alerts = []
 
+    observability.record_cycle(db, kind="manual" if manual else "scheduled", duration_seconds=duration,
+                               results=results, alerts=len(alerts))
     return CycleResult(results=results, duration_seconds=round(duration, 2), alerts=alerts,
                        enrich_pending=pending, enrich_needed=bool(pending or missing_images))
 

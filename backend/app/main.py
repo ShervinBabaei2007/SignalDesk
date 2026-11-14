@@ -25,7 +25,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from . import config, demo, netguard, notifications, pipeline, reporting, story_index, watches, workspace
+from . import config, demo, netguard, notifications, observability, pipeline, reporting, story_index, watches, workspace
 from . import stories as story_logic
 from .database import SessionLocal, ensure_columns, engine, get_db
 from .enrichment import enrich_article
@@ -304,6 +304,13 @@ def demo_session():
         raise HTTPException(404, "Demo mode is not enabled")
     token = demo.issue(config.API_TOKEN, config.DEMO_TTL_SECONDS) if config.API_TOKEN else ""
     return {"token": token, "expires_in": config.DEMO_TTL_SECONDS, "can": ["ingest"]}
+
+
+@app.get("/api/observability", tags=["System"])
+def pipeline_observability(hours: int = Query(24, ge=1, le=720), db: Session = Depends(scoped_db)):
+    """Pipeline health for the shared data: run success and latency, throughput, failing feeds, extraction rate."""
+    db.info["workspace"] = NO_WORKSPACE  # always the shared pipeline, whoever is asking
+    return observability.summary(db, hours)
 
 
 @app.get("/api/stats", response_model=Stats, tags=["System"])
@@ -592,6 +599,8 @@ def cron_ingest(request: Request):
         purged = workspace.purge_expired(db)
     if purged:
         logger.info("[workspace] purged %s expired rows", purged)
+    with SessionLocal() as db:
+        observability.purge_old(db)
     return {"ran": cycle is not None, "added": sum(r["added"] for r in cycle.results) if cycle else 0}
 
 

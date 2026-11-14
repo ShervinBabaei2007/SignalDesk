@@ -82,6 +82,7 @@ def enrich_article(db: Session, article: Article) -> bool:
     fetched = None
     if not article.is_seed:
         fetched, image = fetch_page(article.url, guarded=bool(article.workspace_id))
+        article.extraction = "page" if fetched else "fallback"  # observability: did the page itself yield text?
         if image:
             article.image_url = image  # the page's own lead image beats the feed's thumbnail
 

@@ -137,6 +137,7 @@ def ensure_columns():
             "content_type": "VARCHAR(40)",
             "analysis_model": "VARCHAR(100)",
             "analysis_source": "VARCHAR(20)",
+            "extraction": "VARCHAR(12)",
         },
         "feeds": {"last_fetched_at": "TIMESTAMP WITH TIME ZONE", "last_status": "VARCHAR(300)"},
     }

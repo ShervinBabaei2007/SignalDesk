@@ -46,6 +46,7 @@ class Article(Base):
     ingested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     enriched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     is_seed: Mapped[bool] = mapped_column(Boolean, default=False)
+    extraction: Mapped[str | None] = mapped_column(String(12), nullable=True)  # page | fallback (see enrichment)
     workspace_id: Mapped[str] = mapped_column(String(40), default=NO_WORKSPACE, server_default=NO_WORKSPACE,
                                               nullable=False, index=True)
 
@@ -118,6 +119,39 @@ class WatchAlert(Base):
     story_key: Mapped[str] = mapped_column(String(32), nullable=False)
     notified: Mapped[bool] = mapped_column(Boolean, default=False)  # delivered to Slack/email
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class PipelineRun(Base):
+    """One ingest cycle of the shared data: how long it took and what it found (see :mod:`app.observability`)."""
+    __tablename__ = "pipeline_runs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[str] = mapped_column(String(12), nullable=False)  # manual | scheduled
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    duration_ms: Mapped[int] = mapped_column(Integer, default=0)
+    ok: Mapped[bool] = mapped_column(Boolean, default=True)  # false when the cycle itself crashed
+    error: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    feeds_ok: Mapped[int] = mapped_column(Integer, default=0)
+    feeds_failed: Mapped[int] = mapped_column(Integer, default=0)
+    fetched: Mapped[int] = mapped_column(Integer, default=0)
+    added: Mapped[int] = mapped_column(Integer, default=0)
+    skipped: Mapped[int] = mapped_column(Integer, default=0)
+    alerts: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class FeedRun(Base):
+    """How one feed behaved in one cycle: whether it answered, how fast, and what it yielded."""
+    __tablename__ = "feed_runs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    run_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    feed: Mapped[str] = mapped_column(String(200), index=True, nullable=False)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    ok: Mapped[bool] = mapped_column(Boolean, default=True)
+    error: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    latency_ms: Mapped[int] = mapped_column(Integer, default=0)
+    fetched: Mapped[int] = mapped_column(Integer, default=0)
+    added: Mapped[int] = mapped_column(Integer, default=0)
 
 
 # --------------------------------------------------------------------------- #

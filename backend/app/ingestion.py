@@ -3,6 +3,7 @@
 import calendar
 import logging
 import re
+import time
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from html import unescape
@@ -158,6 +159,7 @@ def ingest_feed(
             db.commit()
 
     workspace = db.info.get("workspace", NO_WORKSPACE)
+    started = time.perf_counter()
     try:
         if workspace:  # a visitor's URL: fetch it ourselves so only public addresses are ever requested
             parsed = feedparser.parse(netguard.fetch(feed_url, max_bytes=2_000_000).content)
@@ -169,8 +171,16 @@ def ingest_feed(
         _finish(f"error: {exc}")
         return stats
 
+    stats["latency_ms"] = round((time.perf_counter() - started) * 1000)
     entries = (parsed.entries or [])[:max_entries]
     stats["fetched"] = len(entries)
+    status = getattr(parsed, "status", None)
+    if not entries and (getattr(parsed, "bozo", False) or (isinstance(status, int) and status >= 400)):
+        # feedparser does not raise on a dead or broken feed, so surface it as a failure
+        reason = f"HTTP {status}" if isinstance(status, int) and status >= 400 else str(getattr(parsed, "bozo_exception", "unreadable feed"))
+        stats["error"] = reason[:300]
+        _finish(f"error: {reason}")
+        return stats
     room = None  # how many more articles this workspace may store
     if workspace:
         owned = db.scalar(select(func.count()).select_from(Article).where(Article.workspace_id == workspace)) or 0
