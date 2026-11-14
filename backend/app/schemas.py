@@ -54,6 +54,42 @@ class ArticleDetail(ArticleOut):
     analysis_model: str | None = None
 
 
+class ReportBrief(BaseModel):
+    """A report shown under its story's lead, best-informed first."""
+    id: int
+    title: str
+    source: str
+    url: str
+    published_at: datetime | None
+    sentiment: float
+    info_score: float | None = None
+    summary: str | None = None
+    image_url: str | None = None
+
+
+class Story(BaseModel):
+    """One event: the best-informed report plus the other outlets' reports."""
+    model_config = ConfigDict(from_attributes=True)
+
+    key: str  # "c<cluster id>" or "a<article id>" for a story with a single report
+    cluster_id: int | None
+    lead: ArticleOut
+    others: list[ReportBrief]
+    report_count: int
+    outlets: int
+    sources: list[str]
+    best_score: float | None
+    watch_matches: list[str] = []  # watchlist terms this story matches
+
+
+class StoryPage(BaseModel):
+    total: int  # stories
+    article_total: int  # individual reports behind them
+    items: list[Story]
+    offset: int
+    limit: int
+
+
 class ArticlePage(BaseModel):
     total: int
     items: list[ArticleOut]

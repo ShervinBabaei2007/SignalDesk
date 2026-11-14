@@ -26,11 +26,11 @@ from sqlalchemy.orm import Session
 
 from . import config, notifications
 from .database import SessionLocal, ensure_columns, engine, get_db
-from . import clustering
+from . import clustering, stories as story_logic
 from .enrichment import enrich_article, enrich_pending_articles
 from .ingestion import add_missing_default_feeds, ingest_all
 from .models import Article, Base, Feed
-from .schemas import (ArticleDetail, ArticlePage, Digest, DigestItem,
+from .schemas import (ArticleDetail, ArticlePage, StoryPage, Digest, DigestItem,
                       FeedCreate, FeedOut, FeedIngestResult, IngestResult,
                       Stats, TrendingStory)
 from .quality import backfill_info_scores
@@ -294,6 +294,18 @@ def trending_stories(limit: int = Query(clustering.HOT_STORIES, ge=1, le=20), db
     return clustering.trending(db, limit)
 
 
+def _filtered(db: Session, search, source, topic, sentiment, cluster, hot, ids, order):
+    """Validate the shared feed parameters and return (filtered select, order)."""
+    sentiment = story_logic.clean(sentiment)
+    order = story_logic.validate(sentiment, order)
+    q = story_logic.apply_filters(
+        db, select(Article),
+        search=story_logic.clean(search), source=story_logic.clean(source), topic=story_logic.clean(topic),
+        sentiment=sentiment, cluster=cluster, hot=hot, ids=story_logic.parse_ids(ids),
+    )
+    return q, order
+
+
 @app.get("/api/articles", response_model=ArticlePage, tags=["Articles"])
 def list_articles(
     search: str | None = Query(None, max_length=200),
@@ -302,57 +314,41 @@ def list_articles(
     sentiment: str | None = Query(None),
     cluster: int | None = Query(None, ge=1),
     hot: bool = Query(False),
+    ids: str | None = Query(None, max_length=1500),
     order: str = Query("newest"),
     limit: int = Query(25, ge=1, le=100),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
 ):
-    # Tolerate empty query strings (?sentiment=) from clients
-    sentiment = (sentiment or "").strip() or None
-    source = (source or "").strip() or None
-    topic = (topic or "").strip() or None
-    search = (search or "").strip() or None
-    order = (order or "newest").strip().lower()
-    if sentiment and sentiment not in ("positive", "neutral", "negative"):
-        raise HTTPException(422, "sentiment must be positive, neutral, or negative")
-    if order not in ("newest", "oldest", "sentiment_high", "sentiment_low"):
-        raise HTTPException(422, "order must be newest, oldest, sentiment_high, or sentiment_low")
-    q = select(Article)
-    if search:
-        like = f"%{search}%"
-        q = q.where(Article.title.ilike(like) | Article.summary.ilike(like))
-    if source:
-        q = q.where(Article.source == source)
-    if topic:
-        q = q.where(Article.topic == topic)
-
-    if hot:
-        q = q.where(Article.id.in_(clustering.hot_article_ids(db) or [0]))
-
-    if cluster is not None:
-        _, by_id = clustering.get_clusters(db)
-        story = by_id.get(cluster)
-        q = q.where(Article.id.in_(story.article_ids if story else [0]))
-
-    total = db.scalar(select(func.count()).select_from(q.subquery())) or 0
-
-    if sentiment == "positive":
-        q = q.where(Article.sentiment > 0.15)
-    elif sentiment == "negative":
-        q = q.where(Article.sentiment < -0.15)
-    elif sentiment == "neutral":
-        q = q.where(Article.sentiment >= -0.15, Article.sentiment <= 0.15)
-
-    orderings = {
-        "newest": (Article.published_at.desc().nullslast(), Article.id.desc()),
-        "oldest": (Article.published_at.asc().nullslast(), Article.id.asc()),
-        "sentiment_high": (Article.sentiment.desc(), Article.id.desc()),
-        "sentiment_low": (Article.sentiment.asc(), Article.id.desc()),
-    }
-    q = q.order_by(*orderings[order])
+    """Flat list: every report on its own row."""
+    q, order = _filtered(db, search, source, topic, sentiment, cluster, hot, ids, order)
+    total = story_logic.count_matching(db, q)
+    q = q.order_by(*story_logic.ordering(order))
     items = db.execute(q.offset(offset).limit(limit)).scalars().all()
     clustering.annotate(db, items)
     return ArticlePage(total=total, items=items, offset=offset, limit=limit)
+
+
+@app.get("/api/stories", response_model=StoryPage, tags=["Articles"])
+def list_stories(
+    search: str | None = Query(None, max_length=200),
+    source: str | None = Query(None, max_length=200),
+    topic: str | None = Query(None, max_length=50),
+    sentiment: str | None = Query(None),
+    cluster: int | None = Query(None, ge=1),
+    hot: bool = Query(False),
+    ids: str | None = Query(None, max_length=1500),
+    order: str = Query("newest"),
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+):
+    """Grouped list: one card per event, the best-informed report leading it."""
+    q, order = _filtered(db, search, source, topic, sentiment, cluster, hot, ids, order)
+    ordered = db.execute(q.with_only_columns(Article.id).order_by(*story_logic.ordering(order))).scalars().all()
+    page = story_logic.build_page(db, list(ordered), offset, limit)
+    return StoryPage(total=page["total"], article_total=page["article_total"],
+                     items=page["stories"], offset=offset, limit=limit)
 
 
 @app.get("/api/articles/export.csv", tags=["Articles"])
