@@ -1,6 +1,6 @@
 // Tests for the API client's requests and error handling.
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ApiError, EMPTY_FILTERS, HOT_STORIES, api } from '@/lib/api'
+import { ApiError, EMPTY_FILTERS, HOT_STORIES, api, getToken, startDemo } from '@/lib/api'
 
 /** Replace fetch with a stub returning the given status and body. */
 function stubFetch(status: number, body: unknown) {
@@ -49,5 +49,25 @@ describe('api over a fake fetch', () => {
   it('reads a 204 as null', async () => {
     stubFetch(204, null)
     await expect(api.deleteWatch(1)).resolves.toBeNull()
+  })
+})
+
+describe('startDemo', () => {
+  it('stores the demo token handed out by the server', async () => {
+    const store: Record<string, string> = {}
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => store[k] ?? null,
+      setItem: (k: string, v: string) => void (store[k] = v),
+      removeItem: (k: string) => void delete store[k],
+    })
+    stubFetch(200, { token: 'demo.1.abc' })
+    expect(await startDemo()).toBe(true)
+    expect(getToken()).toBe('demo.1.abc')
+  })
+
+  it('reports false when demo mode is off on the server', async () => {
+    vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} })
+    stubFetch(404, { detail: 'Demo mode is not enabled' })
+    expect(await startDemo()).toBe(false)
   })
 })

@@ -25,7 +25,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from . import config, notifications, pipeline, reporting, story_index, watches
+from . import config, demo, notifications, pipeline, reporting, story_index, watches
 from . import stories as story_logic
 from .database import SessionLocal, ensure_columns, engine, get_db
 from .enrichment import enrich_article
@@ -156,6 +156,23 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
     return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
 
+def _supplied_token(request: Request) -> str:
+    """The token a request sent in X-API-Key or as a Bearer token, or an empty string."""
+    supplied = request.headers.get("x-api-key", "")
+    if not supplied:
+        auth = request.headers.get("authorization", "")
+        if auth.lower().startswith("bearer "):
+            supplied = auth[7:].strip()
+    return supplied
+
+
+def require_ingest_access(request: Request) -> None:
+    """Let a valid demo token (when demo mode is on) or the real API token run an ingest."""
+    if config.API_TOKEN and config.DEMO_MODE and demo.is_valid(_supplied_token(request), config.API_TOKEN):
+        return
+    require_api_token(request)
+
+
 def require_api_token(request: Request) -> None:
     """Protect state-changing endpoints when API_TOKEN is configured.
 
@@ -164,11 +181,7 @@ def require_api_token(request: Request) -> None:
     """
     if not config.API_TOKEN:
         return
-    supplied = request.headers.get("x-api-key", "")
-    if not supplied:
-        auth = request.headers.get("authorization", "")
-        if auth.lower().startswith("bearer "):
-            supplied = auth[7:].strip()
+    supplied = _supplied_token(request)
     if not supplied or not hmac.compare_digest(supplied, config.API_TOKEN):
         raise HTTPException(
             401, "A valid API token is required",
@@ -227,7 +240,16 @@ def health(db: Session = Depends(get_db)):
 @app.get("/api/auth/status", tags=["System"])
 def auth_status():
     """Tell the dashboard whether mutating requests need an API token."""
-    return {"required": bool(config.API_TOKEN)}
+    return {"required": bool(config.API_TOKEN), "demo": config.DEMO_MODE}
+
+
+@app.post("/api/demo/session", tags=["System"])
+def demo_session():
+    """Start a demo: hand out a short-lived token that can run ingests but nothing else."""
+    if not config.DEMO_MODE:
+        raise HTTPException(404, "Demo mode is not enabled")
+    token = demo.issue(config.API_TOKEN, config.DEMO_TTL_SECONDS) if config.API_TOKEN else ""
+    return {"token": token, "expires_in": config.DEMO_TTL_SECONDS, "can": ["ingest"]}
 
 
 @app.get("/api/stats", response_model=Stats, tags=["System"])
@@ -508,7 +530,7 @@ def cron_ingest(request: Request):
 
 
 @app.post("/api/ingest", response_model=IngestResult, tags=["Ingestion"],
-          dependencies=[Depends(require_api_token)])
+          dependencies=[Depends(require_ingest_access)])
 def ingest(db: Session = Depends(get_db), background_tasks: BackgroundTasks = None):
     """Fetch every active RSS feed, dedupe by URL, analyze, and store new articles.
 

@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import select  # noqa: E402
 
+from app import pipeline  # noqa: E402
 from app.database import Base, SessionLocal, engine  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import Article  # noqa: E402
@@ -186,3 +187,37 @@ def test_postgres_urls_use_the_psycopg_driver():
     assert _normalize_url("postgres://u:p@h/db") == "postgresql+psycopg://u:p@h/db"
     assert _normalize_url("postgresql://u:p@h/db") == "postgresql+psycopg://u:p@h/db"
     assert _normalize_url("sqlite:///x.db") == "sqlite:///x.db"
+
+
+def test_demo_session_is_off_by_default(monkeypatch):
+    """Without DEMO_MODE the demo session endpoint does not exist."""
+    monkeypatch.setattr("app.main.config.DEMO_MODE", False)
+    assert client.post("/api/demo/session").status_code == 404
+
+
+def test_demo_token_can_ingest_but_not_edit_feeds(monkeypatch):
+    """A demo token runs an ingest, while every other write still needs the real API token."""
+    monkeypatch.setattr("app.main.config.DEMO_MODE", True)
+    monkeypatch.setattr("app.main.config.API_TOKEN", "real-token")
+    token = client.post("/api/demo/session").json()["token"]
+    assert token and token != "real-token"
+    headers = {"X-API-Key": token}
+    assert client.post("/api/feeds", headers=headers, json={"name": "x", "url": "https://x.test/rss"}).status_code == 401
+    assert client.post("/api/ingest", headers={"X-API-Key": "wrong"}).status_code == 401
+
+    def busy(db, manual):
+        raise pipeline.Busy("busy")
+
+    monkeypatch.setattr("app.main.pipeline.ingest_cycle", busy)
+    assert client.post("/api/ingest", headers=headers).status_code == 429  # got past auth into the pipeline
+
+
+def test_demo_tokens_expire_and_reject_tampering():
+    """Expired, forged or differently-keyed demo tokens are invalid."""
+    from app import demo
+    token = demo.issue("secret", 60, now=1000)
+    assert demo.is_valid(token, "secret", now=1030)
+    assert not demo.is_valid(token, "secret", now=1061)
+    assert not demo.is_valid(token, "other", now=1030)
+    assert not demo.is_valid(token.replace("demo.1060", "demo.9999999999"), "secret", now=1030)
+    assert not demo.is_valid("real-token", "secret", now=1030)

@@ -7,6 +7,7 @@ for _name, _value in {
     "APP_ENV": "development",
     "API_TOKEN": "",
     "CRON_SECRET": "",
+    "DEMO_MODE": "false",
     "SCHEDULER_DISABLED": "false",
     "CORS_ORIGINS": "*",
 }.items():

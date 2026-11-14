@@ -278,6 +278,20 @@ export function setToken(token: string) {
   }
 }
 
+/** Start a demo session: the server hands out a short-lived token that can run ingests (an existing token is kept). */
+export async function startDemo(): Promise<boolean> {
+  if (getToken()) return true
+  try {
+    const res = await fetch('/api/demo/session', { method: 'POST' })
+    if (!res.ok) return false
+    const { token } = (await res.json()) as { token: string }
+    if (token) setToken(token)
+    return true
+  } catch {
+    return false
+  }
+}
+
 /** Call the API and return parsed JSON, turning failures into ApiError. */
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = getToken()

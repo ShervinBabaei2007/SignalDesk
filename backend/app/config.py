@@ -103,3 +103,7 @@ API_TOKEN = os.getenv("API_TOKEN", "").strip()
 
 # Shared secret that Vercel Cron sends as a Bearer token to /api/cron/ingest.
 CRON_SECRET = os.getenv("CRON_SECRET", "").strip()
+
+# Demo mode: visitors can request a short-lived token that only allows running an ingest.
+DEMO_MODE = _bool("DEMO_MODE")
+DEMO_TTL_SECONDS = _int("DEMO_TTL_SECONDS", 2 * 60 * 60)

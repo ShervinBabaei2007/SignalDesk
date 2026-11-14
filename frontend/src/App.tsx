@@ -4,6 +4,7 @@ import { ArticleFeed } from '@/components/app/ArticleFeed'
 import { DailyBrief } from '@/components/app/DailyBrief'
 import { Filters } from '@/components/app/Filters'
 import { Header } from '@/components/app/Header'
+import { Landing } from '@/components/app/Landing'
 import { Reader } from '@/components/app/Reader'
 import { StoryPage } from '@/components/app/StoryPage'
 import { Sidebar } from '@/components/app/Sidebar'
@@ -45,6 +46,7 @@ function RouteView({ route }: { route: Route }) {
 /** App shell with header, motion settings and the active route. */
 export default function App() {
   const route = useRoute()
+  if (route.name === 'landing') return <Landing />
   return (
     // Respect the OS "reduce motion" setting for every animation below.
     <MotionConfig reducedMotion="user">
@@ -65,7 +67,7 @@ export default function App() {
         </main>
         <footer className="border-t py-5 text-center text-xs text-muted-foreground">
           <strong className="text-foreground">SignalDesk</strong> · FastAPI + React · sentiment, topics &amp; summaries
-          computed on ingest
+          computed on ingest · <a href="#/welcome" className="underline-offset-2 hover:underline">About</a>
         </footer>
       </div>
     </MotionConfig>
