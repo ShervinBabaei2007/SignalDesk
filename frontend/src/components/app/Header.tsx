@@ -18,7 +18,8 @@ import { api, ApiError, isDemoToken } from '@/lib/api'
 export function Header() {
   const { health, ingesting, runIngest, clearFilters } = useDashboard()
   const { token, saveToken } = useSettings()
-  const inDemo = isDemoToken(token)
+  // A visitor with no token (read-only deployment, or demo tokens off) is still a demo visitor; only a real API token isn't.
+  const inDemo = !token || isDemoToken(token)
   const [feedsOpen, setFeedsOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
