@@ -130,6 +130,23 @@ def cluster_rows(rows: list[tuple[int, str, str, datetime | None]]) -> list[Clus
     return clusters
 
 
+def story_key(cluster: "Cluster | None", article_id: int) -> str:
+    """Stable key of a story: 'c<cluster id>' for a clustered story, 'a<article id>' for a lone report."""
+    return f"c{cluster.id}" if cluster else f"a{article_id}"
+
+
+def parse_story_key(key: str) -> tuple[str, int]:
+    """Inverse of :func:`story_key`: ('c' | 'a', id)."""
+    return key[0], int(key[1:])
+
+
+def _window(now: datetime) -> tuple:
+    """WHERE conditions for the recent, non-seed reports that stories are built from."""
+    cutoff = now - timedelta(days=WINDOW_DAYS)
+    return (Article.is_seed.is_(False),
+            (Article.published_at >= cutoff) | Article.published_at.is_(None))
+
+
 _cache: dict = {"key": None, "by_article": {}, "by_id": {}}
 _cache_lock = threading.Lock()
 
@@ -144,11 +161,9 @@ def get_clusters(db: Session) -> tuple[dict[int, Cluster], dict[int, Cluster]]:
     with _cache_lock:
         if _cache["key"] == key:
             return _cache["by_article"], _cache["by_id"]
-        cutoff = now - timedelta(days=WINDOW_DAYS)
         rows = db.execute(
             select(Article.id, Article.title, Article.source, Article.published_at)
-            .where(Article.is_seed.is_(False),
-                   (Article.published_at >= cutoff) | Article.published_at.is_(None))
+            .where(*_window(now))
             .order_by(Article.id.desc())
             .limit(MAX_ARTICLES)
         ).all()
@@ -159,6 +174,19 @@ def get_clusters(db: Session) -> tuple[dict[int, Cluster], dict[int, Cluster]]:
         by_id = {c.id: c for c in clusters}
         _cache.update(key=key, by_article=by_article, by_id=by_id)
         return by_article, by_id
+
+
+def recent_stories(db: Session) -> list[tuple[str, list[Article]]]:
+    """[(story key, member articles)] for the recent window, in the same window get_clusters uses."""
+    rows = db.execute(
+        select(Article).where(*_window(datetime.now(timezone.utc)))
+        .order_by(Article.id.desc()).limit(MAX_ARTICLES)
+    ).scalars().all()
+    by_article, _ = get_clusters(db)
+    groups: dict[str, list[Article]] = {}
+    for a in rows:
+        groups.setdefault(story_key(by_article.get(a.id), a.id), []).append(a)
+    return list(groups.items())
 
 
 def annotate(db: Session, articles) -> None:

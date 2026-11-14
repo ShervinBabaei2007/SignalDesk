@@ -152,3 +152,49 @@ def test_watch_writes_require_a_token_when_configured(monkeypatch):
     assert ok.status_code == 201
     assert client.get("/api/watches").status_code == 200  # reading stays public
     assert client.delete(f"/api/watches/{ok.json()['id']}").status_code == 401
+
+
+def test_delivery_seam_marks_only_the_alerts_it_delivered():
+    delivered = []
+
+    def recording(alerts):
+        delivered.append(alerts)
+        return True
+
+    with SessionLocal() as db:
+        reset_watches(db)
+        add_story(db, [("Caldera collapses near island resort, tourists evacuated by ferry", "Alpha"),
+                       ("Tourists evacuated by ferry as caldera collapses near island resort", "Beta")])
+        # Watch B existed already and baselined this story: its alert row is unnotified and must stay so.
+        client.post("/api/watches", json={"term": "caldera", "min_outlets": 2})
+        before = db.query(WatchAlert).count()
+        assert before == 1
+        # Watch A is created directly (no baseline), so the story is new to it.
+        a = Watch(term="island resort", min_outlets=2, is_active=True)
+        db.add(a)
+        db.commit()
+        alerts = watches.check_watches(db, notify=recording)
+        assert [x["term"] for x in alerts] == ["island resort"] and len(delivered) == 1
+        rows = {r.watch_id: r.notified for r in db.query(WatchAlert).all()}
+        assert rows[a.id] is True
+        assert [v for k, v in rows.items() if k != a.id] == [False]
+
+
+def test_failed_delivery_leaves_alerts_unnotified():
+    with SessionLocal() as db:
+        reset_watches(db)
+        client.post("/api/watches", json={"term": "typhoon", "min_outlets": 1})
+        add_story(db, [("Typhoon forces airport closures across the southern archipelago", "Alpha")])
+        assert len(watches.check_watches(db, notify=lambda alerts: False)) == 1
+        assert db.query(WatchAlert).filter_by(notified=True).count() == 0
+
+
+def test_story_matches_is_the_single_rule_for_counts_and_alerts():
+    with SessionLocal() as db:
+        reset_watches(db)
+        add_story(db, [("Heatwave grips central plains as records fall for third day", "Alpha")])
+        watch = Watch(term="heatwave", min_outlets=2, is_active=True)
+        members = [m for k, ms in watches.recent_stories(db) for m in ms if "heatwave" in m.title.lower()]
+        assert not watches.story_matches(watch, members)  # one outlet is not enough
+        watch.min_outlets = 1
+        assert watches.story_matches(watch, members)

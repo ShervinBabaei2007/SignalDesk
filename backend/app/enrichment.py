@@ -128,6 +128,11 @@ def enrich_article(db: Session, article: Article) -> bool:
     return True
 
 
+def pending_clauses() -> tuple:
+    """WHERE conditions for "waiting for a deep summary": not yet enriched, and not a demo seed."""
+    return (Article.enriched_at.is_(None), Article.is_seed.is_(False))
+
+
 def enrich_pending_articles(db: Session, limit: int | None = None) -> dict:
     """Enrich up to `limit` articles that don't have a deep summary yet."""
     from . import config as _config
@@ -136,7 +141,7 @@ def enrich_pending_articles(db: Session, limit: int | None = None) -> dict:
     with _lock:
         pending = db.execute(
             select(Article)
-            .where(Article.enriched_at.is_(None), Article.is_seed.is_(False))
+            .where(*pending_clauses())
             .order_by(Article.published_at.desc().nullslast())
             .limit(limit)
         ).scalars().all()
@@ -160,7 +165,6 @@ def enrich_pending_articles(db: Session, limit: int | None = None) -> dict:
             db.commit()
 
         remaining = db.scalar(
-            select(func.count()).select_from(Article).where(
-                Article.enriched_at.is_(None), Article.is_seed.is_(False))
+            select(func.count()).select_from(Article).where(*pending_clauses())
         ) or 0
         return {"enriched": enriched, "remaining": remaining}

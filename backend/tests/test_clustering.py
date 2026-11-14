@@ -148,3 +148,11 @@ def test_hot_filter_matches_the_union_of_hot_stories():
     hot = client.get("/api/articles?hot=1&limit=100").json()
     assert {a["id"] for a in hot["items"]} == expected
     assert hot["total"] == sum(s["reports"] for s in stories)
+
+
+def test_story_key_round_trips_and_distinguishes_clusters_from_lone_reports():
+    cluster = clustering.Cluster(id=7, article_ids=(7, 9), sources=("A", "B"))
+    assert clustering.story_key(cluster, 9) == "c7"
+    assert clustering.story_key(None, 9) == "a9"
+    assert clustering.parse_story_key("c7") == ("c", 7)
+    assert clustering.parse_story_key("a9") == ("a", 9)

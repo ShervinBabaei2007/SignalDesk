@@ -278,7 +278,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return (res.status === 204 ? null : await res.json()) as T
 }
 
-function feedParams(filters: Filters, offset: number, limit: number, ids?: string): URLSearchParams {
+export function feedParams(filters: Filters, offset: number, limit: number, ids?: string): URLSearchParams {
   const params = new URLSearchParams({ limit: String(limit), offset: String(offset), order: filters.order })
   for (const [key, value] of Object.entries(filters)) {
     if (key !== 'order' && key !== 'saved' && value.trim()) params.set(key, value.trim())

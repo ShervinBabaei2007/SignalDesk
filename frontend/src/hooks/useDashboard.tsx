@@ -1,13 +1,15 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
 import { useLibrary } from '@/hooks/useLibrary'
+import { useFeedQuery } from '@/hooks/useFeedQuery'
 import { useSettings } from '@/hooks/useSettings'
 import {
-  api, ApiError, EMPTY_FILTERS,
+  api, ApiError,
   type Article, type Digest, type Story, type Feed, type Filters, type Health, type Stats, type TrendingStory,
 } from '@/lib/api'
+import { HOT_STORIES } from '@/lib/feedQuery'
 
-export const PAGE_SIZE = 20
+export { PAGE_SIZE } from '@/lib/feedQuery'
 
 interface DashboardValue {
   filters: Filters
@@ -45,26 +47,10 @@ interface DashboardValue {
 
 const Ctx = createContext<DashboardValue | null>(null)
 
-interface Query {
-  filters: Filters
-  page: number
-  grouped: boolean
-  /** Comma-separated saved ids when the Saved category is selected ('0' = none). */
-  ids?: string
-}
-
 export function DashboardProvider({ children }: { children: ReactNode }) {
   const { grouped } = useSettings()
   const { saved } = useLibrary()
-  const savedKey = saved.join(',') || '0'
-  const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS)
-  const [page, setPageState] = useState(1)
-  const [applied, setApplied] = useState<Query>({ filters: EMPTY_FILTERS, page: 1, grouped })
-  const [articles, setArticles] = useState<Article[]>([])
-  const [stories, setStories] = useState<Story[]>([])
-  const [total, setTotal] = useState(0)
-  const [articleTotal, setArticleTotal] = useState(0)
-  const [loading, setLoading] = useState(true)
+  const feed = useFeedQuery(grouped, saved)
   const [stats, setStats] = useState<Stats | null>(null)
   const [digest, setDigest] = useState<Digest | null>(null)
   const [trending, setTrending] = useState<TrendingStory[]>([])
@@ -72,38 +58,10 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   const [feeds, setFeeds] = useState<Feed[]>([])
   const [ingesting, setIngesting] = useState(false)
   const [ingestResult, setIngestResult] = useState('')
-  const requestId = useRef(0)
-
-  const loadArticles = useCallback(async (q: Query) => {
-    const id = ++requestId.current
-    setLoading(true)
-    try {
-      const offset = (q.page - 1) * PAGE_SIZE
-      if (q.grouped) {
-        const res = await api.stories(q.filters, offset, PAGE_SIZE, q.ids)
-        if (id !== requestId.current) return // a newer request superseded this one
-        setStories(res.items)
-        setArticles([])
-        setTotal(res.total)
-        setArticleTotal(res.article_total)
-      } else {
-        const res = await api.articles(q.filters, offset, PAGE_SIZE, q.ids)
-        if (id !== requestId.current) return
-        setArticles(res.items)
-        setStories([])
-        setTotal(res.total)
-        setArticleTotal(res.total)
-      }
-    } catch (err) {
-      toast.error(`Failed to load articles: ${(err as Error).message}`)
-    } finally {
-      if (id === requestId.current) setLoading(false)
-    }
-  }, [])
 
   const loadSide = useCallback(async () => {
     const [s, d, t, h, fs] = await Promise.allSettled([
-      api.stats(), api.digest(), api.trending(8), api.health(), api.feeds(),
+      api.stats(), api.digest(), api.trending(HOT_STORIES), api.health(), api.feeds(),
     ])
     if (s.status === 'fulfilled') setStats(s.value)
     if (d.status === 'fulfilled') setDigest(d.value)
@@ -112,38 +70,14 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     if (fs.status === 'fulfilled') setFeeds(fs.value)
   }, [])
 
-  // Typing in search is debounced; filter changes and page clicks apply immediately.
-  useEffect(() => {
-    const searchChanged = filters.search !== applied.filters.search
-    const t = setTimeout(() => setApplied({ filters, page, grouped, ids: filters.saved ? savedKey : undefined }), searchChanged ? 250 : 0)
-    return () => clearTimeout(t)
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- `applied` is only read to detect a search change
-  }, [filters, page, grouped, savedKey])
-
-  useEffect(() => {
-    void loadArticles(applied)
-  }, [applied, loadArticles])
-
   useEffect(() => {
     void loadSide()
   }, [loadSide])
 
-  const setFilter = useCallback((patch: Partial<Filters>) => {
-    setFilters((f) => ({ ...f, ...patch }))
-    setPageState(1)
-  }, [])
-  const clearFilters = useCallback(() => {
-    setFilters((f) => ({ ...EMPTY_FILTERS, order: f.order }))
-    setPageState(1)
-  }, [])
-  const openStory = useCallback((clusterId: number) => {
-    setFilters((f) => ({ ...EMPTY_FILTERS, order: f.order, cluster: String(clusterId) }))
-    setPageState(1)
-  }, [])
-
+  const { reload } = feed
   const refreshAll = useCallback(async () => {
-    await Promise.all([loadArticles(applied), loadSide()])
-  }, [applied, loadArticles, loadSide])
+    await Promise.all([reload(), loadSide()])
+  }, [reload, loadSide])
 
   const refreshFeeds = useCallback(async () => {
     setFeeds(await api.feeds())
@@ -181,14 +115,14 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     }
   }, [refreshAll])
 
-  const hasActiveFilters = !!(filters.search || filters.source || filters.topic || filters.sentiment || filters.cluster || filters.hot || filters.saved)
   const sources = useMemo(() => feeds.map((f) => f.name).sort(), [feeds])
-  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE))
   const hotCount = trending.reduce((n, t) => n + t.reports, 0)
 
   const value: DashboardValue = {
-    filters, setFilter, clearFilters, openStory, hasActiveFilters, hotCount, stories, articles, grouped, total, articleTotal, page, pageCount,
-    setPage: setPageState, loading, stats, digest, trending, health, sources, feeds, refreshFeeds, refreshAll,
+    filters: feed.filters, setFilter: feed.setFilter, clearFilters: feed.clearFilters, openStory: feed.openStory,
+    hasActiveFilters: feed.hasActiveFilters, hotCount, stories: feed.stories, articles: feed.articles, grouped,
+    total: feed.total, articleTotal: feed.articleTotal, page: feed.page, pageCount: feed.pageCount,
+    setPage: feed.setPage, loading: feed.loading, stats, digest, trending, health, sources, feeds, refreshFeeds, refreshAll,
     ingesting, ingestResult, runIngest,
   }
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>

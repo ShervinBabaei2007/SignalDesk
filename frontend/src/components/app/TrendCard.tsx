@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { SentimentInfo, toneBg, toneText } from '@/components/app/Sentiment'
 import type { Stats } from '@/lib/api'
 import { monotonePath } from '@/lib/chart'
-import { describeSentiment, formatScore } from '@/lib/sentiment'
+import { NEGATIVE_BELOW, POSITIVE_ABOVE, describeSentiment, formatScore } from '@/lib/sentiment'
 import { cn } from '@/lib/utils'
 
 type Point = Stats['sentiment_7d'][number]
@@ -43,7 +43,7 @@ export function TrendCard({ points, className }: { points: Point[]; className?: 
       coords.length > 1
         ? `${line} L${coords[coords.length - 1][0].toFixed(1)},${base} L${coords[0][0].toFixed(1)},${base} Z`
         : ''
-    return { coords, line, area, zero: y(0), posEdge: y(0.15), negEdge: y(-0.15), top: PAD.t, base }
+    return { coords, line, area, zero: y(0), posEdge: y(POSITIVE_ABOVE), negEdge: y(NEGATIVE_BELOW), top: PAD.t, base }
   }, [points])
 
   if (points.length < 2) {

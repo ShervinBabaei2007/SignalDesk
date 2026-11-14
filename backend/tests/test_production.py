@@ -33,11 +33,11 @@ def test_feed_rejects_non_http_scheme():
 
 def test_ingest_cooldown_returns_429(monkeypatch):
     """A second ingest inside the cooldown window is refused with a friendly message."""
-    from app import main
+    from app import pipeline
 
     # Hermetic: never touch the network from a unit test.
-    monkeypatch.setattr(main, "ingest_all", lambda *a, **k: [])
-    monkeypatch.setattr(main, "_enrich_background", lambda: None)
+    monkeypatch.setattr(pipeline, "ingest_all", lambda *a, **k: [])
+    monkeypatch.setattr(pipeline, "enrich_backlog", lambda *a, **k: None)
     first = client.post("/api/ingest")
     assert first.status_code in (200, 429)  # first call may already be in cooldown from other tests
     second = client.post("/api/ingest")

@@ -5,6 +5,10 @@
 
 export type Tone = 'positive' | 'neutral' | 'negative'
 
+/** Mirrors backend/app/sentiment.py. Change both together. */
+export const POSITIVE_ABOVE = 0.15
+export const NEGATIVE_BELOW = -0.15
+
 export interface SentimentLevel {
   label: string
   tone: Tone
@@ -27,15 +31,15 @@ export function formatScore(score: number): string {
 export function describeSentiment(score: number): SentimentLevel & { score: string } {
   const L = SENTIMENT_LEVELS
   const level =
-    score >= 0.5 ? L[0] : score > 0.15 ? L[1] : score >= -0.15 ? L[2] : score > -0.5 ? L[3] : L[4]
+    score >= 0.5 ? L[0] : score > POSITIVE_ABOVE ? L[1] : score >= NEGATIVE_BELOW ? L[2] : score > -0.5 ? L[3] : L[4]
   return { ...level, score: formatScore(score) }
 }
 
 /** Wording for an average over many articles ("Mostly positive", …). */
 export function describeAverage(avg: number): string {
   if (avg >= 0.5) return 'Very positive'
-  if (avg > 0.15) return 'Mostly positive'
-  if (avg >= -0.15) return 'Mixed or neutral'
+  if (avg > POSITIVE_ABOVE) return 'Mostly positive'
+  if (avg >= NEGATIVE_BELOW) return 'Mixed or neutral'
   if (avg > -0.5) return 'Mostly negative'
   return 'Very negative'
 }

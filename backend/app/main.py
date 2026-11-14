@@ -9,11 +9,9 @@ Run locally:
 import asyncio
 import hmac
 import logging
-import threading
 import time
-from collections import Counter
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request
@@ -24,14 +22,13 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from . import config, notifications
+from . import config, notifications, pipeline, reporting
 from .database import SessionLocal, ensure_columns, engine, get_db
 from . import clustering, stories as story_logic, watches
-from .enrichment import enrich_article, enrich_pending_articles
-from .ingestion import add_missing_default_feeds, ingest_all
-from .analysis import TOPIC_EMOJI
-from .models import Article, Base, Feed, Watch, WatchAlert
-from .schemas import (ArticleDetail, ArticlePage, StoryDetail, StoryPage, WatchAlertOut, WatchIn, WatchOut, WatchPatch, Digest, DigestItem,
+from .enrichment import enrich_article
+from .ingestion import add_missing_default_feeds
+from .models import Article, Base, Feed
+from .schemas import (ArticleDetail, ArticlePage, StoryDetail, StoryPage, WatchAlertOut, WatchIn, WatchOut, WatchPatch, Digest,
                       FeedCreate, FeedOut, FeedIngestResult, IngestResult,
                       Stats, TrendingStory)
 from .quality import backfill_info_scores
@@ -44,31 +41,6 @@ FRONTEND_DIR = BASE_DIR.parent / "frontend"
 
 INGEST_INTERVAL_MINUTES = config.INGEST_INTERVAL_MINUTES
 _started_at = time.time()
-_ingest_lock = threading.Lock()  # prevents overlapping ingestion runs
-_ingest_last_finished = 0.0
-
-
-def _scheduled_cycle() -> None:
-    """One auto-pilot round, run in a worker thread so the web server stays responsive:
-    ingest every feed, check the watchlist, then enrich whatever is waiting."""
-    from .database import SessionLocal as _SL
-
-    with _SL() as db:
-        feeds = [
-            {"name": f.name, "url": f.url}
-            for f in db.execute(select(Feed).where(Feed.is_active)).scalars().all()
-        ]
-        feed_rows = {f.name: f for f in db.execute(select(Feed)).scalars().all()}
-        results = ingest_all(db, feeds, feed_rows=feed_rows)
-        added = sum(r["added"] for r in results)
-        logger.info("[scheduler] auto-ingest finished: +%s new articles", added)
-        try:
-            watches.check_watches(db)
-        except Exception:  # noqa: BLE001
-            logger.exception("[watch] scheduled check failed")
-    # Enrich the backlog too; without this, scheduled articles would keep low
-    # information scores until someone pressed "Ingest feeds".
-    _enrich_background()
 
 
 async def _scheduled_ingestion():
@@ -79,7 +51,7 @@ async def _scheduled_ingestion():
         first_run = False
         await asyncio.sleep(wait)
         try:
-            await asyncio.to_thread(_scheduled_cycle)
+            await asyncio.to_thread(pipeline.scheduled_cycle)
         except Exception:  # noqa: BLE001
             logger.exception("[scheduler] auto-ingest failed")
 
@@ -97,7 +69,7 @@ async def _scheduled_digest():
         last_sent_date = now.date()
         try:
             with SessionLocal() as db:
-                digest = compute_digest(db)
+                digest = reporting.digest(db)
             result = notifications.deliver_digest(digest)
             logger.info("[digest] scheduled delivery: sent=%s errors=%s",
                         result["sent"], result["errors"])
@@ -249,53 +221,7 @@ def auth_status():
 
 @app.get("/api/stats", response_model=Stats, tags=["System"])
 def stats(db: Session = Depends(get_db)):
-    total = db.scalar(select(func.count()).select_from(Article)) or 0
-    if total == 0:
-        return Stats(total_articles=0, total_sources=0, avg_sentiment=0.0,
-                     ingested_last_24h=0, positive=0, neutral=0, negative=0,
-                     topic_breakdown={}, sentiment_7d=[])
-
-    now = datetime.now(timezone.utc)
-    day_ago = now - timedelta(hours=24)
-    week_ago = now - timedelta(days=7)
-
-    ingested_24h = db.scalar(
-        select(func.count()).select_from(Article)
-        .where(Article.published_at >= day_ago)) or 0
-    avg_sentiment = db.scalar(select(func.coalesce(func.avg(Article.sentiment), 0.0))) or 0.0
-
-    sentiments = [s for (s,) in db.execute(select(Article.sentiment)).all()]
-    positive = sum(1 for s in sentiments if s > 0.15)
-    negative = sum(1 for s in sentiments if s < -0.15)
-    neutral = total - positive - negative
-
-    topics = Counter(t for (t,) in db.execute(select(Article.topic)).all())
-
-    # Daily average sentiment for the last 7 days (for the trend chart)
-    rows = db.execute(
-        select(Article.published_at, Article.sentiment)
-        .where(Article.published_at >= week_ago)
-    ).all()
-    buckets: dict[str, list[float]] = {}
-    for published, sentiment in rows:
-        if published is None:
-            continue
-        day = published.astimezone(timezone.utc).strftime("%Y-%m-%d")
-        buckets.setdefault(day, []).append(sentiment)
-    sentiment_7d = [
-        {"date": day, "avg_sentiment": round(sum(vals) / len(vals), 3), "count": len(vals)}
-        for day, vals in sorted(buckets.items())
-    ]
-
-    return Stats(
-        total_articles=total,
-        total_sources=db.scalar(select(func.count(func.distinct(Article.source)))) or 0,
-        avg_sentiment=round(avg_sentiment, 3),
-        ingested_last_24h=ingested_24h,
-        positive=positive, neutral=neutral, negative=negative,
-        topic_breakdown=dict(topics.most_common()),
-        sentiment_7d=sentiment_7d,
-    )
+    return reporting.stats(db)
 
 
 # --------------------------------------------------------------------------- #
@@ -390,69 +316,37 @@ def refresh_story_brief(cluster_id: int, db: Session = Depends(get_db)):
 # Watchlist
 # --------------------------------------------------------------------------- #
 
-def _watch_rows(db: Session) -> list[Watch]:
-    return list(db.execute(select(Watch).order_by(Watch.id)).scalars())
+_WATCH_STATUS = {"invalid": 422, "conflict": 409, "not_found": 404}
 
 
-def _with_counts(db: Session, rows: list[Watch]) -> list[Watch]:
-    stories = watches.recent_stories(db)
-    for w in rows:
-        w.matches = sum(1 for _, m in stories
-                        if len({x.source for x in m}) >= w.min_outlets and watches.matches(w, m))
-    return rows
+@app.exception_handler(watches.WatchError)
+async def watch_error_handler(request: Request, exc: watches.WatchError):
+    return JSONResponse(status_code=_WATCH_STATUS[exc.kind], content={"detail": exc.message})
 
 
 @app.get("/api/watches", response_model=list[WatchOut], tags=["Watchlist"])
 def list_watches(db: Session = Depends(get_db)):
-    return _with_counts(db, _watch_rows(db))
+    return watches.with_counts(db, watches.all_watches(db))
 
 
 @app.post("/api/watches", response_model=WatchOut, status_code=201, tags=["Watchlist"],
           dependencies=[Depends(require_api_token)])
 def create_watch(body: WatchIn, db: Session = Depends(get_db)):
-    term = " ".join(body.term.split())
-    topic = (body.topic or "").strip() or None
-    if not term:
-        raise HTTPException(422, "A watch needs a word or phrase")
-    if topic and topic not in TOPIC_EMOJI:
-        raise HTTPException(422, f"topic must be one of: {', '.join(TOPIC_EMOJI)}")
-    existing = _watch_rows(db)
-    if len(existing) >= watches.MAX_WATCHES:
-        raise HTTPException(409, f"You can watch up to {watches.MAX_WATCHES} terms; remove one first")
-    if any(w.term.lower() == term.lower() and w.topic == topic for w in existing):
-        raise HTTPException(409, "You are already watching that")
-    watch = Watch(term=term, topic=topic, min_outlets=body.min_outlets, is_active=True)
-    db.add(watch)
-    db.commit()
-    db.refresh(watch)
-    watches.baseline(db, watch)  # today's matches are not "news": only later stories alert
-    return _with_counts(db, [watch])[0]
+    watch = watches.create(db, body.term, body.topic, body.min_outlets)
+    return watches.with_counts(db, [watch])[0]
 
 
 @app.patch("/api/watches/{watch_id}", response_model=WatchOut, tags=["Watchlist"],
            dependencies=[Depends(require_api_token)])
 def update_watch(watch_id: int, body: WatchPatch, db: Session = Depends(get_db)):
-    watch = db.get(Watch, watch_id)
-    if not watch:
-        raise HTTPException(404, "Watch not found")
-    if body.is_active and not watch.is_active:
-        watches.baseline(db, watch)  # resuming should not replay what happened while paused
-    watch.is_active = body.is_active
-    db.commit()
-    db.refresh(watch)
-    return _with_counts(db, [watch])[0]
+    watch = watches.set_active(db, watch_id, body.is_active)
+    return watches.with_counts(db, [watch])[0]
 
 
 @app.delete("/api/watches/{watch_id}", status_code=204, tags=["Watchlist"],
             dependencies=[Depends(require_api_token)])
 def delete_watch(watch_id: int, db: Session = Depends(get_db)):
-    watch = db.get(Watch, watch_id)
-    if not watch:
-        raise HTTPException(404, "Watch not found")
-    for row in db.execute(select(WatchAlert).where(WatchAlert.watch_id == watch_id)).scalars():
-        db.delete(row)
-    db.delete(watch)
-    db.commit()
+    watches.remove(db, watch_id)
 
 
 @app.get("/api/articles/export.csv", tags=["Articles"])
@@ -526,7 +420,7 @@ def summarize_article(article_id: int, db: Session = Depends(get_db)):
 @app.get("/api/digest", response_model=Digest, tags=["Intelligence"])
 def daily_digest(db: Session = Depends(get_db)):
     """A generated intelligence brief: recent signals, extremes, and a headline."""
-    return compute_digest(db)
+    return reporting.digest(db)
 
 
 @app.post("/api/digest/send", tags=["Intelligence"],
@@ -539,67 +433,10 @@ def send_digest(db: Session = Depends(get_db)):
             "No digest channel configured — set SLACK_WEBHOOK_URL or "
             "DIGEST_EMAILS + SMTP_HOST.",
         )
-    result = notifications.deliver_digest(compute_digest(db))
+    result = notifications.deliver_digest(reporting.digest(db))
     if not result["sent"]:
         raise HTTPException(502, f"Digest delivery failed: {result['errors']}")
     return result
-
-
-def compute_digest(db: Session) -> Digest:
-    """Build the daily brief. Shared by the API, the scheduler, and delivery."""
-    now = datetime.now(timezone.utc)
-    day_ago = now - timedelta(hours=24)
-    recent = db.execute(
-        select(Article).where(Article.published_at >= day_ago).order_by(Article.published_at.desc())
-    ).scalars().all()
-
-    window = "Last 24 hours"
-    if not recent:
-        recent = db.execute(select(Article).order_by(Article.published_at.desc().nullslast()).limit(50)).scalars().all()
-        window = "Most recent signals"
-
-    if not recent:
-        return Digest(
-            generated_at=now, window_label=window, total_articles=0, articles_last_24h=0,
-            avg_sentiment=0.0, headline="No signals ingested yet — run Ingest Feeds.",
-            topic_breakdown={}, top_positive=[], top_negative=[],
-        )
-
-    avg = round(sum(a.sentiment for a in recent) / len(recent), 3)
-    if avg > 0.15:
-        tone = "mostly positive wording"
-    elif avg < -0.15:
-        tone = "mostly negative wording"
-    else:
-        tone = "a mix of positive and negative wording"
-
-    topics = Counter(a.topic for a in recent)
-    lead_topic = topics.most_common(1)[0][0] if topics else "General"
-    headline = (
-        f"{len(recent)} signals in the last 24h — overall {tone} (average score {avg:+.2f}). "
-        f"Hottest topic: {lead_topic}."
-    )
-
-    def to_item(a: Article) -> DigestItem:
-        return DigestItem(id=a.id, title=a.title, source=a.source,
-                          sentiment=a.sentiment, topic=a.topic, url=a.url)
-
-    top_positive = [to_item(a) for a in sorted(recent, key=lambda x: -x.sentiment)[:3]
-                    if a.sentiment > 0.15]
-    top_negative = [to_item(a) for a in sorted(recent, key=lambda x: x.sentiment)[:3]
-                    if a.sentiment < -0.15]
-
-    return Digest(
-        generated_at=now,
-        window_label=window,
-        total_articles=db.scalar(select(func.count()).select_from(Article)) or 0,
-        articles_last_24h=len(recent),
-        avg_sentiment=avg,
-        headline=headline,
-        topic_breakdown=dict(topics.most_common()),
-        top_positive=top_positive,
-        top_negative=top_negative,
-    )
 
 
 # --------------------------------------------------------------------------- #
@@ -655,62 +492,19 @@ def ingest(db: Session = Depends(get_db), background_tasks: BackgroundTasks = No
     Full-text enrichment (fetching the linked pages and writing clean
     summaries) runs in the background right after the response.
     """
-    global _ingest_last_finished
-
-    # One ingestion at a time, plus a cooldown so rapid clicking can't
-    # hammer every configured RSS origin.
-    if _ingest_lock.locked() or time.time() - _ingest_last_finished < config.INGEST_COOLDOWN_SECONDS:
-        raise HTTPException(
-            429,
-            "An ingestion just ran — give the feeds a moment before refreshing again.",
-        )
-    with _ingest_lock:
-        feed_rows = {f.name: f for f in db.execute(select(Feed).where(Feed.is_active)).scalars().all()}
-        feeds = [{"name": f.name, "url": f.url} for f in feed_rows.values()]
-        started = time.perf_counter()
-        results = ingest_all(db, feeds, feed_rows=feed_rows)
-        duration = time.perf_counter() - started
-        _ingest_last_finished = time.time()
-
-    pending = db.scalar(
-        select(func.count()).select_from(Article).where(
-            Article.enriched_at.is_(None), Article.is_seed.is_(False))
-    ) or 0
-    missing_images = db.scalar(
-        select(func.count()).select_from(Article).where(
-            Article.image_url.is_(None), Article.is_seed.is_(False))
-    ) or 0
-    if background_tasks and (pending or missing_images):
-        background_tasks.add_task(_enrich_background)
-
     try:
-        alerts = watches.check_watches(db)
-    except Exception:  # noqa: BLE001 - a watchlist problem must never fail an ingest
-        logger.exception("[watch] check failed")
-        alerts = []
-
+        cycle = pipeline.ingest_cycle(db, manual=True)
+    except pipeline.Busy as busy:
+        raise HTTPException(429, str(busy)) from None
+    if background_tasks and cycle.enrich_needed:
+        background_tasks.add_task(pipeline.enrich_backlog)
+    results = cycle.results
     return IngestResult(
-        alerts=[WatchAlertOut(**a) for a in alerts],
+        alerts=[WatchAlertOut(**a) for a in cycle.alerts],
         added=sum(r["added"] for r in results),
         fetched=sum(r["fetched"] for r in results),
         skipped=sum(r["skipped"] for r in results),
         results=[FeedIngestResult(**r) for r in results],
-        duration_seconds=round(duration, 2),
-        enrich_queued=pending,
+        duration_seconds=cycle.duration_seconds,
+        enrich_queued=cycle.enrich_pending,
     )
-
-
-def _enrich_background():
-    """Background worker: enrich pending articles with full-text summaries."""
-    with SessionLocal() as db:
-        try:
-            # Keep going wave by wave so a big ingest (many feeds) is fully enriched,
-            # but stop if a wave makes no progress.
-            for _ in range(12):
-                stats = enrich_pending_articles(db)
-                logger.info("[enrich] deep summaries generated for %s articles (%s remaining)",
-                            stats["enriched"], stats["remaining"])
-                if not stats["enriched"] or not stats["remaining"]:
-                    break
-        except Exception:  # noqa: BLE001
-            logger.exception("[enrich] enrichment failed")

@@ -19,10 +19,11 @@ from sqlalchemy.orm import Session
 from sqlalchemy.sql import Select
 
 from . import briefs, clustering, watches
+from . import sentiment as sentiment_scale
 from .quality import _sections
 from .models import Article
 
-SENTIMENTS = ("positive", "neutral", "negative")
+SENTIMENTS = sentiment_scale.LABELS
 ORDERS = ("newest", "oldest", "sentiment_high", "sentiment_low", "info")
 MAX_IDS = 200
 
@@ -71,12 +72,8 @@ def apply_filters(
         q = q.where(Article.source == source)
     if topic:
         q = q.where(Article.topic == topic)
-    if sentiment == "positive":
-        q = q.where(Article.sentiment > 0.15)
-    elif sentiment == "negative":
-        q = q.where(Article.sentiment < -0.15)
-    elif sentiment == "neutral":
-        q = q.where(Article.sentiment >= -0.15, Article.sentiment <= 0.15)
+    if sentiment in sentiment_scale.LABELS:
+        q = q.where(*sentiment_scale.clauses(Article.sentiment, sentiment))
     if hot:
         q = q.where(Article.id.in_(clustering.hot_article_ids(db) or [0]))
     if cluster is not None:
@@ -137,11 +134,9 @@ def build_page(db: Session, ordered_ids: list[int], offset: int, limit: int) -> 
     so "newest" sorts stories by their newest report and "info" by their best.
     """
     by_article, _ = clustering.get_clusters(db)
-    groups: dict[tuple[str, int], list[int]] = {}
+    groups: dict[str, list[int]] = {}
     for article_id in ordered_ids:
-        cluster = by_article.get(article_id)
-        key = ("c", cluster.id) if cluster else ("a", article_id)
-        groups.setdefault(key, []).append(article_id)
+        groups.setdefault(clustering.story_key(by_article.get(article_id), article_id), []).append(article_id)
 
     keys = list(groups)
     page_keys = keys[offset: offset + limit]
@@ -159,8 +154,8 @@ def build_page(db: Session, ordered_ids: list[int], offset: int, limit: int) -> 
         leads.append(lead)
         sources = list(dict.fromkeys(m.source for m in members))
         stories.append({
-            "key": f"{key[0]}{key[1]}",
-            "cluster_id": key[1] if key[0] == "c" else None,
+            "key": key,
+            "cluster_id": clustering.parse_story_key(key)[1] if key[0] == "c" else None,
             "lead": lead,
             "others": [brief(m) for m in members[1:]],
             "report_count": len(members),

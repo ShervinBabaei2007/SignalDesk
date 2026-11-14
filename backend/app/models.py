@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
+from . import sentiment as sentiment_scale
 from .database import Base
 
 
@@ -41,11 +42,7 @@ class Article(Base):
 
     @property
     def sentiment_label(self) -> str:
-        if self.sentiment > 0.15:
-            return "positive"
-        if self.sentiment < -0.15:
-            return "negative"
-        return "neutral"
+        return sentiment_scale.label(self.sentiment)
 
     @property
     def keyword_list(self) -> list[str]:
