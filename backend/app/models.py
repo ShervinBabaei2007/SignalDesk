@@ -47,6 +47,8 @@ class Article(Base):
     enriched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     is_seed: Mapped[bool] = mapped_column(Boolean, default=False)
     extraction: Mapped[str | None] = mapped_column(String(12), nullable=True)  # page | fallback (see enrichment)
+    embedding: Mapped[str | None] = mapped_column(Text, nullable=True)  # base64 float16 vector (see embeddings.py)
+    embedding_model: Mapped[str | None] = mapped_column(String(80), nullable=True)
     workspace_id: Mapped[str] = mapped_column(String(40), default=NO_WORKSPACE, server_default=NO_WORKSPACE,
                                               nullable=False, index=True)
 

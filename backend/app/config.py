@@ -119,3 +119,15 @@ WORKSPACE_MAX_FEEDS = _int("WORKSPACE_MAX_FEEDS", 8)
 WORKSPACE_MAX_WATCHES = _int("WORKSPACE_MAX_WATCHES", 10)
 WORKSPACE_MAX_ARTICLES = _int("WORKSPACE_MAX_ARTICLES", 600)
 WORKSPACE_CREATES_PER_HOUR = _int("WORKSPACE_CREATES_PER_HOUR", 20)  # per client IP
+
+# --------------------------------------------------------------------------- #
+# Optional semantic embeddings for story clustering (any OpenAI-compatible /embeddings endpoint).
+# Off by default: without it clustering stays lexical. Base URL and key default to the LLM_* ones.
+# --------------------------------------------------------------------------- #
+
+EMBEDDINGS_ENABLED = _bool("EMBEDDINGS_ENABLED")
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small").strip()
+EMBEDDING_BASE_URL = (os.getenv("EMBEDDING_BASE_URL", "").strip() or LLM_BASE_URL).rstrip("/")
+EMBEDDING_API_KEY = os.getenv("EMBEDDING_API_KEY", "").strip() or LLM_API_KEY
+EMBEDDING_DIMENSIONS = _int("EMBEDDING_DIMENSIONS", 256)  # 0 keeps the model's full size
+EMBED_SIM_MIN = _float("EMBED_SIM_MIN", 0.78)  # cosine at or above which two headlines are the same event

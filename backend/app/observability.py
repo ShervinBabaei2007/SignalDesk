@@ -17,7 +17,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from . import enrichment
+from . import embeddings, enrichment
 from .models import Article, FeedRun, PipelineRun
 
 logger = logging.getLogger("signaldesk.observability")
@@ -74,6 +74,14 @@ def purge_old(db: Session, now: datetime | None = None) -> int:
 def _aware(dt: datetime) -> datetime:
     """Treat a naive datetime (SQLite) as UTC."""
     return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def _unembedded(db: Session, now: datetime) -> int:
+    """Recent shared articles still waiting for an embedding."""
+    cutoff = now - timedelta(days=embeddings.WINDOW_DAYS)
+    return db.scalar(select(func.count()).select_from(Article).where(
+        Article.is_seed.is_(False), Article.workspace_id == "", Article.embedding.is_(None),
+        (Article.published_at >= cutoff) | Article.published_at.is_(None))) or 0
 
 
 def summary(db: Session, hours: int = 24, now: datetime | None = None) -> dict:
@@ -134,5 +142,6 @@ def summary(db: Session, hours: int = 24, now: datetime | None = None) -> dict:
                   "items": feeds},
         "extraction": {"page": page, "fallback": fallback,
                        "success_rate": round(page / (page + fallback), 3) if page + fallback else None},
-        "backlog": {"awaiting_enrichment": backlog},
+        "backlog": {"awaiting_enrichment": backlog,
+                    "awaiting_embedding": _unembedded(db, now) if embeddings.available() else None},
     }

@@ -138,6 +138,8 @@ def ensure_columns():
             "analysis_model": "VARCHAR(100)",
             "analysis_source": "VARCHAR(20)",
             "extraction": "VARCHAR(12)",
+            "embedding": "TEXT",
+            "embedding_model": "VARCHAR(80)",
         },
         "feeds": {"last_fetched_at": "TIMESTAMP WITH TIME ZONE", "last_status": "VARCHAR(300)"},
     }

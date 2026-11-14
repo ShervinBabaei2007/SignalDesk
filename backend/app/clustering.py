@@ -16,12 +16,17 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from html import unescape
 
+import numpy as np
+
+from . import config
 from .analysis import STOPWORDS
 
 MAX_GAP = timedelta(hours=48)  # items published further apart are different stories
 JACCARD_MIN = 0.45
 OVERLAP_MIN = 0.6              # |A & B| / min(|A|, |B|), needs MIN_SHARED terms
 MIN_SHARED = 3
+MAX_CLUSTER = 25               # a bigger group is a sign of chaining and is split with a stricter threshold
+SPLIT_STEP = 0.04
 
 _WORD = re.compile(r"[a-z0-9][a-z0-9'’]*")
 _EXTRA_STOP = {"news", "live", "update", "updates", "breaking", "how", "why", "what", "who",
@@ -88,10 +93,9 @@ def _lead(members: list[int], items: list) -> int:
     return max(members, key=lambda m: (sum(jaccard(items[m][1], items[o][1]) for o in members if o != m), -items[m][0]))
 
 
-def cluster_rows(rows: list[tuple[int, str, str, datetime | None]]) -> list[Cluster]:
-    """rows: (id, title, source, published_at). Returns clusters of size >= 2."""
-    items = [(i, title_terms(t), s, p) for i, t, s, p in rows]
-    parent = list(range(len(items)))
+def _group(items: list, indices: list[int], sim_min: float, unit: dict[int, np.ndarray]) -> list[list[int]]:
+    """Union-find over `indices`: link headlines that overlap in words, or whose vectors are close in meaning."""
+    parent = {i: i for i in indices}
 
     def find(x: int) -> int:
         """Union-find root lookup with path compression."""
@@ -100,20 +104,56 @@ def cluster_rows(rows: list[tuple[int, str, str, datetime | None]]) -> list[Clus
             x = parent[x]
         return x
 
-    for i in range(len(items)):
-        for j in range(i + 1, len(items)):
+    embedded = [i for i in indices if items[i][0] in unit]
+    cosine = {}
+    if len(embedded) > 1:  # one matrix product for every pair of embedded headlines
+        matrix = np.stack([unit[items[i][0]] for i in embedded])
+        sims = matrix @ matrix.T
+        cosine = {(embedded[a], embedded[b]): float(sims[a, b])
+                  for a in range(len(embedded)) for b in range(a + 1, len(embedded))}
+
+    for a, i in enumerate(indices):
+        for j in indices[a + 1:]:
             pi, pj = items[i][3], items[j][3]
             if pi and pj and abs(pi - pj) > MAX_GAP:
                 continue
-            if similar(items[i][1], items[j][1]):
+            if similar(items[i][1], items[j][1]) or cosine.get((i, j), 0.0) >= sim_min:
                 parent[find(j)] = find(i)
 
     groups: dict[int, list[int]] = {}
-    for idx in range(len(items)):
+    for idx in indices:
         groups.setdefault(find(idx), []).append(idx)
+    return list(groups.values())
+
+
+def _split_chains(items: list, groups: list[list[int]], unit: dict[int, np.ndarray]) -> list[list[int]]:
+    """Re-cluster any oversized group with a stricter meaning threshold until it breaks into sane stories."""
+    result: list[list[int]] = []
+    for members in groups:
+        if len(members) <= MAX_CLUSTER or not unit:
+            result.append(members)
+            continue
+        threshold, parts = config.EMBED_SIM_MIN, [members]
+        while threshold < 0.98 and any(len(p) > MAX_CLUSTER for p in parts):
+            threshold += SPLIT_STEP
+            parts = _group(items, members, threshold, unit)
+        result.extend(parts)  # best effort: a group that still will not split is kept as it is
+    return result
+
+
+def cluster_rows(rows: list[tuple[int, str, str, datetime | None]],
+                 vectors: dict[int, np.ndarray] | None = None) -> list[Cluster]:
+    """rows: (id, title, source, published_at). Returns clusters of size >= 2.
+
+    `vectors` maps article id to a unit-length embedding. Headlines with vectors can also be linked by
+    meaning; headlines without them are grouped by words only, so a partly embedded corpus works.
+    """
+    items = [(i, title_terms(t), s, p) for i, t, s, p in rows]
+    unit = vectors or {}
+    groups = _split_chains(items, _group(items, list(range(len(items))), config.EMBED_SIM_MIN, unit), unit)
 
     clusters = []
-    for members in groups.values():
+    for members in groups:
         if len(members) < 2:
             continue
         members.sort(key=lambda m: items[m][0])

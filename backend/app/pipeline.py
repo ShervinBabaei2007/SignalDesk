@@ -25,7 +25,7 @@ from typing import Callable
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from . import config, enrichment, observability, watches
+from . import config, embeddings, enrichment, observability, watches
 from .database import SessionLocal
 from .ingestion import ingest_all
 from .models import Article, Feed
@@ -123,6 +123,10 @@ def enrich_backlog(session_factory: Callable[[], Session] | None = None,
                     break
         except Exception:  # noqa: BLE001
             logger.exception("[enrich] enrichment failed")
+        try:
+            embeddings.embed_pending(db)  # shared data only; a no-op without a configured provider
+        except Exception:  # noqa: BLE001
+            logger.exception("[embeddings] embedding failed")
 
 
 def scheduled_cycle(session_factory: Callable[[], Session] | None = None,

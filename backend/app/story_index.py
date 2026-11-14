@@ -23,6 +23,7 @@ from sqlalchemy import ColumnElement, func, select
 from sqlalchemy.orm import Session
 
 from .clustering import Cluster, cluster_rows
+from . import embeddings
 from .models import Article
 
 WINDOW_DAYS = 3                # only group stories this recent
@@ -92,21 +93,24 @@ def _load(db: Session) -> tuple[dict[int, Cluster], dict[int, Cluster], list[int
     """Compute or fetch the cached clusters for the recent window."""
     now = datetime.now(timezone.utc)
     workspace = db.info.get("workspace", "")  # the session only sees the base data plus its own articles
-    count, max_id = db.execute(
-        select(func.count(Article.id), func.max(Article.id)).where(Article.is_seed.is_(False))
+    count, max_id, embedded = db.execute(
+        select(func.count(Article.id), func.max(Article.id), func.count(Article.embedding))
+        .where(Article.is_seed.is_(False))
     ).one()
-    key = (count, max_id, now.strftime("%Y%m%d%H"))
+    key = (count, max_id, embedded, now.strftime("%Y%m%d%H"))
     with _cache_lock:
         entry = _cache.get(workspace)
         if entry and entry["key"] == key:
             return entry["by_article"], entry["by_id"], entry["window_ids"]
         rows = db.execute(
-            select(Article.id, Article.title, Article.source, Article.published_at)
+            select(Article.id, Article.title, Article.source, Article.published_at,
+                   Article.embedding, Article.embedding_model)
             .where(*_window(now))
             .order_by(Article.id.desc())
             .limit(MAX_ARTICLES)
         ).all()
-        clusters = cluster_rows([(i, t, s, _as_utc(p)) for i, t, s, p in rows])
+        vectors = embeddings.vectors_for([(r[0], r[4], r[5]) for r in rows]) if embedded else None
+        clusters = cluster_rows([(i, t, s, _as_utc(p)) for i, t, s, p, *_ in rows], vectors)
         by_article = {aid: c for c in clusters for aid in c.article_ids}
         by_id = {c.id: c for c in clusters}
         window_ids = [r[0] for r in rows]
