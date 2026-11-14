@@ -1,3 +1,4 @@
+// Panel listing the hot stories when the Hot topics category is selected.
 import { Flame } from 'lucide-react'
 import { BlurFade } from '@/components/ui/blur-fade'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'

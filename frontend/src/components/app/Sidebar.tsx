@@ -1,3 +1,4 @@
+// Category sidebar with article counts for topics, hot and saved.
 import type { ReactNode } from 'react'
 import { Bookmark, Flame } from 'lucide-react'
 import { BlurFade } from '@/components/ui/blur-fade'
@@ -7,6 +8,7 @@ import { useLibrary } from '@/hooks/useLibrary'
 import { TOPIC_EMOJI } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
+/** One clickable category with a proportional bar. */
 function CategoryRow({
   label, icon, count, max, active, hint, onClick,
 }: { label: string; icon: ReactNode; count: number; max: number; active: boolean; hint?: string; onClick: () => void }) {

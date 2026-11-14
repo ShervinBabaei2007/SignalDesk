@@ -1,3 +1,4 @@
+// Row of headline stat cards (articles, sources, sentiment, last 24h).
 import type { ReactNode } from 'react'
 import { BlurFade } from '@/components/ui/blur-fade'
 import { Card, CardContent } from '@/components/ui/card'
@@ -9,6 +10,7 @@ import { useDashboard } from '@/hooks/useDashboard'
 import { describeAverage, describeSentiment, formatScore } from '@/lib/sentiment'
 import { cn } from '@/lib/utils'
 
+/** One stat card. */
 function Stat({
   label, children, delay, caption, className,
 }: { label: ReactNode; children: ReactNode; delay: number; caption?: string; className?: string }) {
@@ -27,6 +29,7 @@ function Stat({
   )
 }
 
+/** The stats row, with a skeleton while loading. */
 export function StatsRow() {
   const { stats } = useDashboard()
   if (!stats) {
@@ -43,42 +46,43 @@ export function StatsRow() {
   }
   const tone = describeSentiment(stats.avg_sentiment).tone
   const total = Math.max(stats.positive + stats.neutral + stats.negative, 1)
+  const pct = (n: number) => (n / total) * 100
   const value = 'mt-1 block text-3xl font-bold tracking-tight tabular-nums'
   return (
     <div className="stats-grid grid gap-2.5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
       <div className="stats-kpis grid grid-cols-2 gap-2.5">
-      <Stat label="Total articles" delay={0} caption="collected so far">
-        <NumberTicker value={stats.total_articles} className={value} />
-      </Stat>
-      <Stat label="Sources" delay={0.05} caption="news outlets read">
-        <NumberTicker value={stats.total_sources} className={value} />
-      </Stat>
-      <Stat label="Last 24 hours" delay={0.1} caption="new in the past day">
-        <NumberTicker value={stats.ingested_last_24h} className={value} />
-      </Stat>
-      <Stat
-        label={
-          <>
-            Average sentiment <SentimentInfo />
-          </>
-        }
-        delay={0.15}
-      >
-        <span className={cn('mt-1 block text-xl leading-tight font-bold tracking-tight', toneText[tone])}>
-          {describeAverage(stats.avg_sentiment)}
-        </span>
-        <span className="mt-0.5 block text-xs text-muted-foreground">Score {formatScore(stats.avg_sentiment)} (−1 to +1)</span>
-        <div className="mt-2.5 flex h-1.5 gap-0.5 overflow-hidden rounded-full" aria-label={`${stats.positive} positive, ${stats.neutral} neutral, ${stats.negative} negative`}>
-          <span className="bg-positive transition-[width] duration-500" style={{ width: `${(stats.positive / total) * 100}%` }} />
-          <span className="bg-neutral transition-[width] duration-500" style={{ width: `${(stats.neutral / total) * 100}%` }} />
-          <span className="bg-negative transition-[width] duration-500" style={{ width: `${(stats.negative / total) * 100}%` }} />
-        </div>
-        <div className="mt-1.5 flex justify-between text-[11px] font-medium tabular-nums">
-          <span className="text-positive" title={`${stats.positive} positive articles`}>▲ {Math.round((stats.positive / total) * 100)}%</span>
-          <span className="text-neutral" title={`${stats.neutral} neutral articles`}>● {Math.round((stats.neutral / total) * 100)}%</span>
-          <span className="text-negative" title={`${stats.negative} negative articles`}>▼ {Math.round((stats.negative / total) * 100)}%</span>
-        </div>
-      </Stat>
+        <Stat label="Total articles" delay={0} caption="collected so far">
+          <NumberTicker value={stats.total_articles} className={value} />
+        </Stat>
+        <Stat label="Sources" delay={0.05} caption="news outlets read">
+          <NumberTicker value={stats.total_sources} className={value} />
+        </Stat>
+        <Stat label="Last 24 hours" delay={0.1} caption="new in the past day">
+          <NumberTicker value={stats.ingested_last_24h} className={value} />
+        </Stat>
+        <Stat
+          label={
+            <>
+              Average sentiment <SentimentInfo />
+            </>
+          }
+          delay={0.15}
+        >
+          <span className={cn('mt-1 block text-xl leading-tight font-bold tracking-tight', toneText[tone])}>
+            {describeAverage(stats.avg_sentiment)}
+          </span>
+          <span className="mt-0.5 block text-xs text-muted-foreground">Score {formatScore(stats.avg_sentiment)} (−1 to +1)</span>
+          <div className="mt-2.5 flex h-1.5 gap-0.5 overflow-hidden rounded-full" aria-label={`${stats.positive} positive, ${stats.neutral} neutral, ${stats.negative} negative`}>
+            <span className="bg-positive transition-[width] duration-500" style={{ width: `${pct(stats.positive)}%` }} />
+            <span className="bg-neutral transition-[width] duration-500" style={{ width: `${pct(stats.neutral)}%` }} />
+            <span className="bg-negative transition-[width] duration-500" style={{ width: `${pct(stats.negative)}%` }} />
+          </div>
+          <div className="mt-1.5 flex justify-between text-[11px] font-medium tabular-nums">
+            <span className="text-positive" title={`${stats.positive} positive articles`}>▲ {Math.round(pct(stats.positive))}%</span>
+            <span className="text-neutral" title={`${stats.neutral} neutral articles`}>● {Math.round(pct(stats.neutral))}%</span>
+            <span className="text-negative" title={`${stats.negative} negative articles`}>▼ {Math.round(pct(stats.negative))}%</span>
+          </div>
+        </Stat>
       </div>
       <BlurFade delay={0.2} className="compact-hide">
         <TrendCard points={stats.sentiment_7d} />

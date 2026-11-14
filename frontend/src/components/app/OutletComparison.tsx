@@ -1,3 +1,4 @@
+// Table-like comparison of how each outlet covered a story.
 import { BlurFade } from '@/components/ui/blur-fade'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -53,6 +54,7 @@ function SpreadLine({ rows }: { rows: OutletStat[] }) {
   )
 }
 
+/** One outlet's row with its information, depth and wording. */
 function Row({ row, index }: { row: OutletStat; index: number }) {
   const words = Math.round(row.chars / 6)
   return (

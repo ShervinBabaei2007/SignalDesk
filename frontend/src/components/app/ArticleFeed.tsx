@@ -1,16 +1,17 @@
-import { Award, Bell, ChevronLeft, ChevronRight, ExternalLink, FileText, Link2, Newspaper, Satellite, Sparkles, Sprout, Star, X } from 'lucide-react'
+// The main feed: story cards or flat article cards, with loading, empty and paging states.
 import { useRef } from 'react'
-import { BookmarkButton } from '@/components/app/BookmarkButton'
+import { Award, Bell, ChevronLeft, ChevronRight, ExternalLink, FileText, Link2, Newspaper, Satellite, Sparkles, Sprout, Star, X } from 'lucide-react'
 import { Alert, AlertAction, AlertDescription } from '@/components/ui/alert'
-import { BlurFade } from '@/components/ui/blur-fade'
 import { Badge } from '@/components/ui/badge'
-import { Label } from '@/components/ui/label'
-import { Switch } from '@/components/ui/switch'
+import { BlurFade } from '@/components/ui/blur-fade'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { Label } from '@/components/ui/label'
 import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem } from '@/components/ui/pagination'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { BookmarkButton } from '@/components/app/BookmarkButton'
 import { HotStories } from '@/components/app/HotStories'
 import { InfoScore } from '@/components/app/InfoScore'
 import { StoryReports } from '@/components/app/StoryReports'
@@ -23,6 +24,7 @@ import { domainOf, keywordList, timeAgo, TOPIC_EMOJI } from '@/lib/format'
 import { pageWindow } from '@/lib/pagination'
 import { cn } from '@/lib/utils'
 
+/** Chip showing how many outlets cover the story, linking to its page. */
 function StoryChip({ article }: { article: Article }) {
   const { openStory } = useDashboard()
   const sources = article.cluster_sources
@@ -49,6 +51,26 @@ function StoryChip({ article }: { article: Article }) {
   )
 }
 
+/** Count with a singular or plural noun. */
+function countLabel(n: number, singular: string, plural: string): string {
+  return `${n} ${n === 1 ? singular : plural}`
+}
+
+/** Grouped mode: "best of N reports" on the lead. Flat mode: a chip that opens the article's story. */
+function CoverageBadge({ article, story }: { article: Article; story?: Story }) {
+  if (story) {
+    if (story.report_count <= 1) return null
+    return (
+      <Badge variant="outline" className="gap-1 border-link/40 font-semibold text-link" title="The most informative of this story's reports">
+        <Award className="size-3" aria-hidden />
+        Best of {story.report_count} reports · {countLabel(story.outlets, 'outlet', 'outlets')}
+      </Badge>
+    )
+  }
+  return article.cluster_size > 1 ? <StoryChip article={article} /> : null
+}
+
+/** One feed card for an article, expandable to show its summary and the story's other reports. */
 function ArticleCard({
   article: a, index, story, defaultOpen = false,
 }: { article: Article; index: number; story?: Story; defaultOpen?: boolean }) {
@@ -96,16 +118,7 @@ function ArticleCard({
                 Watching: {story.watch_matches.join(', ')}
               </Badge>
             )}
-            {story ? (
-              story.report_count > 1 && (
-                <Badge variant="outline" className="gap-1 border-link/40 font-semibold text-link" title="The most informative of this story's reports">
-                  <Award className="size-3" aria-hidden />
-                  Best of {story.report_count} reports · {story.outlets} {story.outlets === 1 ? 'outlet' : 'outlets'}
-                </Badge>
-              )
-            ) : (
-              a.cluster_size > 1 && <StoryChip article={a} />
-            )}
+            <CoverageBadge article={a} story={story} />
           </div>
 
           <h3 className="text-[15.5px] leading-snug font-semibold tracking-tight">
@@ -163,6 +176,7 @@ function ArticleCard({
   )
 }
 
+/** Placeholder cards shown while the feed loads. */
 function FeedSkeleton() {
   return (
     <div className="space-y-2.5" aria-hidden>
@@ -180,6 +194,7 @@ function FeedSkeleton() {
   )
 }
 
+/** Page controls below the feed. */
 function FeedPagination({ onNavigate, noun }: { onNavigate: () => void; noun: string }) {
   const { page, pageCount, setPage, total } = useDashboard()
   if (pageCount <= 1) return null
@@ -234,6 +249,27 @@ function FeedPagination({ onNavigate, noun }: { onNavigate: () => void; noun: st
   )
 }
 
+/** Message shown when no articles match the filters or nothing is saved. */
+function EmptyFeed({ saved, showClear, onClear }: { saved: boolean; showClear: boolean; onClear: () => void }) {
+  return (
+    <Card className="items-center py-14 text-center">
+      <Satellite className="size-9 text-muted-foreground" aria-hidden />
+      <h3 className="text-base font-semibold">{saved ? 'Nothing saved yet' : 'No signals found'}</h3>
+      <p className="max-w-xs text-sm text-muted-foreground">
+        {saved
+          ? 'Tap the bookmark on any article to keep it here. Your saved articles stay in this browser.'
+          : 'Nothing matches these filters. Try a different search, or run an ingest to pull in fresh articles.'}
+      </p>
+      {showClear && (
+        <Button variant="outline" onClick={onClear}>
+          Clear all filters
+        </Button>
+      )}
+    </Card>
+  )
+}
+
+/** The feed list, driven by the dashboard's filters and page. */
 export function ArticleFeed() {
   const {
     stories, articles, grouped, total, articleTotal, loading, filters, setFilter, clearFilters, hasActiveFilters,
@@ -243,6 +279,7 @@ export function ArticleFeed() {
   const sources = filters.cluster
     ? [...new Set(grouped ? stories.flatMap((s) => s.sources) : articles.map((a) => a.source))]
     : []
+  const showSkeleton = loading && count === 0
   const top = useRef<HTMLElement>(null)
   const toTop = () => top.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 
@@ -254,8 +291,8 @@ export function ArticleFeed() {
         </h2>
         <span className="text-sm text-muted-foreground">
           {grouped
-            ? `${total} ${total === 1 ? 'story' : 'stories'} · ${articleTotal} ${articleTotal === 1 ? 'article' : 'articles'}`
-            : `${total} ${total === 1 ? 'article' : 'articles'}`}
+            ? `${countLabel(total, 'story', 'stories')} · ${countLabel(articleTotal, 'article', 'articles')}`
+            : countLabel(total, 'article', 'articles')}
         </span>
         <div className="ml-auto flex items-center gap-2" title="Combine reports of the same event into one card, best-informed report first">
           <Switch id="group-stories" checked={grouped} onCheckedChange={setGrouped} />
@@ -281,24 +318,11 @@ export function ArticleFeed() {
         </Alert>
       )}
 
-      {loading && count === 0 ? (
-        <FeedSkeleton />
-      ) : count === 0 ? (
-        <Card className="items-center py-14 text-center">
-          <Satellite className="size-9 text-muted-foreground" aria-hidden />
-          <h3 className="text-base font-semibold">{filters.saved ? 'Nothing saved yet' : 'No signals found'}</h3>
-          <p className="max-w-xs text-sm text-muted-foreground">
-            {filters.saved
-              ? 'Tap the bookmark on any article to keep it here. Your saved articles stay in this browser.'
-              : 'Nothing matches these filters. Try a different search, or run an ingest to pull in fresh articles.'}
-          </p>
-          {hasActiveFilters && (
-            <Button variant="outline" onClick={clearFilters}>
-              Clear all filters
-            </Button>
-          )}
-        </Card>
-      ) : (
+      {showSkeleton && <FeedSkeleton />}
+      {!showSkeleton && count === 0 && (
+        <EmptyFeed saved={!!filters.saved} showClear={hasActiveFilters} onClear={clearFilters} />
+      )}
+      {count > 0 && (
         <div className={`space-y-2.5 transition-opacity ${loading ? 'opacity-60' : ''}`}>
           {grouped
             ? stories.map((s, i) => (

@@ -1,3 +1,4 @@
+// Dialog to create, pause and delete watchlist terms.
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { Bell, BellRing, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -14,7 +15,9 @@ import { api, ApiError, type Watch } from '@/lib/api'
 import { TOPIC_EMOJI } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
+/** Select value meaning any topic. */
 const ANY = 'any'
+/** Minimum-outlet choices for a watch. */
 const OUTLET_OPTIONS = [
   { value: '1', label: 'Any single outlet' },
   { value: '2', label: '2+ outlets (recommended)' },
@@ -22,6 +25,7 @@ const OUTLET_OPTIONS = [
   { value: '4', label: '4+ outlets' },
 ]
 
+/** One watch with a pause switch and delete button. */
 function WatchRow({ watch, onToggle, onDelete }: { watch: Watch; onToggle: (on: boolean) => void; onDelete: () => void }) {
   return (
     <li className={cn('flex items-center gap-3 rounded-lg border bg-background/50 px-3 py-2.5', !watch.is_active && 'opacity-60')}>
@@ -55,7 +59,12 @@ export function WatchlistDialog({ open, onOpenChange }: { open: boolean; onOpenC
   const [topic, setTopic] = useState(ANY)
   const [minOutlets, setMinOutlets] = useState('2')
   const [busy, setBusy] = useState(false)
-  const topics = Object.keys(stats?.topic_breakdown ?? {}).sort()
+  const topicOptions = [
+    { value: ANY, label: 'Any topic' },
+    ...Object.keys(stats?.topic_breakdown ?? {})
+      .sort()
+      .map((t) => ({ value: t, label: `${TOPIC_EMOJI[t] ?? '📰'} ${t}` })),
+  ]
   const channels = health?.features?.digest_delivery ?? []
 
   const load = useCallback(async () => {
@@ -121,8 +130,8 @@ export function WatchlistDialog({ open, onOpenChange }: { open: boolean; onOpenC
                 <WatchRow
                   key={w.id}
                   watch={w}
-                  onToggle={(on) => void run(async () => void (await api.setWatchActive(w.id, on)))}
-                  onDelete={() => void run(async () => void (await api.deleteWatch(w.id)))}
+                  onToggle={(on) => void run(async () => { await api.setWatchActive(w.id, on) })}
+                  onDelete={() => void run(async () => { await api.deleteWatch(w.id) })}
                 />
               ))}
             </ul>
@@ -141,19 +150,14 @@ export function WatchlistDialog({ open, onOpenChange }: { open: boolean; onOpenC
             required
           />
           <div className="grid gap-2 sm:grid-cols-2">
-            <Select
-              items={[{ value: ANY, label: 'Any topic' }, ...topics.map((t) => ({ value: t, label: `${TOPIC_EMOJI[t] ?? '📰'} ${t}` }))]}
-              value={topic}
-              onValueChange={(v) => setTopic(String(v ?? ANY))}
-            >
+            <Select items={topicOptions} value={topic} onValueChange={(v) => setTopic(String(v ?? ANY))}>
               <SelectTrigger aria-label="Topic" className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent alignItemWithTrigger={false}>
-                <SelectItem value={ANY}>Any topic</SelectItem>
-                {topics.map((t) => (
-                  <SelectItem key={t} value={t}>
-                    {TOPIC_EMOJI[t] ?? '📰'} {t}
+                {topicOptions.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>
+                    {o.label}
                   </SelectItem>
                 ))}
               </SelectContent>

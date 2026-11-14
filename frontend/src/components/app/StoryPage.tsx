@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+// Page for one story: its brief, ranked reports and outlet comparison.
+import { useEffect, useState, type ReactNode } from 'react'
 import { ArrowLeft, Check, GitCompareArrows, Loader2, RefreshCw, Sparkles } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
@@ -13,6 +14,28 @@ import { api, ApiError, type StoryBrief, type StoryDetail } from '@/lib/api'
 import { timeAgo } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
+/** A headed bullet list in the story brief. */
+function BriefList({
+  id, heading, lines, colorClass, dotClass,
+}: { id: string; heading: ReactNode; lines: string[]; colorClass: string; dotClass: string }) {
+  return (
+    <section aria-labelledby={id}>
+      <h3 id={id} className={cn('mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold tracking-wider uppercase', colorClass)}>
+        {heading}
+      </h3>
+      <ul className="space-y-1.5 text-[13.5px] leading-relaxed">
+        {lines.map((line, i) => (
+          <li key={i} className="flex gap-2">
+            <span className={cn('mt-2 size-1.5 shrink-0 rounded-full', dotClass)} aria-hidden />
+            {line}
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
+/** Card with what outlets agree on and where they differ. */
 function BriefCard({ brief, onRefresh, refreshing }: { brief: StoryBrief; onRefresh: () => void; refreshing: boolean }) {
   const ai = brief.kind === 'ai'
   return (
@@ -34,32 +57,20 @@ function BriefCard({ brief, onRefresh, refreshing }: { brief: StoryBrief; onRefr
         <p className="text-base leading-snug font-semibold">{brief.headline}</p>
 
         <div className="grid gap-4 md:grid-cols-2">
-          <section aria-labelledby="agree">
-            <h3 id="agree" className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold tracking-wider text-positive uppercase">
-              <Check className="size-3.5" aria-hidden /> What everyone agrees on
-            </h3>
-            <ul className="space-y-1.5 text-[13.5px] leading-relaxed">
-              {brief.agree.map((line, i) => (
-                <li key={i} className="flex gap-2">
-                  <span className="mt-2 size-1.5 shrink-0 rounded-full bg-positive" aria-hidden />
-                  {line}
-                </li>
-              ))}
-            </ul>
-          </section>
-          <section aria-labelledby="differ">
-            <h3 id="differ" className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold tracking-wider text-amber-500 uppercase">
-              <GitCompareArrows className="size-3.5" aria-hidden /> Where outlets differ
-            </h3>
-            <ul className="space-y-1.5 text-[13.5px] leading-relaxed">
-              {brief.differ.map((line, i) => (
-                <li key={i} className="flex gap-2">
-                  <span className="mt-2 size-1.5 shrink-0 rounded-full bg-amber-500" aria-hidden />
-                  {line}
-                </li>
-              ))}
-            </ul>
-          </section>
+          <BriefList
+            id="agree"
+            heading={<><Check className="size-3.5" aria-hidden /> What everyone agrees on</>}
+            lines={brief.agree}
+            colorClass="text-positive"
+            dotClass="bg-positive"
+          />
+          <BriefList
+            id="differ"
+            heading={<><GitCompareArrows className="size-3.5" aria-hidden /> Where outlets differ</>}
+            lines={brief.differ}
+            colorClass="text-amber-500"
+            dotClass="bg-amber-500"
+          />
         </div>
 
         <p className="text-xs text-muted-foreground">
@@ -73,6 +84,17 @@ function BriefCard({ brief, onRefresh, refreshing }: { brief: StoryBrief; onRefr
   )
 }
 
+/** Message shown when the story no longer exists. */
+function StoryNotFound({ message }: { message: string }) {
+  return (
+    <Card className="py-12 text-center">
+      <h2 className="text-lg font-semibold">Story not found</h2>
+      <p className="text-sm text-muted-foreground">{message}</p>
+    </Card>
+  )
+}
+
+/** Placeholder shown while the story loads. */
 function StorySkeleton() {
   return (
     <div className="space-y-4">
@@ -122,14 +144,9 @@ export function StoryPage({ id }: { id: number }) {
         <ArrowLeft data-icon="inline-start" /> Back to feed
       </Button>
 
-      {error ? (
-        <Card className="py-12 text-center">
-          <h2 className="text-lg font-semibold">Story not found</h2>
-          <p className="text-sm text-muted-foreground">{error}</p>
-        </Card>
-      ) : !story ? (
-        <StorySkeleton />
-      ) : (
+      {error && <StoryNotFound message={error} />}
+      {!error && !story && <StorySkeleton />}
+      {!error && story && (
         <>
           <BlurFade>
             <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">

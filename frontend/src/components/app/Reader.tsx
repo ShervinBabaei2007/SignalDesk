@@ -1,14 +1,15 @@
+// Full article page: hero image, summary, key sections, sentiment and related coverage.
 import { useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, ExternalLink, Loader2, Sparkles } from 'lucide-react'
 import { toast } from 'sonner'
-import { AlsoCoveredBy } from '@/components/app/AlsoCoveredBy'
-import { BookmarkButton } from '@/components/app/BookmarkButton'
-import { SentimentBadge, SentimentInfo, SentimentScale, toneBg, toneText } from '@/components/app/Sentiment'
 import { Badge } from '@/components/ui/badge'
 import { BlurFade } from '@/components/ui/blur-fade'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
+import { AlsoCoveredBy } from '@/components/app/AlsoCoveredBy'
+import { BookmarkButton } from '@/components/app/BookmarkButton'
+import { SentimentBadge, SentimentInfo, SentimentScale, toneBg, toneText } from '@/components/app/Sentiment'
 import { useLibrary } from '@/hooks/useLibrary'
 import { api, type ArticleDetail } from '@/lib/api'
 import { domainOf, keywordList, timeAgo, TOPIC_EMOJI } from '@/lib/format'
@@ -16,6 +17,7 @@ import { describeSentiment } from '@/lib/sentiment'
 import { parseStructured } from '@/lib/structured'
 import { cn } from '@/lib/utils'
 
+/** Lead image of the article, hidden when missing or broken. */
 function Hero({ article }: { article: ArticleDetail }) {
   const [failed, setFailed] = useState(false)
   if (!article.image_url || article.is_seed || failed) return null
@@ -40,6 +42,17 @@ function Hero({ article }: { article: ArticleDetail }) {
   )
 }
 
+/** Message shown when the article does not exist. */
+function ArticleNotFound({ message }: { message: string }) {
+  return (
+    <Card className="py-12 text-center">
+      <h2 className="text-lg font-semibold">Article not found</h2>
+      <p className="text-sm text-muted-foreground">{message}</p>
+    </Card>
+  )
+}
+
+/** Placeholder shown while the article loads. */
 function ReaderSkeleton() {
   return (
     <Card>
@@ -53,6 +66,7 @@ function ReaderSkeleton() {
   )
 }
 
+/** The article reader for one article id. */
 export function Reader({ id }: { id: number }) {
   const [article, setArticle] = useState<ArticleDetail | null>(null)
   const [error, setError] = useState('')
@@ -75,7 +89,7 @@ export function Reader({ id }: { id: number }) {
     return () => {
       live = false
     }
-  }, [id])
+  }, [id, markRead])
 
   const sections = useMemo(
     () => parseStructured(article?.summary_structured ?? null, !!article?.summary_deep),
@@ -99,14 +113,9 @@ export function Reader({ id }: { id: number }) {
         <ArrowLeft data-icon="inline-start" /> Back to feed
       </Button>
 
-      {error ? (
-        <Card className="py-12 text-center">
-          <h2 className="text-lg font-semibold">Article not found</h2>
-          <p className="text-sm text-muted-foreground">{error}</p>
-        </Card>
-      ) : !article ? (
-        <ReaderSkeleton />
-      ) : (
+      {error && <ArticleNotFound message={error} />}
+      {!error && !article && <ReaderSkeleton />}
+      {!error && article && (
         <Card className="gap-0 py-0">
           <CardContent className="p-5 sm:p-7">
             <Hero article={article} />
@@ -200,6 +209,7 @@ export function Reader({ id }: { id: number }) {
   )
 }
 
+/** Explains an article's sentiment score in plain words. */
 function SentimentPanel({ score }: { score: number }) {
   const d = describeSentiment(score)
   return (

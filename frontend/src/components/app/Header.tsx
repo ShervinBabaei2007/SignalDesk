@@ -1,3 +1,4 @@
+// Top bar with branding, ingest button, feeds, watchlist and settings access.
 import { useState, type MouseEvent } from 'react'
 import { Bell, Download, Loader2, Mail, Menu, Radio, Settings as SettingsIcon, Zap } from 'lucide-react'
 import { toast } from 'sonner'
@@ -12,6 +13,7 @@ import { useDashboard } from '@/hooks/useDashboard'
 import { goHome } from '@/hooks/useRoute'
 import { api, ApiError } from '@/lib/api'
 
+/** The app header. */
 export function Header() {
   const { health, ingesting, runIngest, clearFilters } = useDashboard()
   const [feedsOpen, setFeedsOpen] = useState(false)
@@ -34,6 +36,12 @@ export function Header() {
       const e = err as ApiError
       toast.error(e.status === 400 ? 'No delivery channel configured — set Slack or SMTP settings' : e.message)
     }
+  }
+
+  /** Close the mobile menu, then run the chosen action. */
+  const fromMenu = (action: () => void) => () => {
+    setMenuOpen(false)
+    action()
   }
 
   const ingest = (
@@ -104,22 +112,22 @@ export function Header() {
             <SheetDescription>{health ? `API healthy · ${health.articles} articles · ${health.feeds} feeds` : 'SignalDesk'}</SheetDescription>
           </SheetHeader>
           <div className="grid gap-2 px-4">
-            <Button size="lg" className="h-11 justify-start" onClick={() => { setMenuOpen(false); void runIngest() }}>
+            <Button size="lg" className="h-11 justify-start" onClick={fromMenu(() => void runIngest())}>
               <Download data-icon="inline-start" /> Ingest feeds
             </Button>
-            <Button variant="outline" size="lg" className="h-11 justify-start" onClick={() => { setMenuOpen(false); setFeedsOpen(true) }}>
+            <Button variant="outline" size="lg" className="h-11 justify-start" onClick={fromMenu(() => setFeedsOpen(true))}>
               <Radio data-icon="inline-start" /> Manage feeds
             </Button>
-            <Button variant="outline" size="lg" className="h-11 justify-start" onClick={() => { setMenuOpen(false); setWatchOpen(true) }}>
+            <Button variant="outline" size="lg" className="h-11 justify-start" onClick={fromMenu(() => setWatchOpen(true))}>
               <Bell data-icon="inline-start" /> Watchlist
             </Button>
-            <Button variant="outline" size="lg" className="h-11 justify-start" onClick={() => { setMenuOpen(false); void sendBrief() }}>
+            <Button variant="outline" size="lg" className="h-11 justify-start" onClick={fromMenu(() => void sendBrief())}>
               <Mail data-icon="inline-start" /> Send daily brief
             </Button>
             <Button variant="outline" size="lg" className="h-11 justify-start" render={<a href="/api/articles/export.csv" download />}>
               <Download data-icon="inline-start" /> Export CSV
             </Button>
-            <Button variant="outline" size="lg" className="h-11 justify-start" onClick={() => { setMenuOpen(false); setSettingsOpen(true) }}>
+            <Button variant="outline" size="lg" className="h-11 justify-start" onClick={fromMenu(() => setSettingsOpen(true))}>
               <SettingsIcon data-icon="inline-start" /> Settings
             </Button>
           </div>

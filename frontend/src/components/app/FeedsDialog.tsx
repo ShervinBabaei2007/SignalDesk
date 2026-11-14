@@ -1,3 +1,4 @@
+// Dialog to view, add and remove RSS feeds.
 import { useState, type FormEvent } from 'react'
 import { Loader2, Plus, Sparkles, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -11,15 +12,22 @@ import { api, ApiError, type Feed } from '@/lib/api'
 import { timeAgo } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
+/** Short health text for a feed. */
+function feedStatus(feed: Feed): string {
+  if (!feed.last_status) return 'Not fetched yet'
+  return feed.last_fetched_at ? `${feed.last_status} · ${timeAgo(feed.last_fetched_at)}` : feed.last_status
+}
+
+/** One feed row with its status and a delete button. */
 function FeedRow({ feed, onDelete }: { feed: Feed; onDelete: () => void }) {
-  const failed = !!feed.last_status && feed.last_status.startsWith('error')
+  const failed = !!feed.last_status?.startsWith('error')
   return (
     <li className="flex items-center justify-between gap-3 rounded-lg border bg-background/50 px-3 py-2.5">
       <div className="min-w-0">
         <div className="text-sm font-medium">{feed.name}</div>
         <div className="truncate font-mono text-[11px] text-muted-foreground">{feed.url}</div>
         <div className={cn('mt-0.5 text-[11px]', failed ? 'text-negative' : 'text-positive')}>
-          {feed.last_status ? `${feed.last_status}${feed.last_fetched_at ? ` · ${timeAgo(feed.last_fetched_at)}` : ''}` : 'Not fetched yet'}
+          {feedStatus(feed)}
         </div>
       </div>
       <Button variant="ghost" size="icon" aria-label={`Remove ${feed.name}`} className="text-negative hover:text-negative" onClick={onDelete}>
@@ -29,6 +37,7 @@ function FeedRow({ feed, onDelete }: { feed: Feed; onDelete: () => void }) {
   )
 }
 
+/** The feeds management dialog. */
 export function FeedsDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const { feeds, refreshFeeds } = useDashboard()
   const [name, setName] = useState('')

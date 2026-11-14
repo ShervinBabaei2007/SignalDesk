@@ -1,3 +1,4 @@
+// Lists the other outlets' reports of the same story under an article.
 import { ArrowRight, ChevronRight, Newspaper } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
@@ -9,6 +10,7 @@ import { SentimentBadge } from '@/components/app/Sentiment'
 import type { RelatedArticle } from '@/lib/api'
 import { domainOf, sourceHue, timeAgo } from '@/lib/format'
 
+/** Round avatar with the outlet's initial, coloured per outlet. */
 export function SourceAvatar({ name, size = 'lg' }: { name: string; size?: 'default' | 'lg' }) {
   const hue = sourceHue(name)
   return (
@@ -23,6 +25,7 @@ export function SourceAvatar({ name, size = 'lg' }: { name: string; size?: 'defa
   )
 }
 
+/** One related report with its outlet, summary and link. */
 function Row({ item, index }: { item: RelatedArticle; index: number }) {
   const snippet = item.summary_deep || item.summary
   return (

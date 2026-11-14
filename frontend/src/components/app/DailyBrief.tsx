@@ -1,3 +1,4 @@
+// Card showing the daily brief with its top positive and negative stories and a send button.
 import { useState } from 'react'
 import { Loader2, Mail, Sun } from 'lucide-react'
 import { toast } from 'sonner'
@@ -12,6 +13,7 @@ import { api, ApiError, type DigestItem } from '@/lib/api'
 import { describeSentiment } from '@/lib/sentiment'
 import { cn } from '@/lib/utils'
 
+/** A titled list of digest items in one tone. */
 function DigestGroup({ title, items, tone }: { title: string; items: DigestItem[]; tone: 'positive' | 'negative' }) {
   if (!items.length) return null
   return (
@@ -39,6 +41,13 @@ function DigestGroup({ title, items, tone }: { title: string; items: DigestItem[
   )
 }
 
+/** Friendly message for a failed brief send. */
+function sendErrorMessage(e: ApiError): string {
+  if (e.status === 400) return 'No delivery channel configured — set Slack or SMTP settings'
+  if (e.status === 401) return 'Add your API token in Settings first'
+  return `Could not send brief: ${e.message}`
+}
+
 /** Today at a glance: the one-line headline plus the most positive and negative stories. */
 export function DailyBrief() {
   const { digest } = useDashboard()
@@ -50,14 +59,7 @@ export function DailyBrief() {
       const r = await api.sendDigest()
       toast.success(`Daily brief sent via ${r.sent.join(' + ')}`)
     } catch (err) {
-      const e = err as ApiError
-      toast.error(
-        e.status === 400
-          ? 'No delivery channel configured — set Slack or SMTP settings'
-          : e.status === 401
-            ? 'Add your API token in Settings first'
-            : `Could not send brief: ${e.message}`,
-      )
+      toast.error(sendErrorMessage(err as ApiError))
     } finally {
       setSending(false)
     }

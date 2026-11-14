@@ -1,3 +1,4 @@
+// Collapsible list of a story's ranked reports.
 import { ArrowRight, ChevronDown, Newspaper } from 'lucide-react'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { InfoScore } from '@/components/app/InfoScore'

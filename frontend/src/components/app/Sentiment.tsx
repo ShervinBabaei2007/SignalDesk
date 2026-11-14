@@ -1,4 +1,5 @@
-import { ArrowDown, ArrowUp, Info, Minus } from 'lucide-react'
+// Shared sentiment visuals: tone colours, icons, badge and gauge.
+import { ArrowDown, ArrowUp, Info, Minus, type LucideIcon } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger } from '@/components/ui/popover'
@@ -6,19 +7,29 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { describeSentiment, SENTIMENT_LEVELS, scalePosition, type Tone } from '@/lib/sentiment'
 import { cn } from '@/lib/utils'
 
+/** Text colour class per sentiment tone. */
 export const toneText: Record<Tone, string> = {
   positive: 'text-positive',
   neutral: 'text-neutral',
   negative: 'text-negative',
 }
+/** Background and border classes per sentiment tone. */
 export const toneBg: Record<Tone, string> = {
   positive: 'bg-positive/12 border-positive/30',
   neutral: 'bg-neutral/12 border-neutral/30',
   negative: 'bg-negative/12 border-negative/30',
 }
 
+/** Icon per sentiment tone. */
+const toneIcon: Record<Tone, LucideIcon> = {
+  positive: ArrowUp,
+  neutral: Minus,
+  negative: ArrowDown,
+}
+
+/** Arrow icon for a sentiment tone. */
 export function ToneIcon({ tone, className }: { tone: Tone; className?: string }) {
-  const Icon = tone === 'positive' ? ArrowUp : tone === 'negative' ? ArrowDown : Minus
+  const Icon = toneIcon[tone]
   return <Icon className={cn('size-3', className)} aria-hidden />
 }
 

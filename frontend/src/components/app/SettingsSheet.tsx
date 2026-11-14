@@ -1,3 +1,4 @@
+// Side sheet for theme, layout, grouping and API token settings.
 import { useState } from 'react'
 import { Monitor, Moon, Sun } from 'lucide-react'
 import { useTheme } from 'next-themes'
@@ -10,12 +11,14 @@ import { Switch } from '@/components/ui/switch'
 import { useSettings } from '@/hooks/useSettings'
 import { cn } from '@/lib/utils'
 
+/** Theme choices offered in settings. */
 const THEMES = [
   { value: 'light', label: 'Light', icon: Sun },
   { value: 'dark', label: 'Dark', icon: Moon },
   { value: 'system', label: 'System', icon: Monitor },
 ] as const
 
+/** The settings sheet. */
 export function SettingsSheet({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const { theme, setTheme } = useTheme()
   const { compact, setCompact, token, saveToken } = useSettings()

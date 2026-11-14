@@ -1,3 +1,4 @@
+// Button that saves or unsaves an article in the browser's library.
 import { Bookmark } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'

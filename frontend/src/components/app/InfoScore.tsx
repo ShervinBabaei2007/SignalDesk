@@ -1,3 +1,4 @@
+// Badge or bar showing a report's information score.
 import { Gauge } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'

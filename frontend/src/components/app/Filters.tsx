@@ -1,3 +1,4 @@
+// Search box and topic, source, sentiment and sort selects that drive the feed.
 import { Search } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -5,8 +6,24 @@ import { useDashboard } from '@/hooks/useDashboard'
 import type { Filters as FilterState } from '@/lib/api'
 import { TOPIC_EMOJI } from '@/lib/format'
 
+/** Select value meaning no filter. */
 const ALL = 'all'
 
+/** The Topic select also holds the Hot and Saved categories; picking one clears the other two. */
+function topicPatch(value: string): Partial<FilterState> {
+  if (value === 'hot') return { hot: '1', topic: '', saved: '' }
+  if (value === 'saved') return { saved: '1', topic: '', hot: '' }
+  return { topic: value, hot: '', saved: '' }
+}
+
+/** Current value of the combined topic/hot/saved select. */
+function topicValue(filters: FilterState): string {
+  if (filters.saved) return 'saved'
+  if (filters.hot) return 'hot'
+  return filters.topic
+}
+
+/** A labelled select used by the filter bar. */
 function FilterSelect({
   label, value, onChange, options, className,
 }: {
@@ -32,6 +49,7 @@ function FilterSelect({
   )
 }
 
+/** The filter bar. */
 export function Filters() {
   const { filters, setFilter, sources, stats } = useDashboard()
   const topics = Object.keys(stats?.topic_breakdown ?? {}).sort()
@@ -58,12 +76,8 @@ export function Filters() {
       />
       <FilterSelect
         label="Topic"
-        value={filters.saved ? 'saved' : filters.hot ? 'hot' : filters.topic}
-        onChange={(v) =>
-          setFilter(
-            v === 'hot' ? { hot: '1', topic: '', saved: '' } : v === 'saved' ? { saved: '1', topic: '', hot: '' } : { topic: v, hot: '', saved: '' },
-          )
-        }
+        value={topicValue(filters)}
+        onChange={(v) => setFilter(topicPatch(v))}
         options={[{ value: ALL, label: 'All topics' }, { value: 'hot', label: '🔥 Hot topics' }, { value: 'saved', label: '🔖 Saved' }, ...topics.map((t) => ({ value: t, label: `${TOPIC_EMOJI[t] ?? '📰'} ${t}` }))]}
       />
       <FilterSelect

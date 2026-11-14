@@ -1,3 +1,4 @@
+// Seven-day sentiment trend chart with hover details.
 import { useMemo, useState } from 'react'
 import { motion, useReducedMotion } from 'motion/react'
 import { ArrowDownRight, ArrowUpRight, Minus } from 'lucide-react'
@@ -9,13 +10,17 @@ import { monotonePath } from '@/lib/chart'
 import { NEGATIVE_BELOW, POSITIVE_ABOVE, describeSentiment, formatScore } from '@/lib/sentiment'
 import { cn } from '@/lib/utils'
 
+/** One day of the sentiment trend. */
 type Point = Stats['sentiment_7d'][number]
 
+/** Chart viewBox size and padding. */
 const W = 480
 const H = 168
 const PAD = { l: 8, r: 8, t: 14, b: 26 }
+/** Fill colour per sentiment tone. */
 const TONE_FILL = { positive: 'var(--positive)', neutral: 'var(--neutral)', negative: 'var(--negative)' }
 
+/** Readable label for a date. */
 function dayLabel(date: string, long = false): string {
   const d = new Date(`${date}T00:00:00Z`)
   return d.toLocaleDateString(
@@ -63,7 +68,8 @@ export function TrendCard({ points, className }: { points: Point[]; className?: 
   const prev = activeIdx > 0 ? points[activeIdx - 1] : null
   const delta = prev ? active.avg_sentiment - prev.avg_sentiment : 0
   const steady = !prev || Math.abs(delta) < 0.02
-  const DeltaIcon = steady ? Minus : delta > 0 ? ArrowUpRight : ArrowDownRight
+  let DeltaIcon = Minus
+  if (!steady) DeltaIcon = delta > 0 ? ArrowUpRight : ArrowDownRight
   const leftPct = (chart.coords[activeIdx][0] / W) * 100
   const innerW = W - PAD.l - PAD.r
 
