@@ -25,7 +25,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from . import config, demo, netguard, notifications, observability, pipeline, reporting, story_index, watches, workspace
+from . import config, demo, events, netguard, notifications, observability, pipeline, reporting, story_index, watches, workspace
 from . import stories as story_logic
 from .database import SessionLocal, ensure_columns, engine, get_db
 from .enrichment import enrich_article
@@ -33,7 +33,7 @@ from .ingestion import add_missing_default_feeds
 from .models import NO_WORKSPACE, Article, Base, Feed
 from .quality import backfill_info_scores
 from .schemas import (ArticleDetail, ArticlePage, Digest, FeedCreate, FeedIngestResult, FeedOut,
-                      IngestResult, Stats, StoryDetail, StoryPage, TrendingStory, WatchAlertOut,
+                      IngestResult, Stats, StoryDetail, StoryPage, StoryTimeline, TrendingStory, WatchAlertOut,
                       WatchIn, WatchOut, WatchPatch)
 from .seed_data import backfill_keywords, seed_if_empty
 
@@ -326,7 +326,7 @@ def stats(db: Session = Depends(scoped_db)):
 @app.get("/api/trending", response_model=list[TrendingStory], tags=["Intelligence"])
 def trending_stories(limit: int = Query(story_index.HOT_STORIES, ge=1, le=20), db: Session = Depends(scoped_db)):
     """Hot topics: the stories the most outlets are covering right now."""
-    return story_index.trending(db, limit)
+    return events.annotate_trending(db, story_index.trending(db, limit))
 
 
 def _filtered(db: Session, search, source, topic, sentiment, cluster, hot, ids, order):
@@ -399,6 +399,12 @@ def _cluster_or_404(db: Session, cluster_id: int):
 def story_detail(cluster_id: int, db: Session = Depends(scoped_db)):
     """One story in depth: its brief, how the outlets compare, and every report ranked."""
     return story_logic.story_detail(db, _cluster_or_404(db, cluster_id))
+
+
+@app.get("/api/stories/{cluster_id}/timeline", response_model=StoryTimeline, tags=["Articles"])
+def story_timeline(cluster_id: int, db: Session = Depends(scoped_db)):
+    """How coverage of this story's event developed day by day (reports, outlets that joined, tone)."""
+    return events.timeline(db, _cluster_or_404(db, cluster_id))
 
 
 @app.post("/api/stories/{cluster_id}/brief", response_model=StoryDetail, tags=["Articles"],

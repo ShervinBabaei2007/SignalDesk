@@ -157,6 +157,25 @@ class FeedRun(Base):
     added: Mapped[int] = mapped_column(Integer, default=0)
 
 
+class Event(Base):
+    """A durable story identity: the same event followed across days, even as its cluster id changes."""
+    __tablename__ = "events"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    peak_reports: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class EventArticle(Base):
+    """Which event an article belongs to (shared articles only)."""
+    __tablename__ = "event_articles"
+
+    article_id: Mapped[int] = mapped_column(primary_key=True)
+    event_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+
+
 # --------------------------------------------------------------------------- #
 # Workspace scoping
 # --------------------------------------------------------------------------- #

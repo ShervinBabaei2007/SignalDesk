@@ -242,6 +242,32 @@ class TrendingStory(BaseModel):
     topic: str
     avg_sentiment: float
     latest_at: datetime
+    first_seen: datetime | None = None  # when the event was first covered, if it is tracked
+    days_active: int = 1
+
+
+class TimelineDay(BaseModel):
+    """One day of an event's coverage."""
+    date: str
+    reports: int
+    outlets: int
+    new_outlets: list[str]
+    avg_sentiment: float | None = None
+    headline: str | None = None
+
+
+class StoryTimeline(BaseModel):
+    """How coverage of an event developed day by day."""
+    event_id: int | None = None
+    first_seen: datetime | None = None
+    last_seen: datetime | None = None
+    days_active: int = 0
+    reports: int = 0
+    outlets: int = 0
+    peak_reports: int = 0
+    sentiment_shift: float = 0.0  # tone on the last day minus the first
+    first_reported_by: str | None = None
+    days: list[TimelineDay] = []
 
 
 class Stats(BaseModel):

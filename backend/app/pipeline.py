@@ -25,7 +25,7 @@ from typing import Callable
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from . import config, embeddings, enrichment, observability, watches
+from . import config, embeddings, enrichment, events, observability, watches
 from .database import SessionLocal
 from .ingestion import ingest_all
 from .models import Article, Feed
@@ -102,6 +102,11 @@ def ingest_cycle(db: Session, *, manual: bool,
         logger.exception("[watch] check failed")
         alerts = []
 
+    try:
+        events.assign(db)  # keep the durable event history in step with the stories (shared data only)
+    except Exception:  # noqa: BLE001 - event tracking must never fail an ingest
+        db.rollback()
+        logger.exception("[events] assignment failed")
     observability.record_cycle(db, kind="manual" if manual else "scheduled", duration_seconds=duration,
                                results=results, alerts=len(alerts))
     return CycleResult(results=results, duration_seconds=round(duration, 2), alerts=alerts,
