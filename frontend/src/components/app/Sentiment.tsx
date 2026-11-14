@@ -1,5 +1,5 @@
 // Shared sentiment visuals: tone colours, icons, badge and gauge.
-import { ArrowDown, ArrowUp, Info, Minus, type LucideIcon } from 'lucide-react'
+import { ArrowDown, ArrowUp, CircleHelp, Minus, type LucideIcon } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger } from '@/components/ui/popover'
@@ -99,7 +99,7 @@ export function SentimentInfo({ className }: { className?: string }) {
             />
           }
         >
-          <Info />
+          <CircleHelp />
         </TooltipTrigger>
         <TooltipContent>What does sentiment mean?</TooltipContent>
       </Tooltip>

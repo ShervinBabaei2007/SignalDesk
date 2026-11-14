@@ -1,5 +1,5 @@
 // Lists the other outlets' reports of the same story under an article.
-import { ArrowRight, ChevronRight, Newspaper } from 'lucide-react'
+import { ArrowRight, ChevronRight, Layers } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { BlurFade } from '@/components/ui/blur-fade'
@@ -81,7 +81,7 @@ export function AlsoCoveredBy({ items, clusterId }: { items: RelatedArticle[]; c
       <CardHeader className="gap-1">
         <div className="flex items-center justify-between gap-2">
           <CardTitle className="flex items-center gap-2 text-[15px]">
-            <Newspaper className="size-4 text-link" aria-hidden /> Also covered by
+            <Layers className="size-4 text-link" aria-hidden /> Also covered by
           </CardTitle>
           <Badge variant="secondary">{items.length} more {items.length === 1 ? 'report' : 'reports'}</Badge>
         </div>

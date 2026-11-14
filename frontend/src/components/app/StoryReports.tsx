@@ -1,5 +1,5 @@
 // Collapsible list of a story's ranked reports.
-import { ArrowRight, ChevronDown, Newspaper } from 'lucide-react'
+import { ArrowRight, ChevronDown, Layers } from 'lucide-react'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { InfoScore } from '@/components/app/InfoScore'
 import { SentimentBadge } from '@/components/app/Sentiment'
@@ -47,7 +47,7 @@ export function StoryReports({
     // Clicks in here must not trigger the card's own "open article" click.
     <Collapsible defaultOpen={defaultOpen} onClick={(e) => e.stopPropagation()} className="border-t pt-2.5">
       <CollapsibleTrigger className="group flex w-full items-center gap-2 rounded-md px-1 py-1 text-left text-sm font-medium text-link transition-colors hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none">
-        <Newspaper className="size-4" aria-hidden />
+        <Layers className="size-4" aria-hidden />
         <span>
           {others.length} more {others.length === 1 ? 'report' : 'reports'}
           <span className="font-normal text-muted-foreground">

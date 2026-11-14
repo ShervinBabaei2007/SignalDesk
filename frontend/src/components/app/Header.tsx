@@ -1,6 +1,6 @@
 // Top bar with branding, ingest button, feeds, watchlist and settings access.
 import { useState, type MouseEvent } from 'react'
-import { Bell, Download, Loader2, Mail, Menu, Radio, Settings as SettingsIcon, Zap } from 'lucide-react'
+import { Bell, FileSpreadsheet, Loader2, Mail, Menu, RefreshCw, Rss, Settings as SettingsIcon, Zap } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -54,7 +54,7 @@ export function Header() {
       borderRadius="0.625rem"
       className="h-9 px-3 text-sm font-medium disabled:opacity-70"
     >
-      {ingesting ? <Loader2 className="size-4 animate-spin sm:mr-1.5" /> : <Download className="size-4 sm:mr-1.5" />}
+      {ingesting ? <Loader2 className="size-4 animate-spin sm:mr-1.5" /> : <RefreshCw className="size-4 sm:mr-1.5" />}
       <span className="hidden sm:inline">{ingesting ? 'Checking feeds…' : 'Ingest feeds'}</span>
     </ShimmerButton>
   )
@@ -86,10 +86,10 @@ export function Header() {
           )}
           <div className="hidden items-center gap-1 md:flex">
             <Button variant="ghost" render={<a href="/api/articles/export.csv" download />}>
-              <Download data-icon="inline-start" /> CSV
+              <FileSpreadsheet data-icon="inline-start" /> CSV
             </Button>
             <Button variant="ghost" onClick={() => setFeedsOpen(true)}>
-              <Radio data-icon="inline-start" /> Feeds
+              <Rss data-icon="inline-start" /> Feeds
             </Button>
             <Button variant="ghost" onClick={() => setWatchOpen(true)}>
               <Bell data-icon="inline-start" /> Watchlist
@@ -113,10 +113,10 @@ export function Header() {
           </SheetHeader>
           <div className="grid gap-2 px-4">
             <Button size="lg" className="h-11 justify-start" onClick={fromMenu(() => void runIngest())}>
-              <Download data-icon="inline-start" /> Ingest feeds
+              <RefreshCw data-icon="inline-start" /> Ingest feeds
             </Button>
             <Button variant="outline" size="lg" className="h-11 justify-start" onClick={fromMenu(() => setFeedsOpen(true))}>
-              <Radio data-icon="inline-start" /> Manage feeds
+              <Rss data-icon="inline-start" /> Manage feeds
             </Button>
             <Button variant="outline" size="lg" className="h-11 justify-start" onClick={fromMenu(() => setWatchOpen(true))}>
               <Bell data-icon="inline-start" /> Watchlist
@@ -125,7 +125,7 @@ export function Header() {
               <Mail data-icon="inline-start" /> Send daily brief
             </Button>
             <Button variant="outline" size="lg" className="h-11 justify-start" render={<a href="/api/articles/export.csv" download />}>
-              <Download data-icon="inline-start" /> Export CSV
+              <FileSpreadsheet data-icon="inline-start" /> Export CSV
             </Button>
             <Button variant="outline" size="lg" className="h-11 justify-start" onClick={fromMenu(() => setSettingsOpen(true))}>
               <SettingsIcon data-icon="inline-start" /> Settings

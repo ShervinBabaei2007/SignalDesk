@@ -1,6 +1,6 @@
 // The main feed: story cards or flat article cards, with loading, empty and paging states.
 import { useRef } from 'react'
-import { Award, Bell, ChevronLeft, ChevronRight, ExternalLink, FileText, Link2, Newspaper, Satellite, Sparkles, Sprout, Star, X } from 'lucide-react'
+import { BookOpen, ChevronLeft, ChevronRight, ExternalLink, Eye, FileText, FlaskConical, Globe, Inbox, Layers, Star, Trophy, X } from 'lucide-react'
 import { Alert, AlertAction, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { BlurFade } from '@/components/ui/blur-fade'
@@ -43,7 +43,7 @@ function StoryChip({ article }: { article: Article }) {
           />
         }
       >
-        <Newspaper className="size-3" aria-hidden />
+        <Layers className="size-3" aria-hidden />
         {article.cluster_size} reports · {sources.length} source{sources.length === 1 ? '' : 's'}
       </TooltipTrigger>
       <TooltipContent className="max-w-64">Also reported by {sources.join(', ')}. Click to see all coverage.</TooltipContent>
@@ -62,7 +62,7 @@ function CoverageBadge({ article, story }: { article: Article; story?: Story }) 
     if (story.report_count <= 1) return null
     return (
       <Badge variant="outline" className="gap-1 border-link/40 font-semibold text-link" title="The most informative of this story's reports">
-        <Award className="size-3" aria-hidden />
+        <Trophy className="size-3" aria-hidden />
         Best of {story.report_count} reports · {countLabel(story.outlets, 'outlet', 'outlets')}
       </Badge>
     )
@@ -92,7 +92,7 @@ function ArticleCard({
             <span className="font-semibold text-link">{a.source}</span>
             {domain && (
               <span className="inline-flex items-center gap-1" title="The story’s real address">
-                <Link2 className="size-3" aria-hidden />
+                <Globe className="size-3" aria-hidden />
                 {domain}
               </span>
             )}
@@ -107,14 +107,14 @@ function ArticleCard({
             ) : null}
             {a.summary_deep && (
               <Badge variant="secondary" className="compact-hide gap-1 text-ai" title="Summary generated from the full article page">
-                <Sparkles className="size-3" aria-hidden />
+                <BookOpen className="size-3" aria-hidden />
                 deep
               </Badge>
             )}
             <InfoScore score={a.info_score} />
             {story && story.watch_matches.length > 0 && (
               <Badge variant="outline" className="gap-1 border-amber-500/40 font-medium text-amber-500" title="Matches your watchlist">
-                <Bell className="size-3" aria-hidden />
+                <Eye className="size-3" aria-hidden />
                 Watching: {story.watch_matches.join(', ')}
               </Badge>
             )}
@@ -154,7 +154,7 @@ function ArticleCard({
               </Button>
               {a.is_seed ? (
                 <Badge variant="secondary" className="h-7 gap-1 px-2.5" title="Demo article — placeholder content, no external page">
-                  <Sprout className="size-3" aria-hidden />
+                  <FlaskConical className="size-3" aria-hidden />
                   Demo
                 </Badge>
               ) : (
@@ -253,7 +253,7 @@ function FeedPagination({ onNavigate, noun }: { onNavigate: () => void; noun: st
 function EmptyFeed({ saved, showClear, onClear }: { saved: boolean; showClear: boolean; onClear: () => void }) {
   return (
     <Card className="items-center py-14 text-center">
-      <Satellite className="size-9 text-muted-foreground" aria-hidden />
+      <Inbox className="size-9 text-muted-foreground" aria-hidden />
       <h3 className="text-base font-semibold">{saved ? 'Nothing saved yet' : 'No signals found'}</h3>
       <p className="max-w-xs text-sm text-muted-foreground">
         {saved
@@ -305,7 +305,7 @@ export function ArticleFeed() {
 
       {filters.cluster && (
         <Alert className="mb-3">
-          <Newspaper />
+          <Layers />
           <AlertDescription className="text-foreground">
             One story, {articleTotal} reports{sources.length ? ` from ${sources.join(', ')}` : ''}
           </AlertDescription>
