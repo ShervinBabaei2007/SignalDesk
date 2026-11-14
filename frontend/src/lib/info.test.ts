@@ -1,3 +1,4 @@
+// Tests for the information-score levels.
 import { describe, expect, it } from 'vitest'
 import { infoLevel } from './info'
 

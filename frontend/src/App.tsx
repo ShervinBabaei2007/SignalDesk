@@ -1,3 +1,4 @@
+// Root layout: picks the dashboard, a story page or the reader from the URL hash.
 import { AnimatePresence, MotionConfig, motion } from 'motion/react'
 import { ArticleFeed } from '@/components/app/ArticleFeed'
 import { DailyBrief } from '@/components/app/DailyBrief'
@@ -7,8 +8,9 @@ import { Reader } from '@/components/app/Reader'
 import { StoryPage } from '@/components/app/StoryPage'
 import { Sidebar } from '@/components/app/Sidebar'
 import { StatsRow } from '@/components/app/StatsRow'
-import { useRoute } from '@/hooks/useRoute'
+import { useRoute, type Route } from '@/hooks/useRoute'
 
+/** The home view: stats, filters, trend, daily brief and the article feed. */
 function Dashboard() {
   return (
     <div className="space-y-4">
@@ -28,6 +30,19 @@ function Dashboard() {
   )
 }
 
+/** Render the view that matches the current route. */
+function RouteView({ route }: { route: Route }) {
+  switch (route.name) {
+    case 'article':
+      return <Reader id={route.id} />
+    case 'story':
+      return <StoryPage id={route.id} />
+    default:
+      return <Dashboard />
+  }
+}
+
+/** App shell with header, motion settings and the active route. */
 export default function App() {
   const route = useRoute()
   return (
@@ -44,7 +59,7 @@ export default function App() {
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.18 }}
             >
-              {route.name === 'article' ? <Reader id={route.id} /> : route.name === 'story' ? <StoryPage id={route.id} /> : <Dashboard />}
+              <RouteView route={route} />
             </motion.div>
           </AnimatePresence>
         </main>

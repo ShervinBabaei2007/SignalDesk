@@ -1,3 +1,4 @@
+// Hook that loads the feed page for the current filters and page.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { api, EMPTY_FILTERS, type Filters } from '@/lib/api'
@@ -6,6 +7,7 @@ import {
   type FeedPage, type FeedQuery,
 } from '@/lib/feedQuery'
 
+/** Feed page used before the first load. */
 const EMPTY_PAGE: FeedPage = { stories: [], articles: [], total: 0, articleTotal: 0 }
 
 /** Filters, paging and the loaded feed page. Search typing is debounced; everything else applies at once. */

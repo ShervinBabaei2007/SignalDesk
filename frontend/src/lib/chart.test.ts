@@ -1,3 +1,4 @@
+// Tests for the smooth chart path helper.
 import { describe, expect, it } from 'vitest'
 import { monotonePath } from './chart'
 

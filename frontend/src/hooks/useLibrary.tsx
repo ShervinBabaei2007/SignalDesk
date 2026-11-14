@@ -1,9 +1,13 @@
+// Context for the reader's saved and read articles, kept in localStorage.
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { addRead, parseIds, toggleId } from '@/lib/library'
 
+/** localStorage key for saved ids. */
 const SAVED_KEY = 'signaldesk-saved'
+/** localStorage key for read ids. */
 const READ_KEY = 'signaldesk-read'
 
+/** Saved and read article state and actions. */
 interface LibraryValue {
   /** Saved article ids, newest first. */
   saved: number[]
@@ -13,8 +17,10 @@ interface LibraryValue {
   markRead: (id: number) => void
 }
 
+/** Context holding the library value. */
 const Ctx = createContext<LibraryValue | null>(null)
 
+/** Load an id list from localStorage, or [] when unavailable. */
 function load(key: string): number[] {
   try {
     return parseIds(localStorage.getItem(key))
@@ -23,6 +29,7 @@ function load(key: string): number[] {
   }
 }
 
+/** Store an id list in localStorage, ignoring failures. */
 function save(key: string, ids: number[]) {
   try {
     localStorage.setItem(key, JSON.stringify(ids))
@@ -77,6 +84,7 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }
 
+/** Read the library; must be used inside LibraryProvider. */
 export function useLibrary(): LibraryValue {
   const v = useContext(Ctx)
   if (!v) throw new Error('useLibrary must be used inside LibraryProvider')

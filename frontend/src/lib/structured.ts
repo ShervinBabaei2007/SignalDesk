@@ -1,6 +1,7 @@
 /* Parses the backend's structured brief ("## Heading" / "- bullet" lines)
    into sections the reader renders as skimmable cards. */
 
+/** One headed section of a structured summary. */
 export interface Section {
   id: string
   title: string
@@ -8,10 +9,12 @@ export interface Section {
   paras: string[]
 }
 
+/** Lowercase, hyphenated version of text for use as an id. */
 export function slugify(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 }
 
+/** Parse a structured summary into sections, optionally dropping the TL;DR. */
 export function parseStructured(markdown: string | null, dropTldr: boolean): Section[] {
   let md = markdown ?? ''
   // The summary box already shows the TL;DR, so don't repeat it.

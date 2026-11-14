@@ -1,3 +1,4 @@
+// Hook that runs a feed ingest and reports the result.
 import { useCallback, useState } from 'react'
 import { toast } from 'sonner'
 import { api, type ApiError } from '@/lib/api'

@@ -1,3 +1,4 @@
+// App entry: mounts React with the theme, settings, library and dashboard providers.
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { ThemeProvider } from 'next-themes'

@@ -1,10 +1,17 @@
+// Tests for the API client's requests and error handling.
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ApiError, EMPTY_FILTERS, HOT_STORIES, api } from '@/lib/api'
 
+/** Replace fetch with a stub returning the given status and body. */
 function stubFetch(status: number, body: unknown) {
   const fetchMock = vi.fn(async () => new Response(status === 204 ? null : JSON.stringify(body), { status }))
   vi.stubGlobal('fetch', fetchMock)
   return fetchMock
+}
+
+/** The URL the stubbed fetch was last called with. */
+function requestedUrl(fetchMock: ReturnType<typeof stubFetch>): string {
+  return (fetchMock.mock.calls[0] as unknown as [string])[0]
 }
 
 afterEach(() => vi.unstubAllGlobals())
@@ -13,7 +20,7 @@ describe('api over a fake fetch', () => {
   it('sends filters, paging and saved ids as the query string', async () => {
     const fetchMock = stubFetch(200, { items: [], total: 0, article_total: 0, offset: 40, limit: 20 })
     await api.stories({ ...EMPTY_FILTERS, search: ' oil ', topic: 'Business', saved: '1', order: 'info' }, 40, 20, '0')
-    const url = new URL((fetchMock.mock.calls[0] as unknown as [string])[0], 'http://x')
+    const url = new URL(requestedUrl(fetchMock), 'http://x')
     expect(url.pathname).toBe('/api/stories')
     expect(Object.fromEntries(url.searchParams)).toEqual({
       limit: '20', offset: '40', order: 'info', search: 'oil', topic: 'Business', ids: '0',
@@ -23,7 +30,7 @@ describe('api over a fake fetch', () => {
   it('asks for the hot stories by default', async () => {
     const fetchMock = stubFetch(200, [])
     await api.trending()
-    expect((fetchMock.mock.calls[0] as unknown as [string])[0]).toBe(`/api/trending?limit=${HOT_STORIES}`)
+    expect(requestedUrl(fetchMock)).toBe(`/api/trending?limit=${HOT_STORIES}`)
   })
 
   it('turns an error body into an ApiError with the status', async () => {

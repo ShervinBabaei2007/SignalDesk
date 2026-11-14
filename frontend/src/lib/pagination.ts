@@ -2,6 +2,7 @@
  *  current one, with 'gap' where pages are skipped. e.g. 1 … 4 5 6 … 20 */
 export type PageItem = number | 'gap'
 
+/** Compute the page numbers to show, with gaps for skipped ranges. */
 export function pageWindow(current: number, total: number, siblings = 1): PageItem[] {
   if (total <= 1) return total === 1 ? [1] : []
   const keep = new Set<number>([1, total])

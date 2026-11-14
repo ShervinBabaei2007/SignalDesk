@@ -1,3 +1,5 @@
+// Small formatting helpers for dates, links, topics, keywords and outlet colours.
+/** Relative time such as '5m ago', or a date once it is a week old. */
 export function timeAgo(iso: string | null): string {
   if (!iso) return 'unknown date'
   const seconds = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
@@ -20,6 +22,7 @@ export function domainOf(url: string): string {
   }
 }
 
+/** Emoji shown for each topic. */
 export const TOPIC_EMOJI: Record<string, string> = {
   Technology: '💻',
   Business: '📈',
@@ -30,6 +33,7 @@ export const TOPIC_EMOJI: Record<string, string> = {
   General: '📰',
 }
 
+/** Split a comma-separated keyword string into a trimmed list, up to `max`. */
 export function keywordList(keywords: string | null, max = Infinity): string[] {
   return (keywords ?? '')
     .split(',')

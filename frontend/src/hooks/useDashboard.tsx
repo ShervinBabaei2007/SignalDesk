@@ -1,13 +1,15 @@
+// Dashboard context combining filters, the feed, side data and ingest into one value.
 import { createContext, useCallback, useContext, type ReactNode } from 'react'
-import { useLibrary } from '@/hooks/useLibrary'
 import { useFeedQuery } from '@/hooks/useFeedQuery'
 import { useIngest } from '@/hooks/useIngest'
+import { useLibrary } from '@/hooks/useLibrary'
 import { useSettings } from '@/hooks/useSettings'
 import { useSideData } from '@/hooks/useSideData'
-import type { Article, Digest, Story, Feed, Filters, Health, Stats, TrendingStory } from '@/lib/api'
+import type { Article, Digest, Feed, Filters, Health, Stats, Story, TrendingStory } from '@/lib/api'
 
 export { PAGE_SIZE } from '@/lib/feedQuery'
 
+/** Everything the dashboard components read and call. */
 interface DashboardValue {
   filters: Filters
   setFilter: (patch: Partial<Filters>) => void
@@ -42,8 +44,10 @@ interface DashboardValue {
   runIngest: () => Promise<void>
 }
 
+/** Context holding the dashboard value. */
 const Ctx = createContext<DashboardValue | null>(null)
 
+/** Provides dashboard state to the app. */
 export function DashboardProvider({ children }: { children: ReactNode }) {
   const { grouped } = useSettings()
   const { saved } = useLibrary()
@@ -58,6 +62,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }
 
+/** Read the dashboard state; must be used inside DashboardProvider. */
 export function useDashboard(): DashboardValue {
   const v = useContext(Ctx)
   if (!v) throw new Error('useDashboard must be used inside DashboardProvider')

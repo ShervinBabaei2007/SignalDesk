@@ -1,8 +1,11 @@
+// Context for user preferences (layout, grouping, API token), saved in localStorage.
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { getToken, setToken } from '@/lib/api'
 
+/** localStorage key for saved settings. */
 const KEY = 'signaldesk-settings'
 
+/** Settings values and their setters. */
 interface SettingsValue {
   compact: boolean
   setCompact: (v: boolean) => void
@@ -13,8 +16,10 @@ interface SettingsValue {
   saveToken: (v: string) => void
 }
 
+/** Context holding the settings value. */
 const Ctx = createContext<SettingsValue | null>(null)
 
+/** Read a saved boolean setting. */
 function readSaved(key: string, fallback: boolean): boolean {
   try {
     const v = JSON.parse(localStorage.getItem(KEY) ?? '{}')[key]
@@ -24,6 +29,7 @@ function readSaved(key: string, fallback: boolean): boolean {
   }
 }
 
+/** Persist one boolean setting. */
 function writeSaved(key: string, value: boolean) {
   try {
     const prev = JSON.parse(localStorage.getItem(KEY) ?? '{}')
@@ -33,16 +39,14 @@ function writeSaved(key: string, value: boolean) {
   }
 }
 
+/** `?compact=1` / `?compact=0` in the URL wins over the saved choice. */
 function readCompact(): boolean {
   const q = new URLSearchParams(location.search)
   if (q.has('compact')) return q.get('compact') !== '0'
-  try {
-    return !!JSON.parse(localStorage.getItem(KEY) ?? '{}').compact
-  } catch {
-    return false
-  }
+  return readSaved('compact', false)
 }
 
+/** Provides settings to the app. */
 export function SettingsProvider({ children }: { children: ReactNode }) {
   const [compact, setCompactState] = useState(readCompact)
   const [token, setTokenState] = useState(getToken)
@@ -54,12 +58,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
   const setCompact = useCallback((v: boolean) => {
     setCompactState(v)
-    try {
-      const prev = JSON.parse(localStorage.getItem(KEY) ?? '{}')
-      localStorage.setItem(KEY, JSON.stringify({ ...prev, compact: v }))
-    } catch {
-      /* ignore */
-    }
+    writeSaved('compact', v)
   }, [])
 
   const setGrouped = useCallback((v: boolean) => {
@@ -79,6 +78,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }
 
+/** Read settings; must be used inside SettingsProvider. */
 export function useSettings(): SettingsValue {
   const v = useContext(Ctx)
   if (!v) throw new Error('useSettings must be used inside SettingsProvider')

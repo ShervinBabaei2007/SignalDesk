@@ -1,3 +1,4 @@
+// Tests for the page-number window.
 import { describe, expect, it } from 'vitest'
 import { pageWindow } from './pagination'
 

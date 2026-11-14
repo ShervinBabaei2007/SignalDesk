@@ -1,3 +1,4 @@
+// Hook that loads the stats, brief, hot stories, health and feeds beside the feed.
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api, type Digest, type Feed, type Health, type Stats, type TrendingStory } from '@/lib/api'
 

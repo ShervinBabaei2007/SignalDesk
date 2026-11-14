@@ -1,7 +1,10 @@
+// Hash-based router for the home, article and story views.
 import { useEffect, useState } from 'react'
 
+/** The views the app can show. */
 export type Route = { name: 'home' } | { name: 'article'; id: number } | { name: 'story'; id: number }
 
+/** Read the current route from the URL hash. */
 function parse(): Route {
   const article = location.hash.match(/^#\/article\/(\d+)$/)
   if (article) return { name: 'article', id: Number(article[1]) }
@@ -20,6 +23,7 @@ export function useRoute(): Route {
   return route
 }
 
+/** Navigate to the home view and scroll to the top. */
 export function goHome() {
   location.hash = '#/'
   window.scrollTo({ top: 0, behavior: 'smooth' })

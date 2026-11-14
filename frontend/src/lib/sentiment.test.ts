@@ -1,3 +1,4 @@
+// Tests for sentiment descriptions and formatting.
 import { describe, expect, it } from 'vitest'
 import { describeAverage, describeSentiment, formatScore, scalePosition } from './sentiment'
 

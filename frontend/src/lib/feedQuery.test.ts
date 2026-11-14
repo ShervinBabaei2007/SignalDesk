@@ -1,3 +1,4 @@
+// Tests for feed paging, filter resets and stale-request handling.
 import { describe, expect, it } from 'vitest'
 import { EMPTY_FILTERS, feedParams, type ArticlePage, type StoryPage } from '@/lib/api'
 import {
@@ -5,6 +6,7 @@ import {
   type FeedSource,
 } from '@/lib/feedQuery'
 
+/** A fake feed source that records requests and returns fixed pages. */
 function fakeSource() {
   const calls: { kind: string; offset: number; limit: number; ids?: string }[] = []
   const source: FeedSource = {

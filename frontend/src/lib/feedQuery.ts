@@ -4,6 +4,7 @@
 
 import { EMPTY_FILTERS, type Article, type ArticlePage, type Filters, type Story, type StoryPage } from '@/lib/api'
 
+/** Articles or stories per page. */
 export const PAGE_SIZE = 20
 
 /** What the server is asked for: the filters, a page, grouped or flat, and saved ids. */
@@ -24,6 +25,7 @@ export interface FeedPage {
   articleTotal: number
 }
 
+/** The two feed endpoints the loader needs, injectable for tests. */
 export interface FeedSource {
   stories: (filters: Filters, offset: number, limit: number, ids?: string) => Promise<StoryPage>
   articles: (filters: Filters, offset: number, limit: number, ids?: string) => Promise<ArticlePage>
@@ -34,6 +36,7 @@ export function savedIdsParam(saved: number[]): string {
   return saved.join(',') || '0'
 }
 
+/** True when any filter besides the sort order is set. */
 export function hasActiveFilters(f: Filters): boolean {
   return !!(f.search || f.source || f.topic || f.sentiment || f.cluster || f.hot || f.saved)
 }
@@ -48,10 +51,12 @@ export function storyFilters(f: Filters, clusterId: number): Filters {
   return { ...clearedFilters(f), cluster: String(clusterId) }
 }
 
+/** Number of pages for a total, at least one. */
 export function pageCount(total: number): number {
   return Math.max(1, Math.ceil(total / PAGE_SIZE))
 }
 
+/** Load one feed page in grouped or flat mode. */
 export async function loadFeedPage(source: FeedSource, q: FeedQuery): Promise<FeedPage> {
   const offset = (q.page - 1) * PAGE_SIZE
   if (q.grouped) {
