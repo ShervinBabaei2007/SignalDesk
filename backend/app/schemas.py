@@ -42,6 +42,7 @@ class RelatedArticle(BaseModel):
     url: str
     published_at: datetime | None
     sentiment: float = 0.0
+    info_score: float | None = None
     summary: str | None = None
     summary_deep: str | None = None
 

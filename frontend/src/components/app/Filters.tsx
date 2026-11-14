@@ -79,6 +79,7 @@ export function Filters() {
         onChange={(v) => setFilter({ order: v || 'newest' })}
         options={[
           { value: 'newest', label: 'Newest first' },
+          { value: 'info', label: 'Most informative' },
           { value: 'oldest', label: 'Oldest first' },
           { value: 'sentiment_high', label: 'Most positive' },
           { value: 'sentiment_low', label: 'Most negative' },

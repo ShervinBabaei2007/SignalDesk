@@ -1,8 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
+import { useSettings } from '@/hooks/useSettings'
 import {
   api, ApiError, EMPTY_FILTERS,
-  type Article, type Digest, type Feed, type Filters, type Health, type Stats, type TrendingStory,
+  type Article, type Digest, type Story, type Feed, type Filters, type Health, type Stats, type TrendingStory,
 } from '@/lib/api'
 
 export const PAGE_SIZE = 20
@@ -16,8 +17,14 @@ interface DashboardValue {
   hasActiveFilters: boolean
   /** Articles that belong to the hot stories (matches the `hot` feed filter). */
   hotCount: number
+  /** Grouped mode: one entry per event. Empty in flat mode. */
+  stories: Story[]
+  /** Flat mode: one entry per report. Empty in grouped mode. */
   articles: Article[]
+  grouped: boolean
+  /** Pages are counted in stories when grouped, in articles otherwise. */
   total: number
+  articleTotal: number
   page: number
   pageCount: number
   setPage: (page: number) => void
@@ -40,14 +47,18 @@ const Ctx = createContext<DashboardValue | null>(null)
 interface Query {
   filters: Filters
   page: number
+  grouped: boolean
 }
 
 export function DashboardProvider({ children }: { children: ReactNode }) {
+  const { grouped } = useSettings()
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS)
   const [page, setPageState] = useState(1)
-  const [applied, setApplied] = useState<Query>({ filters: EMPTY_FILTERS, page: 1 })
+  const [applied, setApplied] = useState<Query>({ filters: EMPTY_FILTERS, page: 1, grouped })
   const [articles, setArticles] = useState<Article[]>([])
+  const [stories, setStories] = useState<Story[]>([])
   const [total, setTotal] = useState(0)
+  const [articleTotal, setArticleTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState<Stats | null>(null)
   const [digest, setDigest] = useState<Digest | null>(null)
@@ -62,10 +73,22 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     const id = ++requestId.current
     setLoading(true)
     try {
-      const res = await api.articles(q.filters, (q.page - 1) * PAGE_SIZE, PAGE_SIZE)
-      if (id !== requestId.current) return // a newer request superseded this one
-      setArticles(res.items)
-      setTotal(res.total)
+      const offset = (q.page - 1) * PAGE_SIZE
+      if (q.grouped) {
+        const res = await api.stories(q.filters, offset, PAGE_SIZE)
+        if (id !== requestId.current) return // a newer request superseded this one
+        setStories(res.items)
+        setArticles([])
+        setTotal(res.total)
+        setArticleTotal(res.article_total)
+      } else {
+        const res = await api.articles(q.filters, offset, PAGE_SIZE)
+        if (id !== requestId.current) return
+        setArticles(res.items)
+        setStories([])
+        setTotal(res.total)
+        setArticleTotal(res.total)
+      }
     } catch (err) {
       toast.error(`Failed to load articles: ${(err as Error).message}`)
     } finally {
@@ -87,10 +110,10 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   // Typing in search is debounced; filter changes and page clicks apply immediately.
   useEffect(() => {
     const searchChanged = filters.search !== applied.filters.search
-    const t = setTimeout(() => setApplied({ filters, page }), searchChanged ? 250 : 0)
+    const t = setTimeout(() => setApplied({ filters, page, grouped }), searchChanged ? 250 : 0)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `applied` is only read to detect a search change
-  }, [filters, page])
+  }, [filters, page, grouped])
 
   useEffect(() => {
     void loadArticles(applied)
@@ -146,7 +169,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   const hotCount = trending.reduce((n, t) => n + t.reports, 0)
 
   const value: DashboardValue = {
-    filters, setFilter, clearFilters, openStory, hasActiveFilters, hotCount, articles, total, page, pageCount,
+    filters, setFilter, clearFilters, openStory, hasActiveFilters, hotCount, stories, articles, grouped, total, articleTotal, page, pageCount,
     setPage: setPageState, loading, stats, digest, trending, health, sources, feeds, refreshFeeds, refreshAll,
     ingesting, ingestResult, runIngest,
   }

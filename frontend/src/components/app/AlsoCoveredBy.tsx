@@ -4,14 +4,15 @@ import { Badge } from '@/components/ui/badge'
 import { BlurFade } from '@/components/ui/blur-fade'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
+import { InfoScore } from '@/components/app/InfoScore'
 import { SentimentBadge } from '@/components/app/Sentiment'
 import type { RelatedArticle } from '@/lib/api'
 import { domainOf, sourceHue, timeAgo } from '@/lib/format'
 
-function SourceAvatar({ name }: { name: string }) {
+export function SourceAvatar({ name, size = 'lg' }: { name: string; size?: 'default' | 'lg' }) {
   const hue = sourceHue(name)
   return (
-    <Avatar size="lg">
+    <Avatar size={size}>
       <AvatarFallback
         className="font-semibold"
         style={{ background: `hsl(${hue} 70% 45% / 0.18)`, color: `hsl(${hue} 80% 62%)` }}
@@ -45,7 +46,10 @@ function Row({ item, index }: { item: RelatedArticle; index: number }) {
               <span>{timeAgo(item.published_at)}</span>
             </div>
           </div>
-          <SentimentBadge score={item.sentiment} className="hidden sm:inline-flex" />
+          <InfoScore score={item.info_score} variant="bar" className="hidden sm:inline-flex" />
+          <span className="hidden w-28 justify-end md:flex">
+            <SentimentBadge score={item.sentiment} />
+          </span>
           <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" aria-hidden />
         </HoverCardTrigger>
         <HoverCardContent className="w-80 space-y-2" align="start">
@@ -79,7 +83,7 @@ export function AlsoCoveredBy({ items }: { items: RelatedArticle[] }) {
           <Badge variant="secondary">{items.length} more {items.length === 1 ? 'report' : 'reports'}</Badge>
         </div>
         <CardDescription>
-          The same story from {outlets} other {outlets === 1 ? 'outlet' : 'outlets'}. Compare how each one tells it.
+          The same story from {outlets} other {outlets === 1 ? 'outlet' : 'outlets'}, ranked by how much information each report carries.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-2">

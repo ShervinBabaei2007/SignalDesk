@@ -391,10 +391,8 @@ def _with_related(db: Session, article: Article) -> Article:
     if article.cluster_id:
         _, by_id = clustering.get_clusters(db)
         ids = [i for i in by_id[article.cluster_id].article_ids if i != article.id]
-        others = db.execute(
-            select(Article).where(Article.id.in_(ids))
-            .order_by(Article.published_at.desc().nullslast())
-        ).scalars().all()
+        # best-informed report first, so "Also covered by" is ranked, not just chronological
+        others = story_logic.ranked(db.execute(select(Article).where(Article.id.in_(ids))).scalars().all())
     article.related = others
     return article
 

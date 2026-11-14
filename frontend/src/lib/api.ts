@@ -11,6 +11,7 @@ export interface Article {
   summary_deep: string | null
   keywords: string | null
   image_url: string | null
+  info_score: number | null
   why_it_matters: string | null
   importance: number | null
   relevance: number | null
@@ -34,8 +35,43 @@ export interface RelatedArticle {
   url: string
   published_at: string | null
   sentiment: number
+  info_score: number | null
   summary: string | null
   summary_deep: string | null
+}
+
+/** A report shown under its story's lead, best-informed first. */
+export interface ReportBrief {
+  id: number
+  title: string
+  source: string
+  url: string
+  published_at: string | null
+  sentiment: number
+  info_score: number | null
+  summary: string | null
+  image_url: string | null
+}
+
+/** One event: the best-informed report leads, the other outlets' reports follow. */
+export interface Story {
+  key: string
+  cluster_id: number | null
+  lead: Article
+  others: ReportBrief[]
+  report_count: number
+  outlets: number
+  sources: string[]
+  best_score: number | null
+  watch_matches: string[]
+}
+
+export interface StoryPage {
+  total: number
+  article_total: number
+  items: Story[]
+  offset: number
+  limit: number
 }
 
 export interface ArticleDetail extends Article {
@@ -183,19 +219,24 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return (res.status === 204 ? null : await res.json()) as T
 }
 
+function feedParams(filters: Filters, offset: number, limit: number): URLSearchParams {
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset), order: filters.order })
+  for (const [key, value] of Object.entries(filters)) {
+    if (key !== 'order' && value.trim()) params.set(key, value.trim())
+  }
+  return params
+}
+
 export const api = {
   health: () => request<Health>('/health'),
   stats: () => request<Stats>('/stats'),
   digest: () => request<Digest>('/digest'),
   trending: (limit = 8) => request<TrendingStory[]>(`/trending?limit=${limit}`),
   sendDigest: () => request<{ sent: string[] }>('/digest/send', { method: 'POST' }),
-  articles: (filters: Filters, offset: number, limit: number) => {
-    const params = new URLSearchParams({ limit: String(limit), offset: String(offset), order: filters.order })
-    for (const [key, value] of Object.entries(filters)) {
-      if (key !== 'order' && value.trim()) params.set(key, value.trim())
-    }
-    return request<ArticlePage>(`/articles?${params}`)
-  },
+  articles: (filters: Filters, offset: number, limit: number) =>
+    request<ArticlePage>(`/articles?${feedParams(filters, offset, limit)}`),
+  stories: (filters: Filters, offset: number, limit: number) =>
+    request<StoryPage>(`/stories?${feedParams(filters, offset, limit)}`),
   article: (id: number) => request<ArticleDetail>(`/articles/${id}`),
   summarize: (id: number) => request<ArticleDetail>(`/articles/${id}/summarize`, { method: 'POST' }),
   feeds: () => request<Feed[]>('/feeds'),
