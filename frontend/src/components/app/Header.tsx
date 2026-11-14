@@ -1,6 +1,6 @@
 // Top bar with branding, ingest button, feeds, watchlist and settings access.
 import { useState, type MouseEvent } from 'react'
-import { Bell, FileSpreadsheet, Loader2, Mail, Menu, RefreshCw, Rss, Settings as SettingsIcon, Zap } from 'lucide-react'
+import { Bell, FileSpreadsheet, Loader2, Mail, Menu, RefreshCw, Rss, Settings as SettingsIcon, UserRoundX, Zap } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -10,12 +10,15 @@ import { FeedsDialog } from '@/components/app/FeedsDialog'
 import { SettingsSheet } from '@/components/app/SettingsSheet'
 import { WatchlistDialog } from '@/components/app/WatchlistDialog'
 import { useDashboard } from '@/hooks/useDashboard'
-import { goHome } from '@/hooks/useRoute'
-import { api, ApiError } from '@/lib/api'
+import { goHome, leaveDashboard } from '@/hooks/useRoute'
+import { useSettings } from '@/hooks/useSettings'
+import { api, ApiError, isDemoToken } from '@/lib/api'
 
 /** The app header. */
 export function Header() {
   const { health, ingesting, runIngest, clearFilters } = useDashboard()
+  const { token, saveToken } = useSettings()
+  const inDemo = isDemoToken(token)
   const [feedsOpen, setFeedsOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -26,6 +29,13 @@ export function Header() {
     e.preventDefault()
     clearFilters()
     goHome()
+  }
+
+  /** End the demo: drop the demo token and go back to the landing page. */
+  const signOutDemo = () => {
+    saveToken('')
+    leaveDashboard()
+    toast.success('Demo ended')
   }
 
   const sendBrief = async () => {
@@ -98,6 +108,11 @@ export function Header() {
               <SettingsIcon data-icon="inline-start" /> Settings
             </Button>
           </div>
+          {inDemo && (
+            <Button variant="outline" className="hidden sm:inline-flex" onClick={signOutDemo}>
+              <UserRoundX data-icon="inline-start" /> Exit demo
+            </Button>
+          )}
           {ingest}
           <Button variant="outline" size="icon-lg" className="md:hidden" aria-label="Open menu" onClick={() => setMenuOpen(true)}>
             <Menu />
@@ -130,6 +145,11 @@ export function Header() {
             <Button variant="outline" size="lg" className="h-11 justify-start" onClick={fromMenu(() => setSettingsOpen(true))}>
               <SettingsIcon data-icon="inline-start" /> Settings
             </Button>
+            {inDemo && (
+              <Button variant="outline" size="lg" className="h-11 justify-start" onClick={fromMenu(signOutDemo)}>
+                <UserRoundX data-icon="inline-start" /> Exit demo
+              </Button>
+            )}
           </div>
         </SheetContent>
       </Sheet>

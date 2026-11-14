@@ -12,6 +12,15 @@ export function hasEntered(): boolean {
   }
 }
 
+/** Forget that this browser has entered, so the landing page shows again. */
+export function clearEntered() {
+  try {
+    localStorage.removeItem(ENTERED_KEY)
+  } catch {
+    /* storage unavailable: nothing to clear */
+  }
+}
+
 /** Remember that this browser has entered, so the landing page is skipped next time. */
 export function markEntered() {
   try {

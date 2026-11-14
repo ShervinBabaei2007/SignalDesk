@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { ShimmerButton } from '@/components/ui/shimmer-button'
 import { enterDashboard } from '@/hooks/useRoute'
-import { startDemo } from '@/lib/api'
+import { getToken, startDemo } from '@/lib/api'
+import { useSettings } from '@/hooks/useSettings'
 
 /** A capability shown in the feature grid. */
 interface Feature {
@@ -21,17 +22,19 @@ const FEATURES: Feature[] = [
   { icon: Flame, title: 'Hot topics & sentiment', text: 'See what is trending and how each outlet frames it, from negative to positive.' },
   { icon: Eye, title: 'Watchlist alerts', text: 'Follow the terms, topics and outlets you care about and get one alert per story.' },
   { icon: Mail, title: 'Daily brief', text: 'A short digest of the day, ready to send to Slack or email.' },
-  { icon: RefreshCw, title: 'Runs itself', text: 'Feeds are re-checked every 15 minutes, so the latest news is always in.' },
+  { icon: RefreshCw, title: 'Runs itself', text: 'Feeds are re-checked every hour, so the latest news is always in.' },
 ]
 
 /** The public front door of the app. */
 export function Landing() {
+  const { saveToken } = useSettings()
   const [starting, setStarting] = useState(false)
 
   /** Start a demo session, then open the dashboard. */
   const tryDemo = async () => {
     setStarting(true)
     const live = await startDemo()
+    saveToken(getToken()) // sync the settings state with the token startDemo stored
     toast.success(live ? 'Demo started: you can run live ingests' : 'Welcome! This deployment is read-only')
     enterDashboard()
   }
@@ -58,7 +61,7 @@ export function Landing() {
           </h1>
           <p className="mx-auto mt-5 max-w-2xl text-base text-muted-foreground text-pretty sm:text-lg">
             SignalDesk pulls in dozens of news feeds, groups reports about the same event, scores how informative each
-            one is, and tracks sentiment and trends, all updated every 15 minutes.
+            one is, and tracks sentiment and trends, all refreshed every hour.
           </p>
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <ShimmerButton

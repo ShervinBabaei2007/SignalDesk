@@ -278,6 +278,11 @@ export function setToken(token: string) {
   }
 }
 
+/** True when a stored token is a demo token rather than the real API token. */
+export function isDemoToken(token: string): boolean {
+  return token.startsWith('demo.')
+}
+
 /** Start a demo session: the server hands out a short-lived token that can run ingests (an existing token is kept). */
 export async function startDemo(): Promise<boolean> {
   if (getToken()) return true

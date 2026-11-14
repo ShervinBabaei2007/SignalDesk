@@ -1,6 +1,6 @@
 // Tests for the API client's requests and error handling.
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ApiError, EMPTY_FILTERS, HOT_STORIES, api, getToken, startDemo } from '@/lib/api'
+import { ApiError, EMPTY_FILTERS, HOT_STORIES, api, getToken, isDemoToken, startDemo } from '@/lib/api'
 
 /** Replace fetch with a stub returning the given status and body. */
 function stubFetch(status: number, body: unknown) {
@@ -49,6 +49,14 @@ describe('api over a fake fetch', () => {
   it('reads a 204 as null', async () => {
     stubFetch(204, null)
     await expect(api.deleteWatch(1)).resolves.toBeNull()
+  })
+})
+
+describe('isDemoToken', () => {
+  it('tells demo tokens apart from the real API token', () => {
+    expect(isDemoToken('demo.1700000000.abc')).toBe(true)
+    expect(isDemoToken('a-real-token')).toBe(false)
+    expect(isDemoToken('')).toBe(false)
   })
 })
 

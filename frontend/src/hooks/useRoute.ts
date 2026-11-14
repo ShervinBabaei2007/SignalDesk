@@ -1,6 +1,6 @@
 // Hash-based router for the landing, home, article and story views.
 import { useEffect, useState } from 'react'
-import { hasEntered, markEntered } from '@/lib/entry'
+import { clearEntered, hasEntered, markEntered } from '@/lib/entry'
 
 /** The views the app can show. */
 export type Route = { name: 'landing' } | { name: 'home' } | { name: 'article'; id: number } | { name: 'story'; id: number }
@@ -36,6 +36,13 @@ export function enterDashboard() {
   markEntered()
   if (location.hash === '#/') window.dispatchEvent(new HashChangeEvent('hashchange')) // already there: nudge the router
   else location.hash = '#/'
+  window.scrollTo({ top: 0 })
+}
+
+/** Leave the dashboard and show the landing page again, as when a demo visitor signs out. */
+export function leaveDashboard() {
+  clearEntered()
+  location.hash = '#/welcome'
   window.scrollTo({ top: 0 })
 }
 
