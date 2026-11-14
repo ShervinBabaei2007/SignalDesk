@@ -3,13 +3,15 @@
 > **AI-powered news intelligence, on autopilot.**
 > SignalDesk pulls news from RSS feeds around the web, deduplicates it, scores sentiment, classifies topics, and surfaces it all in a real-time intelligence dashboard.
 
-![Status](https://img.shields.io/badge/status-production--grade-brightgreen) ![Python](https://img.shields.io/badge/python-3.12%2B-blue) ![FastAPI](https://img.shields.io/badge/FastAPI-latest-teal) ![React](https://img.shields.io/badge/React-19-61dafb) ![Tests](https://img.shields.io/badge/tests-72%20passing-brightgreen) ![License](https://img.shields.io/badge/license-MIT-lightgrey)
+![Status](https://img.shields.io/badge/status-production--grade-brightgreen) ![Python](https://img.shields.io/badge/python-3.12%2B-blue) ![FastAPI](https://img.shields.io/badge/FastAPI-latest-teal) ![React](https://img.shields.io/badge/React-19-61dafb) ![Tests](https://img.shields.io/badge/tests-122%20passing-brightgreen) ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
 ---
 
 ![SignalDesk dashboard](docs/screenshots/dashboard.png)
 
 ![SignalDesk mobile](docs/screenshots/mobile-dashboard.png)
+
+![A story: AI brief, outlet comparison and reports ranked by information](docs/screenshots/story.png)
 
 ---
 
@@ -42,7 +44,7 @@ And the platform runs itself: a built-in scheduler re-ingests every feed every 3
 | 🤖 **Auto-pilot scheduler** | Background task re-fetches every feed on a configurable interval; feeds report health status ("ok: 5 added · 2h ago") |
 | 📄 **Full-text summaries** | Each article's external link is fetched and parsed into a skimmable brief — TL;DR, key points, key numbers, quotes, and bottom line — so you get 90% of the story without opening the site |
 | 🖼️ **Real lead images** | Each article's reader page shows the lead image (`og:image`) from its real page, and every card shows the story's true domain with a "verify at the source" link in the reader — a quick legitimacy check. Images are hotlinked and vanish cleanly if a site blocks them |
-| 📰 **Story clustering** | Headlines about the same event from different outlets are grouped automatically (word-overlap similarity within a time window). Cards show "3 reports · 2 sources"; click to see all coverage, and the reader lists "Also covered by" |
+| 📰 **Stories, best-informed first** | Reports of the same event from different outlets are grouped into one card (word-overlap similarity within a time window). The lead report is the one that carries the most real information, and the other reports sit under "N more reports" in the same order. A switch turns grouping off for a flat list |
 | 📖 **Article reader page** | Clicking an article opens a dedicated reader at `/#/article/{id}`: the straightforward summary up top, then skimmable sections (key points, numbers, quotes, bottom line) with chip navigation |
 | 🌗 **Light & dark themes** | Accessible triadic color system (blue/green/violet) with a settings menu — both themes verified WCAG AA programmatically |
 | 🌡️ **Plain-language sentiment** | Scores read as "Very negative … Very positive" (number on hover), the reader has a labelled −1 / 0 / +1 gauge, and an ⓘ explainer says what sentiment does and does not mean |
@@ -61,9 +63,13 @@ And the platform runs itself: a built-in scheduler re-ingests every feed every 3
 | ✉️ **Brief delivery** | Send the daily brief to Slack and/or email from the dashboard, or on a schedule (`DIGEST_HOUR`) |
 | 🔑 **Optional API token** | Set `API_TOKEN` to require `X-API-Key` on all write endpoints; the UI has a field for it |
 | 📡 **15 curated feeds** | BBC (World, Technology, Business, Science, Health), The Guardian, NPR, Al Jazeera, Politico, STAT News, CNBC, Ars Technica, ScienceDaily, The Verge and TechCrunch: free-to-read sources chosen for topic and viewpoint spread. One click adds any that are missing to an existing install |
+| 🎯 **Information score** | Every report gets an explainable 0–100 score: depth of the extracted article, figures, quotes and a conclusion, analysis, and completeness. It ignores which outlet wrote it, so it ranks fairly. Page furniture (navigation, paywall and credit lines) is stripped first, and a "Most informative" sort uses it |
+| 🧠 **Story page** | `#/story/:id` shows an AI **brief** (what everyone agrees on, where outlets differ; uses your LLM if configured, otherwise a deterministic offline writer), a side-by-side **outlet comparison** (info score, wording spread, first to report, most detailed) and every report ranked |
+| 🔖 **Saved & read** | Bookmark any article (Topics → Saved); read articles dim. Stored in your browser, no account |
+| 🔔 **Watchlist & alerts** | Follow a word or phrase (optionally a topic and a minimum number of outlets). Matching stories get a badge, you are told after an ingest, and alerts go to Slack/email if configured. Each story alerts once |
 | 🔥 **Hot topics** | A category in the Topics list (and the topic filter). It shows the articles from the stories the most outlets are covering right now, ranked by outlets × recency, with the stories listed above the feed so you can open any one of them |
 | 📄 **Numbered pages** | Page 1, 2, 3… navigation with a windowed page list instead of an endless "load more" |
-| ✅ **Tested** | 52 pytest tests, 20 Vitest tests, and GitHub Actions CI for both the backend and the frontend build |
+| ✅ **Tested** | 88 pytest tests, 34 Vitest tests, and GitHub Actions CI for both the backend and the frontend build |
 | 🐳 **One-container deploy** | `docker compose up --build` and you're done |
 
 ## Quick start
@@ -129,6 +135,10 @@ Interactive API docs live at **http://localhost:8000/docs** (Swagger UI).
 | `GET` | `/api/stats` | KPIs, sentiment split, topic breakdown, 7-day trend |
 | `GET` | `/api/trending` | Hot topics: the stories the most outlets cover right now |
 | `GET` | `/api/digest` | Generated daily brief: headline, extremes, topic counts |
+| `GET` | `/api/stories` | Grouped feed: one card per event, best-informed report first (same filters as articles, plus `ids=` and `order=info`) |
+| `GET` | `/api/stories/{id}` | One story in depth: brief, outlet comparison, ranked reports |
+| `POST` | `/api/stories/{id}/brief` | Rewrite the story brief now |
+| `GET` `POST` `PATCH` `DELETE` | `/api/watches` | The watchlist (writes need the API token when one is set) |
 | `GET` | `/api/articles` | Search/filter/sort/paginate articles (`cluster=<id>` shows one story, `hot=1` the hot stories) |
 | `GET` | `/api/articles/{id}` | Article detail (incl. keywords and `related` coverage of the same story) |
 | `POST` | `/api/articles/{id}/summarize` | Fetch the linked page and generate a clean full-text summary on demand |
@@ -169,6 +179,10 @@ SignalDesk/
 │   │   ├── llm.py           # Optional OpenAI-compatible analysis
 │   │   ├── notifications.py # Slack / SMTP brief delivery
 │   │   ├── clustering.py    # Groups duplicate coverage into stories
+│   │   ├── quality.py       # Information score (0-100) per report
+│   │   ├── stories.py       # Grouped feed, ranking inside a story, outlet comparison
+│   │   ├── briefs.py        # Story briefs: LLM writer + offline fallback
+│   │   ├── watches.py       # Watchlist matching and alerts
 │   │   ├── enrichment.py    # Full-text fetch + structured summaries
 │   │   ├── database.py      # Engine + sessions (SQLite → Postgres switchable)
 │   │   ├── models.py        # SQLAlchemy models (Article, Feed)
