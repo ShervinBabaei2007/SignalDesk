@@ -36,7 +36,7 @@ from .quality import backfill_info_scores
 from .schemas import (ArticleDetail, ArticlePage, Digest, FeedCreate, FeedIngestResult, FeedOut,
                       IngestResult, SourceList, Stats, StoryDetail, StoryPage, StoryTimeline, TrendingStory, WatchAlertOut,
                       WatchIn, WatchOut, WatchPatch)
-from .seed_data import backfill_keywords, seed_if_empty
+from .seed_data import backfill_keywords, repair_seed_dates, seed_if_empty
 
 logger = logging.getLogger("signaldesk")
 
@@ -88,6 +88,9 @@ def init_database() -> None:
         seeded = seed_if_empty(db, live=not config.SCHEDULER_DISABLED)
         if seeded:
             logger.info("[seed] First boot: populated %s articles", seeded)
+        repaired = repair_seed_dates(db)
+        if repaired:
+            logger.info("[migrate] Moved %s future-dated sample articles back into the past", repaired)
         backfilled = backfill_keywords(db)
         if backfilled:
             logger.info("[migrate] Backfilled keywords for %s articles", backfilled)
@@ -175,7 +178,12 @@ def request_workspace(request: Request) -> str:
 def scoped_db(request: Request):
     """A database session that only sees the shared base data plus the caller's own workspace."""
     db = SessionLocal()
-    db.info["workspace"] = request_workspace(request)
+    token = _supplied_token(request)
+    db.info["workspace"] = workspace.verify(token) or NO_WORKSPACE
+    owner = bool(config.API_TOKEN and token and hmac.compare_digest(token, config.API_TOKEN))
+    # Built-in sample articles (placeholder content, no page, no image) belong to the demo tour and plain
+    # browsing only. A visitor's workspace and the owner's real session show real articles.
+    db.info["hide_seeds"] = bool(db.info["workspace"]) or owner
     try:
         yield db
     finally:

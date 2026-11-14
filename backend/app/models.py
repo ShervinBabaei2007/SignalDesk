@@ -192,7 +192,11 @@ def _scope_to_workspace(state) -> None:
     if not state.is_select:
         return
     ws = state.session.info.get("workspace", NO_WORKSPACE)
+    options = []
+    if state.session.info.get("hide_seeds"):  # sample articles are for the demo tour only (see main.scoped_db)
+        options.append(with_loader_criteria(Article, lambda c: c.is_seed.is_(False), include_aliases=True))
     state.statement = state.statement.options(
+        *options,
         with_loader_criteria(Article, lambda c: (c.workspace_id == NO_WORKSPACE) | (c.workspace_id == ws),
                              include_aliases=True),
         with_loader_criteria(Feed, lambda c: (c.workspace_id == NO_WORKSPACE) | (c.workspace_id == ws),

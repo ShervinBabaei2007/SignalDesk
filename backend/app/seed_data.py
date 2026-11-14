@@ -223,11 +223,34 @@ def seed_if_empty(db: Session, live: bool = True) -> int:
     return len(SEED_ARTICLES)
 
 
+def repair_seed_dates(db: Session) -> int:
+    """Move sample articles that were dated in the future back into the past (idempotent).
+
+    An old bug made every "-2d" marker mean two days *ahead*, so sample articles sorted above real news and
+    showed up as future days in the trend. Each affected row is mirrored around the time it was created,
+    which restores the date it was meant to have.
+    """
+    rows = db.execute(select(Article).where(Article.is_seed.is_(True), Article.published_at.is_not(None))).scalars().all()
+    fixed = 0
+    for a in rows:
+        published, created = a.published_at, a.ingested_at
+        if published.tzinfo is None:
+            published = published.replace(tzinfo=timezone.utc)
+        if created.tzinfo is None:
+            created = created.replace(tzinfo=timezone.utc)
+        if published > created + timedelta(minutes=5):
+            a.published_at = created - (published - created)
+            fixed += 1
+    if fixed:
+        db.commit()
+    return fixed
+
+
 def _relative_published(age: str) -> datetime:
     """Convert '-2d' / '-5h' style markers into real UTC timestamps."""
     if not age.startswith("-"):
         return datetime.now(timezone.utc)
-    unit, amount = age[-1], int(age[:-1])
+    unit, amount = age[-1], abs(int(age[:-1]))  # "-2d" means two days ago; the sign must not flip the subtraction
     delta = {"d": timedelta(days=amount), "h": timedelta(hours=amount),
              "m": timedelta(minutes=amount)}[unit]
     return datetime.now(timezone.utc) - delta
