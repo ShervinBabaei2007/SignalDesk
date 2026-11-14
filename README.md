@@ -4,9 +4,39 @@
 
 [![CI](https://github.com/ShervinBabaei2007/SignalDesk/actions/workflows/ci.yml/badge.svg)](https://github.com/ShervinBabaei2007/SignalDesk/actions/workflows/ci.yml) ![Python](https://img.shields.io/badge/python-3.12%2B-blue) ![FastAPI](https://img.shields.io/badge/FastAPI-teal) ![React](https://img.shields.io/badge/React-19-61dafb) ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
-![SignalDesk dashboard](docs/screenshots/dashboard.png)
+## A quick tour
 
-![A story: AI brief, outlet comparison and reports ranked by information](docs/screenshots/story.png)
+**1. Landing page.** Open a private workspace, or take the demo tour. No sign-up.
+
+![Landing page with the workspace and demo tour buttons](docs/screenshots/landing.png)
+
+**2. Welcome dialog.** Each mode starts with a short guide to what you can do there.
+
+![Welcome dialog for a private workspace](docs/screenshots/welcome.png)
+
+**3. Get started checklist.** Add a feed, run an ingest, watch a term, open a story and save an article. Steps tick off as you go.
+
+![Get started checklist at the top of a workspace](docs/screenshots/onboarding-checklist.png)
+
+**4. Dashboard.** Key figures, a seven-day sentiment trend, topics, the daily brief and the story feed. A workspace can copy or download the brief.
+
+![Dashboard with key figures, sentiment trend, daily brief and story feed](docs/screenshots/dashboard.png)
+
+**5. Story page.** Reports of one event are grouped. See what every outlet agrees on, where they differ, and claim-by-claim comparison.
+
+![A story with its brief, where outlets differ and claim by claim comparison](docs/screenshots/story.png)
+
+**6. Article reader.** A plain summary, key points, a sentiment label and the other outlets covering the same story.
+
+![Article reader with summary and key points](docs/screenshots/reader.png)
+
+**7. Demo limits.** The demo shows feeds, watchlist, brief copying and CSV export locked, and offers a workspace where they unlock.
+
+![Locked feature prompt in the demo](docs/screenshots/demo-locked.png)
+
+**8. On a phone.** The whole app works on mobile.
+
+<img src="docs/screenshots/mobile-dashboard.png" alt="SignalDesk on a phone" width="320">
 
 ## How it works
 
@@ -35,12 +65,12 @@ Everything works **offline with no API keys**. A language model and an embedding
 | **Source reliability analysis** | An explainable per-outlet profile: transparency (bylines, dates, linked sources, corrections link), corrections practice, information quality, corroboration, claim agreement and feed availability. It shows its working and withholds a score when evidence is thin. It describes how an outlet publishes, **not whether it is right**. |
 | **Pipeline observability** | Every ingest cycle and every feed is recorded: failures, p50/p95 latency, throughput, page-read success rate and backlog. A dead feed is a failure, not "0 new articles". |
 | **Reading experience** | Information score per report, AI or offline story briefs, article reader with key points and quotes, hot topics, watchlist alerts, saved articles, light and dark themes, mobile-first UI. |
-| **Private workspaces** | Each visitor can open their own feeds and watchlist, invisible to everyone else, next to a one-click demo tour of the shared data. |
+| **Demo and private workspaces** | A guided demo tour at `/demo` on the shared data, and a private workspace at `/workspace` with your own feeds and watchlist, invisible to everyone else. Both start with a welcome dialog and a "Get started" checklist. |
 | **Platform** | SQLite by default, PostgreSQL with one variable, automatic migrations, scheduler, Slack/email digest, CSV export, Docker, GitHub Actions CI. |
 
 ## Quick start
 
-Requires **Python 3.12+** and **Node 20+**.
+Requires **Python 3.12+** and **Node 22.22+** (React Router 8 needs it).
 
 ```bash
 git clone https://github.com/ShervinBabaei2007/SignalDesk.git && cd SignalDesk
@@ -50,9 +80,25 @@ cd frontend && npm install && npm run build && cd ..          # build the dashbo
 cd backend && ..\.venv\Scripts\python -m uvicorn app.main:app --reload
 ```
 
-Open <http://localhost:8000>. The database creates and seeds itself on first boot; API docs are at `/docs`. For UI work run `npm run dev` in `frontend/` (http://localhost:5173, proxies `/api`).
+Open <http://localhost:8000>. The database creates and seeds itself on first boot; API docs are at `/docs`. For UI work run `npm run dev` in `frontend/` (http://localhost:5173), with the backend running on port 8000 because Vite proxies `/api` to it. Without the backend the landing page can't tell that workspaces are enabled and falls back to "Try as a demo".
 
 **Docker:** `docker compose up --build` serves everything on port 8000 and keeps data in a volume. Copy `.env.example` to `.env` to configure it.
+
+## Routes and modes
+
+The app uses [React Router](https://reactrouter.com) (library mode) with real URLs.
+
+| Path | What it is |
+|------|------------|
+| `/` | The dashboard for browsing read-only or as the owner. First-time visitors are sent to `/welcome`. |
+| `/welcome` | Landing page with "Open my workspace" and "Take the demo tour". |
+| `/demo`, `/demo/article/:id`, `/demo/story/:id` | The demo tour: starts a short-lived demo session, then shows the app with a few features locked. |
+| `/workspace`, `/workspace/article/:id`, `/workspace/story/:id` | Your private workspace: starts or resumes your workspace session. Redirects to `/welcome` when workspaces are off. |
+| `/article/:id`, `/story/:id` | Unprefixed pages; a demo or workspace visitor is redirected under their prefix. |
+
+Old `/#/article/5` style links still work: they redirect to the real path. Every unknown path shows a "Page not found" page, and the backend serves `index.html` for client routes so refreshing a deep link works.
+
+**Demo vs. workspace.** The demo keeps the dashboard, stories, reader, filters, live ingest, source profiles and pipeline health. It shows four features locked, with a prompt that offers a workspace: your own feeds, the watchlist and alerts, copying the daily brief, and CSV export. In a workspace nothing is locked. A workspace has no delivery channel of its own, so it copies or downloads the brief as text. Sending to Slack or email stays owner-only.
 
 ## Configuration
 
@@ -94,7 +140,7 @@ Interactive docs at `/docs`. The main endpoints:
 
 1. Add a Postgres database (Vercel Storage, Marketplace, Neon). It sets `DATABASE_URL`.
 2. Set `APP_ENV=production`, `SCHEDULER_DISABLED=true`, `API_TOKEN`, `CRON_SECRET` (random strings) and `CORS_ORIGINS` (your URL). Optionally `DEMO_MODE=true`, plus `LLM_*` and `EMBEDDINGS_ENABLED=true` for the AI upgrades.
-3. `vercel --prod`. `vercel.json` deploys the FastAPI `backend` and Vite `frontend` as two services on one domain.
+3. `vercel --prod`. `vercel.json` deploys the FastAPI `backend` and Vite `frontend` as two services on one domain. After the first deploy, refresh a deep link such as `/demo` or `/workspace/story/1` to confirm the frontend service falls back to `index.html`.
 4. Hobby plans allow only a daily cron, so `.github/workflows/ingest.yml` calls `/api/cron/ingest` every 15 minutes. Add the repository secrets `APP_URL` and `CRON_SECRET`.
 
 **Upgrading an existing database.** Schema changes are additive columns and tables, applied automatically on boot. The one exception: feed names/URLs and article URLs become unique **per workspace** instead of globally. SQLite tables are rebuilt in place (rows kept); on PostgreSQL the old unique constraints are dropped and composite unique indexes created. It is idempotent, but **back up a production database before the first deploy**.
@@ -103,7 +149,7 @@ Interactive docs at `/docs`. The main endpoints:
 
 - **Shared vs. private.** Cron-ingested news is shared; a visitor's feeds, watches and articles carry a signed workspace id and are invisible to others. A story that includes a visitor's article is never cached for anyone else.
 - **Strangers can add feed URLs**, so fetches go through an SSRF guard (public http(s) only, every redirect checked, responses size-capped), each workspace has caps, and workspace creation is rate-limited per IP.
-- **Owner-only:** Slack/email delivery, recommended-feed reset and refreshing briefs. A visitor's articles never reach an LLM or embeddings API, so visitors cannot spend your quota.
+- **Owner-only:** Slack/email delivery (workspaces copy or download the brief instead), recommended-feed reset and refreshing briefs. A visitor's articles never reach an LLM or embeddings API, so visitors cannot spend your quota.
 - **Source profiles** use only shared data, so a visitor cannot influence a public score.
 - The real `API_TOKEN` is never handed out; workspace and demo tokens are signed with a derived key and cannot act as it.
 
@@ -130,7 +176,11 @@ backend/app/
   events.py          event history and timelines         reliability.py, signals.py  source profiles, page signals
   observability.py   run history and health summary      workspace.py, netguard.py   private workspaces, SSRF guard
 frontend/src/        React + Vite + TypeScript + Tailwind + shadcn/ui
-  components/app/    dashboard, story page, claims/timeline cards, sources and pipeline dialogs
+  router.tsx         route table: /welcome, /demo, /workspace and the unprefixed pages
+  lib/mode.ts        demo and workspace prefixes, locked features
+  lib/nav.ts         navigation and header events from outside components
+  lib/onboarding.ts  welcome dialog and checklist state, per mode
+  components/app/    dashboard, story page, claims/timeline cards, sources and pipeline dialogs, onboarding
 backend/tests/       pytest suites per module
 ```
 

@@ -103,8 +103,8 @@ export function Landing() {
             <img
               src="/screenshots/dashboard.png"
               alt="The SignalDesk dashboard: key figures, a seven-day sentiment trend, topics and the story feed with lead images"
-              width={1388}
-              height={868}
+              width={1228}
+              height={778}
               className="relative hidden w-full rounded-2xl border border-foreground/10 shadow-2xl ring-1 ring-foreground/5 sm:block"
             />
           </figure>
