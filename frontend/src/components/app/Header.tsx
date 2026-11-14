@@ -82,7 +82,7 @@ export function Header() {
 
   return (
     <header className="sticky top-0 z-40 border-b bg-background/80 backdrop-blur-md">
-      <div className="mx-auto flex h-14 max-w-7xl items-center justify-between gap-3 px-4">
+      <div className="mx-auto flex h-14 max-w-[96rem] items-center justify-between gap-3 px-4 sm:px-6">
         <a
           href="#/"
           onClick={onLogo}
@@ -110,7 +110,7 @@ export function Header() {
               API healthy · {health.articles} articles
             </Badge>
           )}
-          <div className="hidden items-center gap-1 md:flex">
+          <div className="hidden items-center gap-1 lg:flex">
             <Button variant="ghost" render={<a href="/api/articles/export.csv" download />}>
               <FileSpreadsheet data-icon="inline-start" /> CSV
             </Button>
@@ -136,7 +136,7 @@ export function Header() {
             </Button>
           )}
           {ingest}
-          <Button variant="outline" size="icon-lg" className="md:hidden" aria-label="Open menu" onClick={() => setMenuOpen(true)}>
+          <Button variant="outline" size="icon-lg" className="lg:hidden" aria-label="Open menu" onClick={() => setMenuOpen(true)}>
             <Menu />
           </Button>
         </div>

@@ -52,7 +52,7 @@ export default function App() {
     <MotionConfig reducedMotion="user">
       <div className="min-h-dvh">
         <Header />
-        <main className="mx-auto max-w-7xl px-4 py-5">
+        <main className="mx-auto max-w-[96rem] px-4 py-5 sm:px-6">
           <AnimatePresence mode="wait" initial={false}>
             <motion.div
               key={route.name === 'home' ? 'home' : `${route.name}-${route.id}`}
