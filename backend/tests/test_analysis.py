@@ -88,3 +88,14 @@ def test_ingest_decodes_html_entities_in_titles(monkeypatch):
         ingestion.ingest_feed(db, "https://feed.example/rss", "Test")
         art = db.query(Article).filter_by(url="https://x.example/entity-test").one()
         assert art.title == "Microsoft\u2019s outage & fallout"
+
+
+def test_share_button_rows_and_stock_credits_are_stripped_from_summaries():
+    """Scraped share rows ("Facebook Twitter Pinterest LinkedIn Email"), FULL STORY teasers and stock credits go."""
+    from app.analysis import strip_boilerplate
+    text = ("Their analysis could transform treatments. Facebook Twitter Pinterest LinkedIn Email FULL STORY "
+            "Credit: Shutterstock A major study reveals results.")
+    cleaned = " ".join(strip_boilerplate(text).split())
+    assert cleaned == "Their analysis could transform treatments. A major study reveals results."
+    prose = "Officials said they would share the email with Facebook and Twitter."
+    assert strip_boilerplate(prose) == prose  # ordinary uses of those words are untouched

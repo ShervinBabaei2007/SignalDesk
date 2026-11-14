@@ -65,7 +65,7 @@ export function Landing() {
 
   return (
     <div className="min-h-dvh">
-      <header className="mx-auto flex max-w-5xl items-center justify-between px-4 py-5">
+      <header className="mx-auto flex max-w-6xl items-center justify-between px-4 py-5 sm:px-6">
         <span className="flex items-center gap-2.5">
           <span className="grid size-8 place-items-center rounded-lg bg-primary text-primary-foreground">
             <Zap className="size-4 fill-current" aria-hidden />
@@ -77,24 +77,24 @@ export function Landing() {
         </Button>
       </header>
 
-      <main className="mx-auto max-w-5xl px-4 pb-16">
-        <section className="py-14 text-center sm:py-20">
-          <p className="mb-4 text-sm font-medium text-ai">News intelligence, on autopilot</p>
-          <h1 className="mx-auto max-w-3xl text-4xl font-bold tracking-tight text-balance sm:text-5xl">
+      <main className="mx-auto max-w-6xl px-4 pb-20 sm:px-6">
+        <section className="pt-12 pb-10 text-center sm:pt-20 sm:pb-14">
+          <p className="mb-5 text-sm font-semibold tracking-wide text-ai uppercase">News intelligence, on autopilot</p>
+          <h1 className="mx-auto max-w-4xl text-[2.15rem] leading-[1.1] font-bold tracking-tight text-balance sm:text-5xl lg:text-6xl">
             Cut through the noise. See the story behind the headlines.
           </h1>
-          <p className="mx-auto mt-5 max-w-2xl text-base text-muted-foreground text-pretty sm:text-lg">
+          <p className="mx-auto mt-6 max-w-3xl text-base leading-relaxed text-muted-foreground text-pretty sm:text-lg lg:text-xl">
             SignalDesk pulls in dozens of news feeds, groups reports about the same event, scores how informative each
             one is, and tracks sentiment and trends, all refreshed every hour.
           </p>
-          <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
+          <div className="mx-auto mt-9 flex w-full max-w-xs flex-col items-center justify-center gap-3 sm:max-w-none sm:flex-row">
             <ShimmerButton
               onClick={() => void enter(workspaces ? 'workspace' : 'demo')}
               disabled={starting !== null}
               background="var(--primary)"
               shimmerColor="#ffffff"
               borderRadius="0.625rem"
-              className="h-11 px-6 text-base font-medium disabled:opacity-70"
+              className="h-11 w-full px-6 text-base font-medium disabled:opacity-70 sm:w-auto"
             >
               {starting === (workspaces ? 'workspace' : 'demo') ? (
                 <Loader2 className="mr-2 size-4 animate-spin" aria-hidden />
@@ -106,29 +106,48 @@ export function Landing() {
               {workspaces ? (starting === 'workspace' ? 'Opening…' : 'Open my workspace') : starting === 'demo' ? 'Starting demo…' : 'Try as a demo'}
             </ShimmerButton>
             {workspaces ? (
-              <Button variant="outline" size="lg" className="h-11 px-5" onClick={() => void enter('demo')} disabled={starting !== null}>
+              <Button variant="outline" size="lg" className="h-11 w-full px-5 sm:w-auto" onClick={() => void enter('demo')} disabled={starting !== null}>
                 {starting === 'demo' ? <Loader2 className="animate-spin" data-icon="inline-start" /> : <Compass data-icon="inline-start" />}
                 Take the demo tour
               </Button>
             ) : (
-              <Button variant="outline" size="lg" className="h-11 px-5" onClick={enterDashboard}>
+              <Button variant="outline" size="lg" className="h-11 w-full px-5 sm:w-auto" onClick={enterDashboard}>
                 Just look around
               </Button>
             )}
           </div>
-          <p className="mt-4 text-xs text-muted-foreground">
+          <p className="mt-4 text-[13px] text-muted-foreground">
             {workspaces
               ? `No sign-up. Your workspace is private to you and deleted automatically after ${status?.workspace_ttl_days ?? 7} days.`
               : 'No sign-up. The demo lets you run live ingests for a couple of hours.'}
           </p>
+
+          <figure className="relative mx-auto mt-14 max-w-5xl sm:mt-16">
+            <div aria-hidden className="absolute inset-x-6 -top-6 h-40 rounded-full bg-primary/25 blur-3xl sm:inset-x-12" />
+            {/* a phone-sized capture on small screens (the desktop one would shrink to an unreadable strip) */}
+            <img
+              src="/screenshots/mobile.png"
+              alt="SignalDesk on a phone: the story feed with lead images, summaries and source links"
+              width={392}
+              height={845}
+              className="relative mx-auto w-full max-w-[300px] rounded-3xl border border-foreground/10 shadow-2xl ring-1 ring-foreground/5 sm:hidden"
+            />
+            <img
+              src="/screenshots/dashboard.png"
+              alt="The SignalDesk dashboard: key figures, a seven-day sentiment trend, topics and the story feed with lead images"
+              width={1388}
+              height={868}
+              className="relative hidden w-full rounded-2xl border border-foreground/10 shadow-2xl ring-1 ring-foreground/5 sm:block"
+            />
+          </figure>
         </section>
 
         <section aria-label="Features" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {FEATURES.map(({ icon: Icon, title, text }) => (
             <Card key={title} className="gap-2 p-5">
               <Icon className="size-5 text-link" aria-hidden />
-              <h2 className="text-[15px] font-semibold">{title}</h2>
-              <p className="text-sm text-muted-foreground">{text}</p>
+              <h2 className="text-base font-semibold">{title}</h2>
+              <p className="text-sm leading-relaxed text-muted-foreground">{text}</p>
             </Card>
           ))}
         </section>

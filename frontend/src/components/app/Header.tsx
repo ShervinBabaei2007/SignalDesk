@@ -94,45 +94,45 @@ export function Header() {
           </span>
           <span className="leading-tight">
             <span className="block text-[15px] font-bold tracking-tight">SignalDesk</span>
-            <span className="hidden text-xs text-muted-foreground sm:block">News intelligence, on autopilot</span>
+            <span className="hidden text-xs whitespace-nowrap text-muted-foreground 2xl:block">News intelligence, on autopilot</span>
           </span>
         </a>
 
         <div className="flex items-center gap-1.5">
           {(mode === 'workspace' || mode === 'demo') && (
-            <Badge variant="secondary" className="mr-1 hidden sm:inline-flex">
+            <Badge variant="secondary" className="mr-1 hidden sm:inline-flex lg:hidden xl:inline-flex">
               {mode === 'workspace' ? 'Your workspace' : 'Demo tour'}
             </Badge>
           )}
           {health && (
-            <Badge variant="outline" className="mr-1 hidden gap-1.5 text-positive lg:inline-flex">
+            <Badge variant="outline" className="mr-1 hidden gap-1.5 text-positive xl:inline-flex">
               <span className="size-1.5 rounded-full bg-positive shadow-[0_0_6px_var(--positive)]" />
               API healthy · {health.articles} articles
             </Badge>
           )}
           <div className="hidden items-center gap-1 lg:flex">
-            <Button variant="ghost" render={<a href="/api/articles/export.csv" download />}>
-              <FileSpreadsheet data-icon="inline-start" /> CSV
+            <Button variant="ghost" title="Export CSV" aria-label="Export CSV" render={<a href="/api/articles/export.csv" download />}>
+              <FileSpreadsheet data-icon="inline-start" /> <span className="hidden xl:inline">CSV</span>
             </Button>
-            <Button variant="ghost" onClick={() => setFeedsOpen(true)}>
-              <Rss data-icon="inline-start" /> Feeds
+            <Button variant="ghost" title="Feeds" aria-label="Feeds" onClick={() => setFeedsOpen(true)}>
+              <Rss data-icon="inline-start" /> <span className="hidden xl:inline">Feeds</span>
             </Button>
-            <Button variant="ghost" onClick={() => setWatchOpen(true)}>
-              <Bell data-icon="inline-start" /> Watchlist
+            <Button variant="ghost" title="Watchlist" aria-label="Watchlist" onClick={() => setWatchOpen(true)}>
+              <Bell data-icon="inline-start" /> <span className="hidden xl:inline">Watchlist</span>
             </Button>
-            <Button variant="ghost" onClick={() => setSourcesOpen(true)}>
-              <ShieldCheck data-icon="inline-start" /> Sources
+            <Button variant="ghost" title="Source profiles" aria-label="Source profiles" onClick={() => setSourcesOpen(true)}>
+              <ShieldCheck data-icon="inline-start" /> <span className="hidden xl:inline">Sources</span>
             </Button>
-            <Button variant="ghost" onClick={() => setPipelineOpen(true)}>
-              <Activity data-icon="inline-start" /> Pipeline
+            <Button variant="ghost" title="Pipeline health" aria-label="Pipeline health" onClick={() => setPipelineOpen(true)}>
+              <Activity data-icon="inline-start" /> <span className="hidden xl:inline">Pipeline</span>
             </Button>
-            <Button variant="ghost" onClick={() => setSettingsOpen(true)}>
-              <SettingsIcon data-icon="inline-start" /> Settings
+            <Button variant="ghost" title="Settings" aria-label="Settings" onClick={() => setSettingsOpen(true)}>
+              <SettingsIcon data-icon="inline-start" /> <span className="hidden xl:inline">Settings</span>
             </Button>
           </div>
           {canLeave && (
-            <Button variant="outline" className="hidden sm:inline-flex" onClick={leave}>
-              <UserRoundX data-icon="inline-start" /> {leaveLabel}
+            <Button variant="outline" className="hidden sm:inline-flex" title={leaveLabel} aria-label={leaveLabel} onClick={leave}>
+              <UserRoundX data-icon="inline-start" /> <span className="hidden xl:inline">{leaveLabel}</span>
             </Button>
           )}
           {ingest}

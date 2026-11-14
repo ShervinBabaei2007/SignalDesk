@@ -11,6 +11,7 @@ import { AlsoCoveredBy } from '@/components/app/AlsoCoveredBy'
 import { BookmarkButton } from '@/components/app/BookmarkButton'
 import { SentimentBadge, SentimentInfo, SentimentScale, toneBg, toneText } from '@/components/app/Sentiment'
 import { useLibrary } from '@/hooks/useLibrary'
+import { cleanSummary } from '@/lib/text'
 import { api, type ArticleDetail } from '@/lib/api'
 import { domainOf, keywordList, timeAgo, TOPIC_EMOJI } from '@/lib/format'
 import { describeSentiment } from '@/lib/sentiment'
@@ -147,7 +148,7 @@ export function Reader({ id }: { id: number }) {
                   )}
                 </div>
                 <p className="text-[15px] leading-relaxed">
-                  {article.summary_deep || article.summary || 'No summary available yet.'}
+                  {cleanSummary(article.summary_deep || article.summary || '') || 'No summary available yet.'}
                 </p>
               </div>
             </BlurFade>

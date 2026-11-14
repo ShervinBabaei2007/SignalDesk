@@ -1,7 +1,7 @@
 // Tests for the claims, timeline, sources and pipeline helpers, and the API methods behind them.
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { api } from '@/lib/api'
-import { barHeights, dayLabel, formatDuration, minutesAgo, percent, reliabilityTone, STALE_AFTER_MINUTES } from '@/lib/insights'
+import { barHeights, dayLabel, fillSeries, formatDuration, minutesAgo, percent, reliabilityTone, STALE_AFTER_MINUTES } from '@/lib/insights'
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -33,6 +33,29 @@ describe('barHeights', () => {
   it('copes with empty and all-zero series', () => {
     expect(barHeights([])).toEqual([])
     expect(barHeights([0, 0])).toEqual([0, 0])
+  })
+})
+
+describe('fillSeries', () => {
+  const now = new Date('2026-11-14T10:30:00Z')
+
+  it('gives a 24 hour window one bucket per hour, quiet hours included', () => {
+    const out = fillSeries([{ at: '2026-11-14T09:00', added: 4 }], 24, now)
+    expect(out).toHaveLength(24)
+    expect(out[23]).toEqual({ at: '2026-11-14T10:00', added: 0 })
+    expect(out[22]).toEqual({ at: '2026-11-14T09:00', added: 4 })
+    expect(out[0].at).toBe('2026-11-13T11:00')
+  })
+
+  it('uses one bucket per day beyond two days, matching the server', () => {
+    const out = fillSeries([{ at: '2026-11-13', added: 9 }], 168, now)
+    expect(out).toHaveLength(7)
+    expect(out.map((b) => b.at).slice(-2)).toEqual(['2026-11-13', '2026-11-14'])
+    expect(out[5].added).toBe(9)
+  })
+
+  it('copes with an empty series', () => {
+    expect(fillSeries([], 24, now).every((b) => b.added === 0)).toBe(true)
   })
 })
 

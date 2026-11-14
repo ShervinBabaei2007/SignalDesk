@@ -1,5 +1,5 @@
 // The main feed: story cards or flat article cards, with loading, empty and paging states.
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import { BookOpen, ChevronLeft, ChevronRight, ExternalLink, Eye, FileText, FlaskConical, Globe, Inbox, Layers, Star, Trophy, X } from 'lucide-react'
 import { Alert, AlertAction, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -22,6 +22,7 @@ import { useSettings } from '@/hooks/useSettings'
 import type { Article, Story } from '@/lib/api'
 import { domainOf, keywordList, timeAgo, TOPIC_EMOJI } from '@/lib/format'
 import { pageWindow } from '@/lib/pagination'
+import { cleanSummary } from '@/lib/text'
 import { cn } from '@/lib/utils'
 
 /** Chip showing how many outlets cover the story, linking to its page. */
@@ -70,11 +71,28 @@ function CoverageBadge({ article, story }: { article: Article; story?: Story }) 
   return article.cluster_size > 1 ? <StoryChip article={article} /> : null
 }
 
+/** The article's lead image as a small thumbnail. Hotlinked, so it simply disappears if the site blocks it. */
+function Thumbnail({ url }: { url: string }) {
+  const [failed, setFailed] = useState(false)
+  if (failed) return null
+  return (
+    <img
+      src={url}
+      alt=""
+      loading="lazy"
+      decoding="async"
+      referrerPolicy="no-referrer"
+      onError={() => setFailed(true)}
+      className="compact-hide mt-0.5 size-[72px] shrink-0 rounded-lg bg-muted object-cover ring-1 ring-foreground/10 sm:h-[104px] sm:w-[172px]"
+    />
+  )
+}
+
 /** One feed card for an article, expandable to show its summary and the story's other reports. */
 function ArticleCard({
   article: a, index, story, defaultOpen = false,
 }: { article: Article; index: number; story?: Story; defaultOpen?: boolean }) {
-  const summary = a.summary_deep || a.summary
+  const summary = cleanSummary(a.summary_deep || a.summary || '')
   const { isRead } = useLibrary()
   const read = isRead(a.id)
   const domain = a.is_seed ? '' : domainOf(a.url)
@@ -121,13 +139,17 @@ function ArticleCard({
             <CoverageBadge article={a} story={story} />
           </div>
 
-          <h3 className="text-[15.5px] leading-snug font-semibold tracking-tight">
-            <a href={`#/article/${a.id}`} onClick={(e) => e.stopPropagation()} className={cn('hover:text-link', read && 'text-muted-foreground')}>
-              {a.title}
-            </a>
-          </h3>
-
-          {summary && <p className="line-clamp-2 text-[13px] leading-relaxed text-muted-foreground">{summary}</p>}
+          <div className="flex items-start gap-3.5 sm:gap-4">
+            <div className="min-w-0 flex-1 space-y-2">
+              <h3 className="text-[15.5px] leading-snug font-semibold tracking-tight sm:text-base">
+                <a href={`#/article/${a.id}`} onClick={(e) => e.stopPropagation()} className={cn('hover:text-link', read && 'text-muted-foreground')}>
+                  {a.title}
+                </a>
+              </h3>
+              {summary && <p className="line-clamp-2 text-[13px] leading-relaxed text-muted-foreground sm:line-clamp-3 sm:text-sm">{summary}</p>}
+            </div>
+            {a.image_url && !a.is_seed && <Thumbnail url={a.image_url} />}
+          </div>
           {a.why_it_matters && (
             <p className="rounded-md border-l-2 border-ai bg-ai/8 px-3 py-1.5 text-[13px] leading-relaxed">
               <span className="mr-1.5 text-[11px] font-semibold tracking-wide text-ai uppercase">Why it matters</span>

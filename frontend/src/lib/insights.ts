@@ -54,3 +54,26 @@ export function dayInitial(date: string): string {
 export function dayLabel(date: string): string {
   return new Date(`${date}T00:00:00Z`).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', timeZone: 'UTC' })
 }
+
+/** One bucket of the throughput series: a UTC hour (YYYY-MM-DDTHH:00) or day (YYYY-MM-DD) and how many articles arrived. */
+export interface Bucket {
+  at: string
+  added: number
+}
+
+/** The throughput series on a complete time axis. The server only reports periods that had a run, so a quiet
+ *  hour would otherwise be missing and one data point would stretch across the whole chart. Hourly up to two
+ *  days, daily beyond (matching the server's bucketing). */
+export function fillSeries(series: Bucket[], hours: number, now: Date = new Date()): Bucket[] {
+  const daily = hours > 48
+  const step = daily ? 86_400_000 : 3_600_000
+  const count = daily ? Math.ceil(hours / 24) : hours
+  const byKey = new Map(series.map((b) => [b.at, b.added]))
+  const out: Bucket[] = []
+  for (let i = count - 1; i >= 0; i--) {
+    const iso = new Date(now.getTime() - i * step).toISOString()
+    const at = daily ? iso.slice(0, 10) : `${iso.slice(0, 13)}:00`
+    out.push({ at, added: byKey.get(at) ?? 0 })
+  }
+  return out
+}

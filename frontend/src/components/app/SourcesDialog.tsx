@@ -87,6 +87,12 @@ export function SourcesDialog({ open, onOpenChange }: { open: boolean; onOpenCha
         <ScrollArea className="max-h-96 pr-3">
           {error && <p className="text-sm text-negative">Could not load the profiles: {error}</p>}
           {!error && !data && <Skeleton className="h-40 w-full" />}
+          {data && data.items.length > 0 && data.items.every((p) => p.score === null) && (
+            <p className="mb-3 rounded-lg border border-dashed px-3 py-2 text-[12.5px] leading-snug text-muted-foreground">
+              Profiles appear once SignalDesk has read a few article pages from an outlet, because most of the signals (author, dates, linked sources,
+              corrections) come from the page itself. Check back after a few ingests.
+            </p>
+          )}
           {data && (
             <ul className="space-y-2">
               {data.items.map((p) => (

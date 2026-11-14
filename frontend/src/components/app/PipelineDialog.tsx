@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 import { api, type Observability } from '@/lib/api'
-import { barHeights, formatDuration, minutesAgo, percent, STALE_AFTER_MINUTES } from '@/lib/insights'
+import { barHeights, fillSeries, formatDuration, minutesAgo, percent, STALE_AFTER_MINUTES } from '@/lib/insights'
 import { cn } from '@/lib/utils'
 
 /** Window choices offered in the dialog. */
@@ -46,7 +46,8 @@ export function PipelineDialog({ open, onOpenChange }: { open: boolean; onOpenCh
   }, [open, hours])
 
   const stale = data !== null && data.runs.minutes_since_ok !== null && data.runs.minutes_since_ok > STALE_AFTER_MINUTES
-  const heights = barHeights(data?.throughput.series.map((s) => s.added) ?? [])
+  const series = data ? fillSeries(data.throughput.series, data.window_hours) : []
+  const heights = barHeights(series.map((s) => s.added))
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -89,13 +90,13 @@ export function PipelineDialog({ open, onOpenChange }: { open: boolean; onOpenCh
                 />
               </div>
 
-              {data.throughput.series.length > 0 && (
+              {data.throughput.added > 0 && (
                 <div>
                   <h3 className="mb-1.5 text-xs font-semibold">New articles over time</h3>
                   <ol className="flex h-16 items-end gap-0.5" aria-label="New articles per period">
-                    {data.throughput.series.map((s, i) => (
-                      <li key={s.at} className="flex h-full flex-1 items-end" title={`${s.at.replace('T', ' ')}: ${s.added} new`}>
-                        <div className="w-full rounded-t-sm bg-link/70" style={{ height: `${heights[i]}%`, minHeight: s.added ? 2 : 0 }} />
+                    {series.map((s, i) => (
+                      <li key={s.at} className="flex h-full flex-1 items-end" title={`${s.at.replace('T', ' ')} UTC: ${s.added} new`}>
+                        <div className={cn('w-full rounded-t-sm', s.added ? 'bg-link/70' : 'bg-muted')} style={{ height: s.added ? `${heights[i]}%` : '2px' }} />
                       </li>
                     ))}
                   </ol>

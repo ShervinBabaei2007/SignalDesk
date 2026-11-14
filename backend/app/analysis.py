@@ -132,6 +132,10 @@ _BOILERPLATE = [re.compile(p, re.IGNORECASE) for p in (
     r"Image\s+source,\s*[^.]{0,160}?Image\s+caption,\s*",
     r"Published\s+\d+\s+(?:minutes?|hours?)\s+ago",
     r"(?:Image|Photo)\s+credits?:\s*[^.]{0,120}?(?:Getty\s+Images|Anadolu|Reuters|AFP|AP\s+Photo|Bloomberg)",
+    # share-button rows ("Facebook Twitter Pinterest LinkedIn Email"), teaser labels and stock-photo credits
+    r"\b(?:Facebook|Twitter|Pinterest|LinkedIn|WhatsApp|Reddit|Email|Print|Share)(?:\s+(?:Facebook|Twitter|Pinterest|LinkedIn|WhatsApp|Reddit|Email|Print|Share)){2,}\b",
+    r"\bFULL\s+STORY\b",
+    r"\bCredit:\s*(?:Shutterstock|Getty\s+Images|Alamy|iStock|Adobe\s+Stock)\b",
 )]
 
 

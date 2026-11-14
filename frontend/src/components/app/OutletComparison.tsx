@@ -79,25 +79,26 @@ function Row({ row, index }: { row: OutletStat; index: number }) {
           </span>
         </span>
         <InfoScore score={row.info_score} variant="bar" />
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <span
-                className={cn(
-                  'w-16 rounded-md border px-1.5 py-0.5 text-center text-[11px] font-semibold tabular-nums',
-                  row.reliability === null ? 'text-muted-foreground' : [toneBg[reliabilityTone(row.reliability)!], toneText[reliabilityTone(row.reliability)!]],
-                )}
-              />
-            }
-          >
-            {row.reliability === null ? 'no data' : `${row.reliability}/100`}
-          </TooltipTrigger>
-          <TooltipContent>
-            {row.reliability === null
-              ? 'Not enough articles read from this outlet to profile how it publishes.'
-              : `${row.reliability_label}: how this outlet publishes (bylines, dates, sources, corrections), not whether it is right. Open Sources for the working.`}
-          </TooltipContent>
-        </Tooltip>
+        {row.reliability !== null && (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <span
+                  className={cn(
+                    'w-16 rounded-md border px-1.5 py-0.5 text-center text-[11px] font-semibold tabular-nums',
+                    toneBg[reliabilityTone(row.reliability)!],
+                    toneText[reliabilityTone(row.reliability)!],
+                  )}
+                />
+              }
+            >
+              {row.reliability}/100
+            </TooltipTrigger>
+            <TooltipContent>
+              {row.reliability_label}: how this outlet publishes (bylines, dates, sources, corrections), not whether it is right. Open Sources for the working.
+            </TooltipContent>
+          </Tooltip>
+        )}
         <span className="w-24 text-xs text-muted-foreground tabular-nums">
           {words ? `≈ ${words.toLocaleString()} words` : 'excerpt only'}
         </span>
