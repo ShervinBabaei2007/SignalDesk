@@ -18,6 +18,7 @@ from app.models import Article, Feed  # noqa: E402
 
 @pytest.fixture()
 def session_factory(monkeypatch):
+    """Fixture providing an in-memory database with active and paused feeds and a waiting article."""
     engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
     Base.metadata.create_all(bind=engine)
     factory = sessionmaker(bind=engine)
@@ -34,6 +35,7 @@ def session_factory(monkeypatch):
 
 
 def fake_ingest(calls):
+    """Build a stand-in ingest function that records which feeds it was asked to fetch."""
     def ingest(db, feeds, feed_rows=None):
         calls.append([f["name"] for f in feeds])
         return [{"feed": f["name"], "added": 2, "fetched": 3, "skipped": 1} for f in feeds]
@@ -41,6 +43,7 @@ def fake_ingest(calls):
 
 
 def test_cycle_fetches_only_active_feeds_and_reports_what_is_waiting(session_factory):
+    """A cycle fetches only active feeds and reports what is waiting."""
     calls = []
     with session_factory() as db:
         result = pipeline.ingest_cycle(db, manual=True, ingest=fake_ingest(calls))
@@ -51,6 +54,7 @@ def test_cycle_fetches_only_active_feeds_and_reports_what_is_waiting(session_fac
 
 
 def test_manual_runs_respect_the_cooldown_but_the_scheduler_does_not(session_factory):
+    """Manual runs respect the cooldown but the scheduler does not."""
     with session_factory() as db:
         pipeline.ingest_cycle(db, manual=True, ingest=fake_ingest([]))
         with pytest.raises(pipeline.Busy):
@@ -59,12 +63,14 @@ def test_manual_runs_respect_the_cooldown_but_the_scheduler_does_not(session_fac
 
 
 def test_a_scheduled_run_does_not_start_the_manual_cooldown(session_factory):
+    """A scheduled run does not start the manual cooldown."""
     pipeline.scheduled_cycle(session_factory, ingest=fake_ingest([]), enrich=lambda db: {"enriched": 0, "remaining": 0})
     with session_factory() as db:
         pipeline.ingest_cycle(db, manual=True, ingest=fake_ingest([]))  # the button still works right after
 
 
 def test_a_running_cycle_blocks_both_manual_and_scheduled_runs(session_factory):
+    """A running cycle blocks both manual and scheduled runs."""
     calls = []
     assert pipeline._lock.acquire(blocking=False)
     try:
@@ -78,6 +84,7 @@ def test_a_running_cycle_blocks_both_manual_and_scheduled_runs(session_factory):
 
 
 def test_a_failing_watch_check_never_fails_the_ingest(session_factory, monkeypatch):
+    """A failing watch check never fails the ingest."""
     def boom(db):
         raise RuntimeError("watch table is broken")
     monkeypatch.setattr(pipeline.watches, "check_watches", boom)
@@ -87,6 +94,7 @@ def test_a_failing_watch_check_never_fails_the_ingest(session_factory, monkeypat
 
 
 def test_scheduled_cycle_ingests_then_enriches_until_the_backlog_is_empty(session_factory):
+    """A scheduled cycle ingests, then enriches until the backlog is empty."""
     waves = []
 
     def enrich(db):
@@ -98,6 +106,7 @@ def test_scheduled_cycle_ingests_then_enriches_until_the_backlog_is_empty(sessio
 
 
 def test_enrichment_stops_when_a_wave_makes_no_progress(session_factory):
+    """Enrichment stops when a wave makes no progress."""
     waves = []
 
     def enrich(db):
@@ -109,6 +118,7 @@ def test_enrichment_stops_when_a_wave_makes_no_progress(session_factory):
 
 
 def test_enrichment_failures_are_contained(session_factory):
+    """Enrichment failures are contained and never raise."""
     def enrich(db):
         raise RuntimeError("model is down")
 
@@ -116,6 +126,7 @@ def test_enrichment_failures_are_contained(session_factory):
 
 
 def test_pending_is_defined_once_and_excludes_seeds(session_factory):
+    """The pending definition lives in one place and excludes seed articles."""
     with session_factory() as db:
         pending = db.query(Article).filter(*enrichment.pending_clauses()).all()
     assert [a.title for a in pending] == ["Waiting"]

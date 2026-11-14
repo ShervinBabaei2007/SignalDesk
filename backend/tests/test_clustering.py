@@ -23,10 +23,12 @@ NOW = datetime.now(timezone.utc)
 
 
 def _rows(*titles, gap_hours=1):
+    """Build clustering input rows from titles spaced by `gap_hours`."""
     return [(i + 1, t, f"Src{i}", NOW - timedelta(hours=gap_hours * i)) for i, t in enumerate(titles)]
 
 
 def test_same_event_different_wording_clusters():
+    """Headlines about the same event with different wording cluster together."""
     clusters = cluster_rows(_rows(
         "FAA issues nationwide ground stop due to extraordinary circumstances",
         "FAA ground stop shuts down flights nationwide",
@@ -38,6 +40,7 @@ def test_same_event_different_wording_clusters():
 
 
 def test_unrelated_headlines_stay_apart():
+    """Unrelated headlines stay in separate stories."""
     assert cluster_rows(_rows(
         "Apple announces new iPhone lineup",
         "Apple announces record quarterly earnings",
@@ -46,6 +49,7 @@ def test_unrelated_headlines_stay_apart():
 
 
 def test_clustering_is_transitive_and_id_is_smallest():
+    """Clustering is transitive and the cluster id is the smallest article id."""
     clusters = cluster_rows(_rows(
         "Microsoft global outage hits Outlook and Teams users",
         "Microsoft outage: Outlook down for thousands of users",
@@ -55,17 +59,20 @@ def test_clustering_is_transitive_and_id_is_smallest():
 
 
 def test_same_story_far_apart_in_time_is_not_merged():
+    """The same story published far apart in time is not merged."""
     rows = _rows("Jensen Huang agrees to testify before Congress",
                  "Jensen Huang agrees to testify before Congress", gap_hours=100)
     assert cluster_rows(rows) == []
 
 
 def test_terms_ignore_entities_plurals_and_stopwords():
+    """Title terms ignore entities, plurals and stopwords."""
     assert title_terms("Microsoft&#8217;s Outages") == title_terms("Microsoft outage")
     assert "the" not in title_terms("The big news")
 
 
 def test_api_exposes_cluster_fields_filter_and_related():
+    """The API exposes cluster fields, the cluster filter and related reports."""
     Base.metadata.create_all(bind=engine)
     with SessionLocal() as db:
         for i, (title, src) in enumerate([
@@ -93,6 +100,7 @@ def test_api_exposes_cluster_fields_filter_and_related():
 
 
 def test_related_items_carry_sentiment_and_snippet():
+    """Related items carry sentiment and a snippet."""
     client = TestClient(app)
     items = client.get("/api/articles?limit=50").json()["items"]
     storm = next(a for a in items if a["cluster_size"] == 2)
@@ -101,6 +109,7 @@ def test_related_items_carry_sentiment_and_snippet():
 
 
 def test_lead_headline_is_the_most_representative_one():
+    """The lead headline is the one most like the others in the story."""
     clusters = cluster_rows([
         (1, "Microsoft outage hits Outlook and Teams worldwide", "A", NOW),
         (2, "Microsoft global outage takes down Outlook and Teams", "B", NOW),
@@ -113,6 +122,7 @@ def test_lead_headline_is_the_most_representative_one():
 
 
 def test_trending_api_ranks_multi_outlet_stories_and_skips_single_source():
+    """The trending API ranks multi-outlet stories and skips single-source ones."""
     Base.metadata.create_all(bind=engine)
     with SessionLocal() as db:
         for i, (title, src) in enumerate([
@@ -138,6 +148,7 @@ def test_trending_api_ranks_multi_outlet_stories_and_skips_single_source():
 
 
 def test_hot_filter_matches_the_union_of_hot_stories():
+    """The hot filter matches the union of the hot stories."""
     client = TestClient(app)
     stories = client.get("/api/trending").json()
     assert stories

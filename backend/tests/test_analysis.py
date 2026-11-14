@@ -10,21 +10,25 @@ from app.analysis import analyze, classify_topic, extract_keywords, score_sentim
 
 
 def test_positive_sentiment():
+    """Positive wording scores above zero."""
     score = score_sentiment("Company reports record profits and strong growth")
     assert score > 0.3
 
 
 def test_negative_sentiment():
+    """Negative wording scores below zero."""
     score = score_sentiment("Firm announces layoffs amid heavy losses and crisis fears")
     assert score < -0.3
 
 
 def test_neutral_sentiment():
+    """Neutral wording scores near zero."""
     score = score_sentiment("The board meeting is scheduled for Tuesday")
     assert -0.15 <= score <= 0.15
 
 
 def test_sentiment_negation():
+    """A negation flips the sentiment of the word it modifies."""
     plain = score_sentiment("profits are strong")
     negated = score_sentiment("profits are not strong")
     assert plain > negated
@@ -33,23 +37,27 @@ def test_sentiment_negation():
 
 
 def test_sentiment_bounded():
+    """Scores always stay within [-1, 1]."""
     score = score_sentiment("very very very strong breakthrough record success win win win")
     assert -1.0 <= score <= 1.0
 
 
 def test_topic_classification():
+    """Text is classified into the expected topic."""
     assert classify_topic("New AI chip beats GPU benchmarks for data centers") == "Technology"
     assert classify_topic("Inflation and interest rate decisions worry investors") == "Business"
     assert classify_topic("NASA telescope discovers planet in distant space") == "Science"
 
 
 def test_summarize_truncates():
+    """Summaries are cut to the character limit."""
     text = "Sentence one. " * 100
     summary = summarize(text)
     assert len(summary) <= 280
 
 
 def test_keywords_exclude_stopwords():
+    """Stopwords never appear as keywords."""
     words = extract_keywords("the the the and the chip chip chip data data test")
     assert "the" not in words
     assert "and" not in words
@@ -57,6 +65,7 @@ def test_keywords_exclude_stopwords():
 
 
 def test_analyze_pipeline():
+    """analyze() returns every field of the analysis."""
     result = analyze("Scientists discover breakthrough cancer treatment with strong results")
     assert set(result) == {"sentiment", "topic", "summary", "keywords"}
     assert result["topic"] == "Science"

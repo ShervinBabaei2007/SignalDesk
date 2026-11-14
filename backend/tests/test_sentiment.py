@@ -20,6 +20,7 @@ BOUNDARY_SCORES = [-1.0, -0.151, -0.15, -0.149, 0.0, 0.149, 0.15, 0.151, 1.0]
 
 @pytest.fixture()
 def db():
+    """Fixture providing an in-memory database with articles across the sentiment range."""
     engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
     Base.metadata.create_all(bind=engine)
     with sessionmaker(bind=engine)() as session:
@@ -37,21 +38,25 @@ def db():
     (0.15, "neutral"), (0.151, "positive"), (1.0, "positive"),
 ])
 def test_label_boundaries(score, expected):
+    """Labels change at the threshold boundaries."""
     assert sentiment.label(score) == expected
 
 
 def test_counts_always_has_all_three_labels():
+    """Counts always include all three labels."""
     assert sentiment.counts([]) == {"positive": 0, "neutral": 0, "negative": 0}
     assert sentiment.counts([0.5, 0.0, -0.5, 0.9]) == {"positive": 2, "neutral": 1, "negative": 1}
 
 
 def test_tone_follows_the_same_thresholds():
+    """Tone follows the same thresholds as the labels."""
     assert "positive" in sentiment.tone(0.2)
     assert "negative" in sentiment.tone(-0.2)
     assert "mix" in sentiment.tone(0.15)
 
 
 def test_sql_filter_agrees_with_label_for_every_boundary_score(db):
+    """The SQL filter agrees with label() for every boundary score."""
     for wanted in sentiment.LABELS:
         q = select(Article.sentiment).where(*sentiment.conditions(Article.sentiment, wanted))
         selected = sorted(s for (s,) in db.execute(q))
@@ -60,6 +65,7 @@ def test_sql_filter_agrees_with_label_for_every_boundary_score(db):
 
 
 def test_feed_filter_stats_and_label_property_agree(db):
+    """The feed filter, stats and label property agree."""
     by_label = sentiment.counts(BOUNDARY_SCORES)
     result = reporting.stats(db)
     assert (result.positive, result.neutral, result.negative) == (
@@ -73,6 +79,7 @@ def test_feed_filter_stats_and_label_property_agree(db):
 
 
 def test_digest_top_items_use_the_same_thresholds(db):
+    """Digest top items use the same thresholds."""
     digest = reporting.digest(db)
     assert all(sentiment.label(i.sentiment) == "positive" for i in digest.top_positive)
     assert all(sentiment.label(i.sentiment) == "negative" for i in digest.top_negative)

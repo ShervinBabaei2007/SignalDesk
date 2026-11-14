@@ -13,6 +13,7 @@ client = TestClient(app)
 
 
 def test_security_headers_present():
+    """Security headers are present on responses."""
     res = client.get("/api/health")
     assert res.headers["X-Content-Type-Options"] == "nosniff"
     assert res.headers["X-Frame-Options"] == "DENY"
@@ -20,6 +21,7 @@ def test_security_headers_present():
 
 
 def test_health_reports_version_and_uptime():
+    """Health reports the version and uptime."""
     body = client.get("/api/health").json()
     assert body["version"]
     assert body["uptime_seconds"] >= 0
@@ -27,6 +29,7 @@ def test_health_reports_version_and_uptime():
 
 
 def test_feed_rejects_non_http_scheme():
+    """Feeds with a non-http scheme are rejected."""
     res = client.post("/api/feeds", json={"name": "x", "url": "ftp://example.com/rss"})
     assert res.status_code == 422
 
@@ -45,6 +48,7 @@ def test_ingest_answers_429_when_the_pipeline_is_busy(monkeypatch):
 
 
 def test_add_default_feeds_is_idempotent():
+    """Adding the default feeds is idempotent."""
     from app.ingestion import DEFAULT_FEEDS
 
     assert len(DEFAULT_FEEDS) == 15
@@ -57,6 +61,7 @@ def test_add_default_feeds_is_idempotent():
 
 
 def test_add_default_feeds_requires_token_when_configured(monkeypatch):
+    """Adding the default feeds requires the token when one is configured."""
     from app import config
 
     monkeypatch.setattr(config, "API_TOKEN", "s3cret")

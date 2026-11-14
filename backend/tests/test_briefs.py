@@ -26,6 +26,7 @@ client = TestClient(app)
 
 
 def report(i, source, sentiment, sentences, structured=None):
+    """Build a minimal stand-in for an article with the given sentences."""
     return SimpleNamespace(id=i, source=source, sentiment=sentiment, title=f"Report {i}", summary=None,
                            summary_deep=sentences[0], summary_structured=structured, full_text=" ".join(sentences))
 
@@ -49,11 +50,13 @@ THIRD = report(3, "Gamma", -0.9, [
 
 
 def test_figures_ignore_years_times_and_tiny_numbers():
+    """Figures exclude years, times and tiny numbers."""
     found = figures("In 2026 at 9 pm about 1,200 flights and $400 million, or 35% of 12 routes, were hit.")
     assert set(found) == {"1200", "$400million", "35%"}
 
 
 def test_extractive_brief_finds_shared_figures_and_corroborated_points():
+    """The extractive brief finds shared figures and corroborated points."""
     brief = extractive_brief("Outage grounds flights", [LEAD, SECOND, THIRD])
     assert brief["kind"] == "auto" and brief["model"] is None
     text = " ".join(brief["agree"])
@@ -62,6 +65,7 @@ def test_extractive_brief_finds_shared_figures_and_corroborated_points():
 
 
 def test_extractive_brief_flags_outlier_wording_and_single_outlet_figures():
+    """The extractive brief flags outlier wording and figures only one outlet cites."""
     brief = extractive_brief("Outage grounds flights", [LEAD, SECOND, THIRD])
     differ = " ".join(brief["differ"])
     assert "Gamma words this more negatively than the other outlets." in differ
@@ -69,6 +73,7 @@ def test_extractive_brief_flags_outlier_wording_and_single_outlet_figures():
 
 
 def test_extractive_brief_is_deterministic_and_handles_a_single_outlet():
+    """The extractive brief is deterministic and copes with a single outlet."""
     first = extractive_brief("T", [LEAD, SECOND, THIRD])
     assert first == extractive_brief("T", [LEAD, SECOND, THIRD])
     alone = extractive_brief("T", [LEAD])
@@ -77,6 +82,7 @@ def test_extractive_brief_is_deterministic_and_handles_a_single_outlet():
 
 
 def test_member_hash_changes_with_members_but_not_order():
+    """member_hash changes with the members but not their order."""
     assert member_hash([3, 1, 2]) == member_hash([1, 2, 3])
     assert member_hash([1, 2]) != member_hash([1, 2, 3])
 
@@ -84,6 +90,7 @@ def test_member_hash_changes_with_members_but_not_order():
 # --- language-model path -------------------------------------------------------
 
 def test_story_brief_normalisation_accepts_good_json_and_rejects_empty():
+    """Story-brief normalisation accepts good JSON and rejects empty briefs."""
     ok = llm.normalize_story_brief({"headline": " Flights grounded ", "agree": ["a", "b"], "differ": ["c"]})
     assert ok == {"headline": "Flights grounded", "agree": ["a", "b"], "differ": ["c"]}
     assert llm.normalize_story_brief({"headline": "x", "agree": []}) is None
@@ -91,6 +98,7 @@ def test_story_brief_normalisation_accepts_good_json_and_rejects_empty():
 
 
 def test_llm_story_brief_end_to_end_with_a_stubbed_model(monkeypatch):
+    """A story brief is produced end to end with a stubbed model."""
     provider = SimpleNamespace(model="stub-1")
     monkeypatch.setattr(llm, "get_provider", lambda: provider)
     monkeypatch.setattr(llm, "_complete_json",
@@ -102,6 +110,7 @@ def test_llm_story_brief_end_to_end_with_a_stubbed_model(monkeypatch):
 
 
 def test_build_brief_prefers_the_model_and_falls_back_cleanly(monkeypatch):
+    """A story brief prefers the model's output and falls back to the extractive one on failure."""
     monkeypatch.setattr(llm, "available", lambda: True)
     monkeypatch.setattr(llm, "story_brief",
                         lambda **k: {"headline": "AI headline", "agree": ["x"], "differ": [], "model": "m"})
@@ -116,6 +125,7 @@ def test_build_brief_prefers_the_model_and_falls_back_cleanly(monkeypatch):
 # --- endpoint, cache and comparison --------------------------------------------
 
 def _add(db, i, source, title, score, chars, sentiment, structured=None, minutes=0):
+    """Insert one test article into the database."""
     db.add(Article(title=title, url=f"https://b.example/{i}", source=source, topic="Science", sentiment=sentiment,
                    info_score=score, full_text="word " * chars, summary_structured=structured,
                    published_at=NOW - timedelta(minutes=minutes), is_seed=False))
@@ -123,6 +133,7 @@ def _add(db, i, source, title, score, chars, sentiment, structured=None, minutes
 
 @pytest.fixture(scope="module")
 def comet_story():
+    """Fixture that seeds a comet story covered by several outlets."""
     Base.metadata.create_all(bind=engine)
     numbers = "## By the numbers\n- The comet is 4,000 km wide.\n## Notable quotes\n- \"A rare sight,\" said one astronomer."
     with SessionLocal() as db:
@@ -137,6 +148,7 @@ def comet_story():
 
 
 def test_story_detail_ranks_reports_and_compares_outlets(comet_story):
+    """Story detail ranks reports and compares outlets."""
     res = client.get(f"/api/stories/{comet_story}")
     assert res.status_code == 200
     body = res.json()
@@ -151,6 +163,7 @@ def test_story_detail_ranks_reports_and_compares_outlets(comet_story):
 
 
 def test_brief_is_cached_until_the_story_changes(comet_story, monkeypatch):
+    """A brief is cached until the story's reports change."""
     calls = []
     real = briefs.build_brief
     monkeypatch.setattr(briefs, "build_brief", lambda t, m: (calls.append(1), real(t, m))[1])
@@ -171,11 +184,13 @@ def test_brief_is_cached_until_the_story_changes(comet_story, monkeypatch):
 
 
 def test_unknown_story_is_404(comet_story):
+    """An unknown story id returns 404."""
     assert client.get("/api/stories/999999").status_code == 404
     assert client.post("/api/stories/999999/brief").status_code == 404
 
 
 def test_refresh_brief_requires_a_token_when_configured(comet_story, monkeypatch):
+    """Refreshing a brief requires the API token when one is configured."""
     from app import config
 
     monkeypatch.setattr(config, "API_TOKEN", "s3cret")
@@ -185,6 +200,7 @@ def test_refresh_brief_requires_a_token_when_configured(comet_story, monkeypatch
 
 
 def test_headline_prefix_and_lowercase_fragments_never_become_facts():
+    """A repeated headline or lowercase fragment never becomes a stated fact."""
     title = "Outage grounds flights across the country"
     lead = report(1, "Alpha", 0.0, [
         f"{title} The agency said about 1,200 flights were grounded on Friday afternoon, officials said.",

@@ -5,6 +5,7 @@ Usage: python tools/devshots.py <url> <out.png> [width] [height] [wait_s] [js]
 Launches its own headless Chrome instance with a throwaway profile.
 """
 import base64
+import itertools
 import json
 import subprocess
 import sys
@@ -43,14 +44,15 @@ try:
     r = httpx.put(f"http://127.0.0.1:{PORT}/json/new?about:blank", timeout=5)
     target = r.json()
     ws = websocket.create_connection(target["webSocketDebuggerUrl"], timeout=60)
-    next_id = [0]
+    message_ids = itertools.count(1)
 
     def cmd(method, params=None):
-        next_id[0] += 1
-        ws.send(json.dumps({"id": next_id[0], "method": method, "params": params or {}}))
+        """Send one Chrome DevTools Protocol command and wait for its result."""
+        msg_id = next(message_ids)
+        ws.send(json.dumps({"id": msg_id, "method": method, "params": params or {}}))
         while True:
             msg = json.loads(ws.recv())
-            if msg.get("id") == next_id[0]:
+            if msg.get("id") == msg_id:
                 if "error" in msg:
                     raise RuntimeError(msg["error"])
                 return msg.get("result", {})

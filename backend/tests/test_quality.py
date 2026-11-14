@@ -27,6 +27,7 @@ RICH_BRIEF = (
 
 
 def make(**kw):
+    """Build an article stand-in with empty fields overridden by `kw`."""
     base = dict(full_text=None, summary=None, summary_deep=None, summary_structured=None, analysis_source=None,
                 image_url=None, published_at=None, keywords=None)
     base.update(kw)
@@ -34,6 +35,7 @@ def make(**kw):
 
 
 def test_rich_report_outscores_a_thin_excerpt():
+    """A rich report outscores a thin excerpt."""
     rich = make(full_text="word " * 1400, summary_deep="A summary.", summary_structured=RICH_BRIEF,
                 analysis_source="lexicon", image_url="https://x/i.jpg", published_at=datetime.now(timezone.utc),
                 keywords="a, b, c, d")
@@ -44,6 +46,7 @@ def test_rich_report_outscores_a_thin_excerpt():
 
 
 def test_longer_text_scores_higher_until_full_depth():
+    """Longer text scores higher until full depth is reached."""
     short = make(full_text="x" * 1500)
     medium = make(full_text="x" * 3000)
     full = make(full_text="x" * 6000)
@@ -53,21 +56,25 @@ def test_longer_text_scores_higher_until_full_depth():
 
 
 def test_no_full_text_can_never_count_as_in_depth():
+    """An article without full text never counts as in depth."""
     assert breakdown(make(summary="x" * 5000))["depth"] <= 6
 
 
 def test_llm_analysis_beats_a_plain_deep_summary():
+    """An LLM analysis beats a plain deep summary."""
     llm = make(full_text="x" * 3000, summary_deep="s", analysis_source="llm")
     plain = make(full_text="x" * 3000, summary_deep="s", analysis_source="lexicon")
     assert information_score(llm) > information_score(plain)
 
 
 def test_substance_counts_numbers_quotes_points_and_conclusion():
+    """Substance counts numbers, quotes, key points and a conclusion."""
     parts = breakdown(make(summary_structured=RICH_BRIEF))
     assert parts["substance"] == 8 + 6 + 8 + 3
 
 
 def test_scraped_boilerplate_is_penalised_and_stripped():
+    """Scraped boilerplate is penalised and stripped."""
     dirty = "Skip Navigation Markets Business Investing Tech The FAA issued a ground stop on Friday."
     assert has_boilerplate(dirty)
     cleaned = strip_boilerplate(dirty)
@@ -79,11 +86,13 @@ def test_scraped_boilerplate_is_penalised_and_stripped():
 
 
 def test_score_is_bounded():
+    """The score stays within its bounds."""
     assert 0 <= information_score(make()) <= 100
     assert MAX_POINTS == 85
 
 
 def test_backfill_scores_unscored_rows_and_cleans_boilerplate():
+    """The backfill scores unscored rows and cleans boilerplate."""
     Base.metadata.create_all(bind=engine)
     dirty_text = ("Skip Navigation Markets Business Investing Tech The agency announced a nationwide ground stop "
                   "on Friday afternoon after a communications failure, disrupting hundreds of flights across the "

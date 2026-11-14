@@ -1,6 +1,7 @@
 """Unit tests for HTML main-text extraction."""
 
-from app.extractor import extract_main_text
+from app.analysis import structured_summary
+from app.extractor import extract_image_url, extract_main_text
 from app.ingestion import strip_feed_metadata
 
 
@@ -24,18 +25,21 @@ HTML = """
 
 
 def test_extracts_body_text():
+    """Body text is extracted from the page."""
     text = extract_main_text(HTML)
     assert "charges in under five minutes" in text
     assert "manufacturing could begin" in text
 
 
 def test_drops_scripts_and_styles():
+    """Scripts and styles are dropped."""
     text = extract_main_text(HTML)
     assert "var x" not in text
     assert "color: red" not in text
 
 
 def test_drops_navigation_and_footer():
+    """Navigation and footer blocks are dropped."""
     text = extract_main_text(HTML)
     assert "Sign in" not in text
     assert "Privacy Policy" not in text
@@ -43,12 +47,14 @@ def test_drops_navigation_and_footer():
 
 
 def test_handles_empty_and_non_html():
+    """Empty and non-HTML input yields empty text."""
     assert extract_main_text("") == ""
     assert extract_main_text("<div></div>") == ""
     assert "hello" in extract_main_text("<p>hello</p>")
 
 
 def test_prefers_article_block():
+    """An <article> block is preferred over the rest of the page."""
     page = """
     <html><body>
     <header>Sign in Subscribe Newsletter Skip to main content junk junk</header>
@@ -63,14 +69,14 @@ def test_prefers_article_block():
 
 
 def test_strip_feed_metadata():
+    """Feed metadata furniture is stripped from the text."""
     hn = "Some title. Article URL: https://x.com/y Comments URL: https://a Points: 5 # Comments"
     assert strip_feed_metadata(hn) == "Some title."
     assert strip_feed_metadata("normal text") == "normal text"
 
 
 def test_structured_summary_sections():
-    from app.analysis import structured_summary
-
+    """The structured summary has its expected sections."""
     body = (
         "OpenAI released a new browser today with built-in agent features. "
         "The company says the browser will ship to all users next month, and it "
@@ -94,21 +100,19 @@ def test_structured_summary_sections():
 
 
 def test_structured_summary_short_text():
-    from app.analysis import structured_summary
+    """Short text produces a short structured summary."""
     assert structured_summary("Too short.") == ""
 
 
 def test_extract_image_url_prefers_og_and_resolves_relative():
-    from app.extractor import extract_image_url
-
+    """The og:image is preferred and relative URLs are resolved."""
     html = '<head><meta name="twitter:image" content="http://t.example/t.jpg">' \
            '<meta property="og:image" content="/img/a.jpg?x=1&amp;y=2"></head>'
     assert extract_image_url(html, "https://news.example/story") == "https://news.example/img/a.jpg?x=1&y=2"
 
 
 def test_extract_image_url_fallbacks_and_rejects_unsafe():
-    from app.extractor import extract_image_url
-
+    """Image fallbacks work and unsafe URLs are rejected."""
     assert extract_image_url('<meta name="twitter:image" content="https://a.example/t.png">') == "https://a.example/t.png"
     assert extract_image_url('<link rel="image_src" href="https://a.example/l.png">') == "https://a.example/l.png"
     assert extract_image_url('<meta property="og:image" content="javascript:alert(1)">') is None

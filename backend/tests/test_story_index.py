@@ -21,6 +21,7 @@ NOW = datetime.now(timezone.utc)
 
 
 def test_story_key_round_trips_and_distinguishes_clusters_from_lone_reports():
+    """Story keys round-trip and tell clusters from lone reports."""
     cluster = Cluster(id=7, article_ids=(7, 9), sources=("A", "B"))
     assert story_index.story_key(cluster, 9) == "c7"
     assert story_index.story_key(None, 9) == "a9"
@@ -31,11 +32,13 @@ def test_story_key_round_trips_and_distinguishes_clusters_from_lone_reports():
 
 
 def _member(topic="World", sentiment=0.0, hours_ago=1.0):
+    """Build an article stand-in for hot ranking."""
     return SimpleNamespace(topic=topic, sentiment=sentiment,
                            published_at=NOW - timedelta(hours=hours_ago), ingested_at=NOW)
 
 
 def test_hot_ranking_prefers_outlets_and_recency_and_skips_single_outlet_stories():
+    """Hot ranking prefers outlets and recency and skips single-outlet stories."""
     fresh = Cluster(id=1, article_ids=(1, 2), sources=("A", "B"), title="Fresh", lead_id=1)
     big_but_old = Cluster(id=3, article_ids=(3, 4, 5), sources=("A", "B", "C"), title="Old", lead_id=3)
     one_outlet = Cluster(id=6, article_ids=(6, 7), sources=("A",), title="Echo", lead_id=6)
@@ -48,6 +51,7 @@ def test_hot_ranking_prefers_outlets_and_recency_and_skips_single_outlet_stories
 
 
 def test_hot_ranking_summarises_topic_and_sentiment():
+    """Hot ranking summarises topic and sentiment."""
     cluster = Cluster(id=1, article_ids=(1, 2, 3), sources=("A", "B"), title="T", lead_id=1)
     info = {1: _member("Tech", 0.4), 2: _member("Tech", 0.2), 3: _member("World", 0.0)}
     (_, story), = story_index.rank_hot([cluster], info, NOW)
@@ -56,6 +60,7 @@ def test_hot_ranking_summarises_topic_and_sentiment():
 
 @pytest.fixture()
 def db():
+    """Fixture providing an in-memory database with a clustered story and lone reports."""
     engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
     Base.metadata.create_all(bind=engine)
     with sessionmaker(bind=engine)() as session:
@@ -74,6 +79,7 @@ def db():
 
 
 def test_recent_stories_use_the_same_keys_as_the_feed_and_skip_seeds(db):
+    """Recent stories use the same keys as the feed and skip seeds."""
     recent = dict(story_index.recent_stories(db))
     ordered = [a.id for a in db.query(Article).filter(Article.is_seed.is_(False)).order_by(Article.id.desc())]
     page = stories.build_page(db, ordered, 0, 20)
@@ -83,6 +89,7 @@ def test_recent_stories_use_the_same_keys_as_the_feed_and_skip_seeds(db):
 
 
 def test_the_window_is_read_once_per_article_set(db, monkeypatch):
+    """The window is read once per article set."""
     story_index.recent_stories(db)  # primes the cache
     calls = []
     real = story_index.cluster_rows

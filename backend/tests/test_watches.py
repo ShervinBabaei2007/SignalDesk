@@ -1,5 +1,6 @@
 """Watchlists: alerts for stories you care about, once each."""
 
+import itertools
 import os
 import sys
 import tempfile
@@ -20,30 +21,33 @@ from app.models import Article, Watch, WatchAlert  # noqa: E402
 
 NOW = datetime.now(timezone.utc)
 client = TestClient(app)
-_counter = [0]
+_article_numbers = itertools.count(1)
 
 
 def add_story(db, titles_sources, topic="World"):
     """Insert one report per (title, source) and reset the cluster cache."""
     for title, source in titles_sources:
-        _counter[0] += 1
-        db.add(Article(title=title, url=f"https://w.example/{_counter[0]}", source=source, topic=topic,
-                       sentiment=0.0, published_at=NOW - timedelta(minutes=_counter[0]), is_seed=False))
+        n = next(_article_numbers)
+        db.add(Article(title=title, url=f"https://w.example/{n}", source=source, topic=topic,
+                       sentiment=0.0, published_at=NOW - timedelta(minutes=n), is_seed=False))
     db.commit()
     story_index.reset_cache()
 
 
 def reset_watches(db):
+    """Delete all watches and alerts so each test starts clean."""
     db.query(WatchAlert).delete()
     db.query(Watch).delete()
     db.commit()
 
 
 def setup_module(_):
+    """Create the tables once for this module."""
     Base.metadata.create_all(bind=engine)
 
 
 def test_term_matching_is_whole_word_and_case_insensitive():
+    """Term matching is whole-word and case-insensitive."""
     assert watches.term_matches("AI", "New AI chip announced")
     assert not watches.term_matches("AI", "He said it was fine")
     assert watches.term_matches("ground stop", "FAA orders a Ground Stop nationwide")
@@ -52,6 +56,7 @@ def test_term_matching_is_whole_word_and_case_insensitive():
 
 
 def test_new_watch_ignores_old_stories_then_alerts_once_for_a_new_one():
+    """A new watch ignores old stories, then alerts once for a new one."""
     with SessionLocal() as db:
         reset_watches(db)
         add_story(db, [("Tsunami warning issued for Pacific coastline communities tonight", "Alpha"),
@@ -72,6 +77,7 @@ def test_new_watch_ignores_old_stories_then_alerts_once_for_a_new_one():
 
 
 def test_min_outlets_and_topic_are_respected():
+    """Minimum outlets and topic are respected."""
     with SessionLocal() as db:
         reset_watches(db)
         client.post("/api/watches", json={"term": "avalanche", "min_outlets": 2})
@@ -90,6 +96,7 @@ def test_min_outlets_and_topic_are_respected():
 
 
 def test_alerts_are_delivered_to_configured_channels(monkeypatch):
+    """Alerts are delivered to the configured channels."""
     sent = []
     monkeypatch.setattr(notifications, "configured_channels", lambda: ["slack"])
     monkeypatch.setattr(notifications, "deliver_alert",
@@ -105,6 +112,7 @@ def test_alerts_are_delivered_to_configured_channels(monkeypatch):
 
 
 def test_stories_carry_watch_matches_for_the_feed_badge():
+    """Stories carry watch matches for the feed badge."""
     with SessionLocal() as db:
         reset_watches(db)
         add_story(db, [("Glacier lake outburst threatens remote valley settlements this week", "Alpha")])
@@ -118,6 +126,7 @@ def test_stories_carry_watch_matches_for_the_feed_badge():
 
 
 def test_watch_api_validation_limits_toggle_and_delete(monkeypatch):
+    """The watch API enforces validation and limits and supports toggle and delete."""
     with SessionLocal() as db:
         reset_watches(db)
     assert client.post("/api/watches", json={"term": "   "}).status_code == 422
@@ -144,6 +153,7 @@ def test_watch_api_validation_limits_toggle_and_delete(monkeypatch):
 
 
 def test_watch_writes_require_a_token_when_configured(monkeypatch):
+    """Watch writes require a token when one is configured."""
     from app import config
 
     monkeypatch.setattr(config, "API_TOKEN", "s3cret")
@@ -155,6 +165,7 @@ def test_watch_writes_require_a_token_when_configured(monkeypatch):
 
 
 def test_delivery_seam_marks_only_the_alerts_it_delivered():
+    """The delivery seam marks only the alerts it delivered."""
     recording = watches.RecordingDelivery()
 
     with SessionLocal() as db:
@@ -177,6 +188,7 @@ def test_delivery_seam_marks_only_the_alerts_it_delivered():
 
 
 def test_failed_delivery_leaves_alerts_unnotified():
+    """A failed delivery leaves alerts unnotified."""
     with SessionLocal() as db:
         reset_watches(db)
         client.post("/api/watches", json={"term": "typhoon", "min_outlets": 1})
@@ -186,11 +198,12 @@ def test_failed_delivery_leaves_alerts_unnotified():
 
 
 def test_story_matches_is_the_single_rule_for_counts_and_alerts():
+    """story_matches is the single rule behind counts and alerts."""
     with SessionLocal() as db:
         reset_watches(db)
         add_story(db, [("Heatwave grips central plains as records fall for third day", "Alpha")])
         watch = Watch(term="heatwave", min_outlets=2, is_active=True)
-        members = [m for k, ms in story_index.recent_stories(db) for m in ms if "heatwave" in m.title.lower()]
+        members = [m for _, ms in story_index.recent_stories(db) for m in ms if "heatwave" in m.title.lower()]
         assert not watches.story_matches(watch, members)  # one outlet is not enough
         watch.min_outlets = 1
         assert watches.story_matches(watch, members)

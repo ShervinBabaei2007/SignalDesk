@@ -37,6 +37,7 @@ MINE: list[int] = []  # ids of this module's articles; the DB is shared with oth
 
 
 def setup_module(_):
+    """Create the tables and seed the test articles once for this module."""
     Base.metadata.create_all(bind=engine)
     with SessionLocal() as db:
         for i, (title, src, score, text, sent, topic) in enumerate(GLACIER + [SOLO] + OTHER):
@@ -49,6 +50,7 @@ def setup_module(_):
 
 
 def stories(**params):
+    """Fetch /api/stories with the given params, restricted to the test articles."""
     params.setdefault("ids", ",".join(map(str, MINE)))
     qs = "&".join(f"{k}={v}" for k, v in params.items())
     res = client.get(f"/api/stories?{qs}")
@@ -57,10 +59,12 @@ def stories(**params):
 
 
 def glacier_story(page):
+    """Find the glacier story in a page of stories."""
     return next(s for s in page["items"] if "glacier" in s["lead"]["title"].lower())
 
 
 def test_reports_of_one_event_become_one_story_led_by_the_best_informed():
+    """Reports of one event become one story led by the best-informed report."""
     page = stories(limit=50)
     glacier = glacier_story(page)
     assert glacier["report_count"] == 3 and glacier["outlets"] == 3
@@ -71,6 +75,7 @@ def test_reports_of_one_event_become_one_story_led_by_the_best_informed():
 
 
 def test_pagination_counts_stories_not_articles():
+    """Pagination counts stories, not articles."""
     page = stories(limit=50)
     assert page["total"] == 3  # glacier, solo, marathon
     assert page["article_total"] == 6
@@ -83,11 +88,13 @@ def test_pagination_counts_stories_not_articles():
 
 
 def test_single_reports_are_stories_of_one():
+    """Single reports are stories of one."""
     solo = next(s for s in stories(limit=50)["items"] if s["lead"]["source"] == "Doutlet")
     assert solo["report_count"] == 1 and solo["others"] == [] and solo["cluster_id"] is None
 
 
 def test_most_informative_order_ranks_stories_by_their_best_report():
+    """The most-informative order ranks stories by their best report."""
     items = stories(limit=50, order="info")["items"]
     assert [s["best_score"] for s in items] == sorted((s["best_score"] for s in items), reverse=True)
     assert items[0]["best_score"] == 90.0
@@ -95,6 +102,7 @@ def test_most_informative_order_ranks_stories_by_their_best_report():
 
 def test_filters_apply_to_reports_before_grouping():
     # a topic filter keeps only matching reports, so the marathon story is the only one left
+    """Filters apply to reports before they are grouped."""
     only = stories(topic="Sports", limit=50)
     assert only["total"] == 1 and only["article_total"] == 2
     # the sentiment filter must also be reflected in the total (it used to be ignored)
@@ -103,6 +111,7 @@ def test_filters_apply_to_reports_before_grouping():
 
 
 def test_ids_filter_and_validation():
+    """The ids filter works and invalid ids are rejected."""
     page = stories(limit=50)
     solo_id = next(s for s in page["items"] if s["cluster_id"] is None and s["lead"]["source"] == "Doutlet")["lead"]["id"]
     res = stories(ids=str(solo_id), limit=50)
@@ -113,12 +122,14 @@ def test_ids_filter_and_validation():
 
 
 def test_cluster_filter_returns_that_story_only():
+    """The cluster filter returns only that story."""
     glacier = glacier_story(stories(limit=50))
     one = stories(cluster=glacier["cluster_id"], limit=50)
     assert one["total"] == 1 and one["article_total"] == 3
 
 
 def test_flat_articles_endpoint_can_sort_by_information():
+    """The flat articles endpoint can sort by information score."""
     items = client.get(f"/api/articles?order=info&limit=50&ids={','.join(map(str, MINE))}").json()["items"]
     scores = [a["info_score"] for a in items]
     assert scores == sorted(scores, reverse=True)
