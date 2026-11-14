@@ -119,6 +119,20 @@ class StoryBriefOut(BaseModel):
     generated_at: datetime | None = None
 
 
+class ClaimOut(BaseModel):
+    """One factual claim and how the outlets treat it."""
+    text: str
+    status: str  # agreed | disputed | single
+    outlets: list[str]
+    values: dict[str, str] | None = None  # each outlet's figure, for disputed claims
+
+
+class ClaimsOut(BaseModel):
+    """The claim-level comparison of a story."""
+    kind: str = "auto"  # "ai" (model) or "auto" (extractive fallback)
+    items: list[ClaimOut] = []
+
+
 class StoryDetail(BaseModel):
     """A story with its ranked reports, outlet comparison and brief."""
     cluster_id: int
@@ -130,6 +144,7 @@ class StoryDetail(BaseModel):
     reports: list[ReportBrief]  # best-informed first
     comparison: list[OutletStat]
     brief: StoryBriefOut
+    claims: ClaimsOut = ClaimsOut()
 
 
 class ArticlePage(BaseModel):

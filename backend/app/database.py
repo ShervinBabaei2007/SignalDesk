@@ -142,6 +142,7 @@ def ensure_columns():
             "embedding_model": "VARCHAR(80)",
         },
         "feeds": {"last_fetched_at": "TIMESTAMP WITH TIME ZONE", "last_status": "VARCHAR(300)"},
+        "story_briefs": {"claims": "TEXT"},
     }
     for table in ("articles", "feeds", "watches"):
         migrations.setdefault(table, {})["workspace_id"] = "VARCHAR(40) NOT NULL DEFAULT ''"

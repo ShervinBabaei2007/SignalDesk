@@ -155,7 +155,7 @@ def extractive_brief(title: str, members: list[Article]) -> dict[str, Any]:
 
 def build_brief(title: str, members: list[Article]) -> dict[str, Any]:
     """Language-model brief when configured and usable, otherwise the extractive one."""
-    if llm.available():
+    if llm.available() and not any(getattr(m, "workspace_id", "") for m in members):  # a visitor's articles never spend the owner's quota
         reports = [
             {"source": m.source, "title": m.title, "text": _text(m)[:1500], "sentiment": m.sentiment}
             for m in members[:MAX_REPORTS]
@@ -181,7 +181,7 @@ def get_brief(db: Session, cluster_id: int, title: str, members: list[Article], 
     now = datetime.now(timezone.utc)
     payload = json.dumps({k: data[k] for k in ("kind", "headline", "agree", "differ", "model")})
     if row:
-        row.member_hash, row.payload, row.created_at = digest, payload, now
+        row.member_hash, row.payload, row.created_at, row.claims = digest, payload, now, None  # claims follow the reports
     else:
         db.add(StoryBrief(cluster_id=cluster_id, member_hash=digest, payload=payload, created_at=now))
     db.commit()

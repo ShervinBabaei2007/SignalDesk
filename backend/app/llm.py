@@ -316,6 +316,40 @@ def story_brief(*, title: str, reports: list[dict[str, Any]]) -> dict[str, Any] 
     return brief
 
 
+CLAIMS_PROMPT = """You compare factual claims across several news reports about the same event.
+
+Use only what the supplied reports say. Do not invent facts, numbers, quotes or events.
+Pick the 4-8 most important checkable claims (figures, quotes, attributed statements, events).
+For each claim say whether the outlets "agreed" (two or more reports make it), "disputed" (reports give
+conflicting versions or figures) or "single" (only one report makes it). Use the outlet names exactly as given.
+
+Return valid JSON with exactly this shape:
+{
+  "claims": [
+    {"text": "One plain sentence stating the claim.", "status": "agreed|disputed|single",
+     "outlets": ["Outlet A", "Outlet B"],
+     "values": {"Outlet A": "figure or version as written", "Outlet B": "..."}}
+  ]
+}
+Only include "values" for disputed claims."""
+
+
+def story_claims(*, title: str, reports: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Ask the configured model to extract and compare claims. Raw parsed JSON, or None when off or unusable."""
+    provider = get_provider()
+    if provider is None or not reports:
+        return None
+    body = "\n\n".join(
+        f"[{r['source']}] {r['title']}\n{r['text'][: config.LLM_MAX_INPUT_CHARS // max(len(reports), 1)]}"
+        for r in reports
+    )
+    content = _complete_json(provider, CLAIMS_PROMPT, f"Story: {title}\n\nReports:\n{body}", purpose="claims")
+    raw = _extract_json(content or "")
+    if raw is None:
+        logger.warning("[llm] unusable claims (first 120 chars): %.120s", content or "")
+    return raw
+
+
 def get_provider() -> LLMProvider | None:
     """Return the configured provider, or None when LLM analysis is off."""
     if not available():

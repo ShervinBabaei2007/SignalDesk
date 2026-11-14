@@ -94,6 +94,7 @@ class StoryBrief(Base):
     cluster_id: Mapped[int] = mapped_column(primary_key=True)
     member_hash: Mapped[str] = mapped_column(String(40), nullable=False)
     payload: Mapped[str] = mapped_column(Text, nullable=False)  # JSON: kind, headline, agree, differ, model
+    claims: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON claim comparison (see claims.py)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 

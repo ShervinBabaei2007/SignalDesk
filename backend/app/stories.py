@@ -18,7 +18,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import Select
 
-from . import briefs, story_index, watches
+from . import briefs, claims, story_index, watches
 from . import sentiment as sentiment_scale
 from .clustering import Cluster
 from .models import Article
@@ -223,4 +223,5 @@ def story_detail(db: Session, cluster: Cluster, force_brief: bool = False) -> di
         "reports": [brief(m) for m in members],
         "comparison": outlet_stats(members),
         "brief": briefs.get_brief(db, cluster.id, cluster.title, members, force=force_brief),
+        "claims": claims.get_claims(db, cluster.id, cluster.title, members, force=force_brief),
     }
