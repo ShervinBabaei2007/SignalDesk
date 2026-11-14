@@ -12,14 +12,16 @@ import { WatchlistDialog } from '@/components/app/WatchlistDialog'
 import { useDashboard } from '@/hooks/useDashboard'
 import { goHome, leaveDashboard } from '@/hooks/useRoute'
 import { useSettings } from '@/hooks/useSettings'
-import { api, ApiError, isDemoToken } from '@/lib/api'
+import { api, ApiError, authMessage, sessionMode } from '@/lib/api'
 
 /** The app header. */
 export function Header() {
   const { health, ingesting, runIngest, clearFilters } = useDashboard()
   const { token, saveToken } = useSettings()
-  // A visitor with no token (read-only deployment, or demo tokens off) is still a demo visitor; only a real API token isn't.
-  const inDemo = !token || isDemoToken(token)
+  const mode = sessionMode(token)
+  // Everyone but the owner can leave: a workspace is kept for when they come back, the demo is simply ended.
+  const canLeave = mode !== 'owner'
+  const leaveLabel = mode === 'workspace' ? 'Leave workspace' : 'Exit demo'
   const [feedsOpen, setFeedsOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -32,11 +34,15 @@ export function Header() {
     goHome()
   }
 
-  /** End the demo: drop the demo token and go back to the landing page. */
-  const signOutDemo = () => {
-    saveToken('')
+  /** Go back to the landing page. A workspace token stays, so "Open my workspace" resumes it; a demo token is dropped. */
+  const leave = () => {
+    if (mode === 'workspace') {
+      toast.success('Your workspace is saved in this browser')
+    } else {
+      saveToken('')
+      toast.success('Demo ended')
+    }
     leaveDashboard()
-    toast.success('Demo ended')
   }
 
   const sendBrief = async () => {
@@ -45,7 +51,7 @@ export function Header() {
       toast.success(`Daily brief sent via ${r.sent.join(' + ')}`)
     } catch (err) {
       const e = err as ApiError
-      toast.error(e.status === 400 ? 'No delivery channel configured — set Slack or SMTP settings' : e.message)
+      toast.error(e.status === 400 ? 'No delivery channel configured — set Slack or SMTP settings' : e.status === 401 ? authMessage(token) : e.message)
     }
   }
 
@@ -89,6 +95,11 @@ export function Header() {
         </a>
 
         <div className="flex items-center gap-1.5">
+          {(mode === 'workspace' || mode === 'demo') && (
+            <Badge variant="secondary" className="mr-1 hidden sm:inline-flex">
+              {mode === 'workspace' ? 'Your workspace' : 'Demo tour'}
+            </Badge>
+          )}
           {health && (
             <Badge variant="outline" className="mr-1 hidden gap-1.5 text-positive lg:inline-flex">
               <span className="size-1.5 rounded-full bg-positive shadow-[0_0_6px_var(--positive)]" />
@@ -109,9 +120,9 @@ export function Header() {
               <SettingsIcon data-icon="inline-start" /> Settings
             </Button>
           </div>
-          {inDemo && (
-            <Button variant="outline" className="hidden sm:inline-flex" onClick={signOutDemo}>
-              <UserRoundX data-icon="inline-start" /> Exit demo
+          {canLeave && (
+            <Button variant="outline" className="hidden sm:inline-flex" onClick={leave}>
+              <UserRoundX data-icon="inline-start" /> {leaveLabel}
             </Button>
           )}
           {ingest}
@@ -146,9 +157,9 @@ export function Header() {
             <Button variant="outline" size="lg" className="h-11 justify-start" onClick={fromMenu(() => setSettingsOpen(true))}>
               <SettingsIcon data-icon="inline-start" /> Settings
             </Button>
-            {inDemo && (
-              <Button variant="outline" size="lg" className="h-11 justify-start" onClick={fromMenu(signOutDemo)}>
-                <UserRoundX data-icon="inline-start" /> Exit demo
+            {canLeave && (
+              <Button variant="outline" size="lg" className="h-11 justify-start" onClick={fromMenu(leave)}>
+                <UserRoundX data-icon="inline-start" /> {leaveLabel}
               </Button>
             )}
           </div>

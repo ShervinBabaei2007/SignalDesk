@@ -61,6 +61,7 @@ And the platform runs itself: a built-in scheduler re-ingests every feed every 1
 | 🌱 **Real-article seeding** | First boot ingests the real default feeds so every article has a genuine URL; built-in sample articles are only used when the network is unreachable |
 | 🤖 **Optional LLM analysis** | Set `LLM_ENABLED=true` with any OpenAI-compatible endpoint (OpenAI, Ollama, LM Studio…) for written TL;DRs and "why it matters"; falls back to the offline analyzer on any failure |
 | ✉️ **Brief delivery** | Send the daily brief to Slack and/or email from the dashboard, or on a schedule (`DIGEST_HOUR`) |
+| 🔒 **Private workspaces** | Each visitor can open their own workspace: their own feeds, watchlist, ingests and articles, invisible to everyone else, on top of the shared news. No sign-up; data is deleted after `WORKSPACE_TTL_DAYS`. A one-click demo tour of the shared data sits beside it |
 | 🔑 **Optional API token** | Set `API_TOKEN` to require `X-API-Key` on all write endpoints; the UI has a field for it |
 | 📡 **15 curated feeds** | BBC (World, Technology, Business, Science, Health), The Guardian, NPR, Al Jazeera, Politico, STAT News, CNBC, Ars Technica, ScienceDaily, The Verge and TechCrunch: free-to-read sources chosen for topic and viewpoint spread. One click adds any that are missing to an existing install |
 | 🎯 **Information score** | Every report gets an explainable 0–100 score: depth of the extracted article, figures, quotes and a conclusion, analysis, and completeness. It ignores which outlet wrote it, so it ranks fairly. Page furniture (navigation, paywall and credit lines) is stripped first, and a "Most informative" sort uses it |
@@ -165,6 +166,10 @@ Interactive API docs live at **http://localhost:8000/docs** (Swagger UI).
 | `SLACK_WEBHOOK_URL`, `DIGEST_EMAILS`, `SMTP_*` | unset | Brief delivery channels |
 | `DIGEST_HOUR` | `-1` | UTC hour for automatic brief delivery (`-1` disables) |
 | `API_TOKEN` | unset | Require `X-API-Key` on POST/DELETE endpoints |
+| `SESSION_SECRET` | `API_TOKEN` | Signs workspace tokens. Workspaces are off when neither is set |
+| `WORKSPACE_TTL_DAYS` | `7` | A workspace's data is deleted after this many days |
+| `WORKSPACE_MAX_FEEDS` / `WORKSPACE_MAX_WATCHES` / `WORKSPACE_MAX_ARTICLES` | `8` / `10` / `600` | Per-workspace limits |
+| `WORKSPACE_CREATES_PER_HOUR` | `20` | Workspaces one client IP may create per hour |
 
 See [.env.example](.env.example) for a annotated template.
 
@@ -242,6 +247,14 @@ MIT — see [MIT-LICENSE.txt](MIT-LICENSE.txt).
 2. In Settings, Environment Variables, add `APP_ENV=production`, `SCHEDULER_DISABLED=true`, `API_TOKEN`, `CRON_SECRET` (random strings) and `CORS_ORIGINS` (your Vercel URL).
 3. Deploy with `vercel --prod`. `vercel.json` deploys the `backend` (FastAPI) and `frontend` (Vite) as two services on one domain, routes `/api/*` to the backend, and `/api/cron/ingest` runs the scheduled ingest.
 
-Set `DEMO_MODE=true` to turn on the landing page's "Try as a demo" button: visitors get a 2-hour token that can run ingests but cannot edit feeds, the watchlist or AI summaries. The real `API_TOKEN` is never shared.
+### Workspaces and the demo
+
+With `API_TOKEN` (or `SESSION_SECRET`) set, the landing page offers **Open my workspace**: a private copy of the app's write features. A visitor's feeds, watchlist, alerts and articles are stamped with a signed workspace id and are invisible to every other visitor; the shared, cron-ingested news stays visible alongside. Workspaces are deleted after `WORKSPACE_TTL_DAYS` by the same cron that ingests the shared feeds.
+
+Because strangers can add feed URLs, the server fetches them through an SSRF guard (public http(s) addresses only, every redirect checked, responses size-capped), caps each workspace, rate-limits workspace creation per IP, and keeps these owner-only: Slack/email delivery, the recommended-feeds reset and LLM-backed actions. Visitor alerts are shown in their dashboard and never sent to your channels.
+
+Set `DEMO_MODE=true` for the **demo tour** next to it: a 2-hour token that can run ingests on the shared data but cannot edit anything. The real `API_TOKEN` is never shared.
+
+**Upgrading an existing database:** the first boot of this version makes feed names/URLs and article URLs unique per workspace instead of globally. SQLite tables are rebuilt automatically (rows are kept). On PostgreSQL the old unique constraints are dropped and composite unique indexes created. It is idempotent, but back up a production database before the first deploy.
 
 Vercel Hobby only allows daily cron jobs, so `vercel.json` runs one ingest a day as a safety net and `.github/workflows/ingest.yml` calls the app every 15 minutes. Add the repository secrets `APP_URL` (your Vercel URL, no trailing slash) and `CRON_SECRET` (same value as in Vercel). On Pro you can drop the workflow and set the cron to `*/15 * * * *`.

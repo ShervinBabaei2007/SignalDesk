@@ -11,7 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { useDashboard } from '@/hooks/useDashboard'
-import { api, ApiError, type Watch } from '@/lib/api'
+import { useSettings } from '@/hooks/useSettings'
+import { api, ApiError, authMessage, type Watch } from '@/lib/api'
 import { TOPIC_EMOJI } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -54,6 +55,7 @@ function WatchRow({ watch, onToggle, onDelete }: { watch: Watch; onToggle: (on: 
 /** Follow a word or phrase: it flags matching stories in the feed and alerts you when a new one breaks. */
 export function WatchlistDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const { stats, health, refreshAll } = useDashboard()
+  const { token } = useSettings()
   const [watches, setWatches] = useState<Watch[]>([])
   const [term, setTerm] = useState('')
   const [topic, setTopic] = useState(ANY)
@@ -87,7 +89,7 @@ export function WatchlistDialog({ open, onOpenChange }: { open: boolean; onOpenC
       void refreshAll() // the feed badges depend on the watchlist
     } catch (err) {
       const e = err as ApiError
-      toast.error(e.status === 401 ? 'Add your API token in Settings first' : e.message)
+      toast.error(e.status === 401 ? authMessage(token) : e.message)
     } finally {
       setBusy(false)
     }

@@ -181,6 +181,8 @@ export interface Feed {
   name: string
   url: string
   is_active: boolean
+  /** Part of the shared base data: visible to everyone, removable only by the owner. */
+  shared: boolean
   last_fetched_at: string | null
   last_status: string | null
 }
@@ -283,9 +285,64 @@ export function isDemoToken(token: string): boolean {
   return token.startsWith('demo.')
 }
 
-/** Start a demo session: the server hands out a short-lived token that can run ingests (an existing token is kept). */
+/** True when a stored token is a private-workspace token. */
+export function isWorkspaceToken(token: string): boolean {
+  return token.startsWith('ws.')
+}
+
+/** How the visitor is using the app: their own workspace, the demo tour, the owner, or just browsing. */
+export type SessionMode = 'workspace' | 'demo' | 'owner' | 'browse'
+
+/** The mode a stored token puts the visitor in. */
+export function sessionMode(token: string): SessionMode {
+  if (isWorkspaceToken(token)) return 'workspace'
+  if (isDemoToken(token)) return 'demo'
+  return token ? 'owner' : 'browse'
+}
+
+/** What to tell someone whose action the server refused (401), depending on how they are using the app. */
+export function authMessage(token: string): string {
+  switch (sessionMode(token)) {
+    case 'workspace':
+      return 'Only the site owner can do that'
+    case 'owner':
+      return 'The server rejected your API token. Check it in Settings'
+    default:
+      return 'Open your own workspace from the home page to make changes'
+  }
+}
+
+/** What the server supports, so the landing page offers only what works. */
+export interface AuthStatus {
+  required: boolean
+  demo: boolean
+  workspaces: boolean
+  /** Days before a workspace's data is deleted. */
+  workspace_ttl_days?: number
+}
+
+/** Ask the server which entry modes are enabled; assumes none when it cannot be reached. */
+export async function getAuthStatus(): Promise<AuthStatus> {
+  try {
+    const res = await fetch('/api/auth/status')
+    if (res.ok) return (await res.json()) as AuthStatus
+  } catch {
+    /* offline or the API is down: fall through */
+  }
+  return { required: false, demo: false, workspaces: false }
+}
+
+/** Result of trying to enter a mode. */
+export interface StartResult {
+  ok: boolean
+  message?: string
+}
+
+/** Start the demo tour: a short-lived token that can run ingests on the shared data (a real API token is kept). */
 export async function startDemo(): Promise<boolean> {
-  if (getToken()) return true
+  const current = getToken()
+  if (current && sessionMode(current) === 'owner') return true
+  setToken('') // leaving a workspace for the tour: the tour has its own, weaker token
   try {
     const res = await fetch('/api/demo/session', { method: 'POST' })
     if (!res.ok) return false
@@ -294,6 +351,24 @@ export async function startDemo(): Promise<boolean> {
     return true
   } catch {
     return false
+  }
+}
+
+/** Open the visitor's private workspace, resuming the one already stored in this browser. */
+export async function startWorkspace(): Promise<StartResult> {
+  const current = getToken()
+  if (isWorkspaceToken(current) || sessionMode(current) === 'owner') return { ok: true }
+  try {
+    const res = await fetch('/api/workspace', { method: 'POST' })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      return { ok: false, message: body.detail ?? 'Could not start a workspace' }
+    }
+    const { token } = (await res.json()) as { token: string }
+    setToken(token)
+    return { ok: true }
+  } catch {
+    return { ok: false, message: 'Could not reach the server' }
   }
 }
 
@@ -354,6 +429,7 @@ export const api = {
     request<Feed>('/feeds', { method: 'POST', body: JSON.stringify({ name, url }) }),
   addDefaultFeeds: () => request<Feed[]>('/feeds/defaults', { method: 'POST' }),
   deleteFeed: (id: number) => request<null>(`/feeds/${id}`, { method: 'DELETE' }),
+  resetWorkspace: () => request<null>('/workspace', { method: 'DELETE' }),
   watches: () => request<Watch[]>('/watches'),
   addWatch: (term: string, topic: string | null, minOutlets: number) =>
     request<Watch>('/watches', { method: 'POST', body: JSON.stringify({ term, topic, min_outlets: minOutlets }) }),

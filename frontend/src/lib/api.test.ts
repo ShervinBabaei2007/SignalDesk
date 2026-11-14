@@ -1,6 +1,9 @@
 // Tests for the API client's requests and error handling.
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ApiError, EMPTY_FILTERS, HOT_STORIES, api, getToken, isDemoToken, startDemo } from '@/lib/api'
+import {
+  ApiError, EMPTY_FILTERS, HOT_STORIES, api, authMessage, getAuthStatus, getToken, isDemoToken, sessionMode, setToken,
+  startDemo, startWorkspace,
+} from '@/lib/api'
 
 /** Replace fetch with a stub returning the given status and body. */
 function stubFetch(status: number, body: unknown) {
@@ -77,5 +80,94 @@ describe('startDemo', () => {
     vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} })
     stubFetch(404, { detail: 'Demo mode is not enabled' })
     expect(await startDemo()).toBe(false)
+  })
+})
+
+/** Back localStorage with a plain object so tokens can be stored and read in tests. */
+function stubStorage(initial: Record<string, string> = {}) {
+  const store = { ...initial }
+  vi.stubGlobal('localStorage', {
+    getItem: (k: string) => store[k] ?? null,
+    setItem: (k: string, v: string) => void (store[k] = v),
+    removeItem: (k: string) => void delete store[k],
+  })
+}
+
+describe('sessionMode', () => {
+  it('tells a workspace, the demo, the owner and a plain visitor apart', () => {
+    expect(sessionMode('ws.abc.sig')).toBe('workspace')
+    expect(sessionMode('demo.1.sig')).toBe('demo')
+    expect(sessionMode('a-real-token')).toBe('owner')
+    expect(sessionMode('')).toBe('browse')
+  })
+
+  it('explains a refused action according to how the visitor is using the app', () => {
+    expect(authMessage('ws.abc.sig')).toMatch(/site owner/)
+    expect(authMessage('demo.1.sig')).toMatch(/workspace/)
+    expect(authMessage('')).toMatch(/workspace/)
+    expect(authMessage('real')).toMatch(/API token/)
+  })
+})
+
+describe('startWorkspace', () => {
+  it('stores the workspace token the server issues', async () => {
+    stubStorage()
+    const fetchMock = stubFetch(201, { token: 'ws.abc.sig' })
+    expect(await startWorkspace()).toEqual({ ok: true })
+    expect(getToken()).toBe('ws.abc.sig')
+    expect((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].method).toBe('POST')
+  })
+
+  it('resumes the workspace already stored instead of creating another', async () => {
+    stubStorage({ 'signaldesk-api-token': 'ws.mine.sig' })
+    const fetchMock = stubFetch(201, { token: 'ws.other.sig' })
+    expect(await startWorkspace()).toEqual({ ok: true })
+    expect(getToken()).toBe('ws.mine.sig')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('never replaces the owner token', async () => {
+    stubStorage({ 'signaldesk-api-token': 'owner-secret' })
+    stubFetch(201, { token: 'ws.x.sig' })
+    await startWorkspace()
+    expect(getToken()).toBe('owner-secret')
+  })
+
+  it('passes on the server message when it refuses (rate limit, workspaces off)', async () => {
+    stubStorage()
+    stubFetch(429, { detail: 'Too many workspaces created from this network; try again later' })
+    expect(await startWorkspace()).toEqual({ ok: false, message: 'Too many workspaces created from this network; try again later' })
+    expect(getToken()).toBe('')
+  })
+
+  it('reports an unreachable server', async () => {
+    stubStorage()
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline') }))
+    expect((await startWorkspace()).ok).toBe(false)
+  })
+})
+
+describe('switching between the demo and a workspace', () => {
+  it('drops a workspace token when the visitor takes the demo tour, but keeps the owner token', async () => {
+    stubStorage({ 'signaldesk-api-token': 'ws.mine.sig' })
+    stubFetch(200, { token: 'demo.1.abc' })
+    expect(await startDemo()).toBe(true)
+    expect(getToken()).toBe('demo.1.abc')
+
+    setToken('owner-secret')
+    expect(await startDemo()).toBe(true)
+    expect(getToken()).toBe('owner-secret')
+  })
+})
+
+describe('getAuthStatus', () => {
+  it('reads which entry modes the server offers', async () => {
+    stubFetch(200, { required: true, demo: true, workspaces: true, workspace_ttl_days: 7 })
+    expect(await getAuthStatus()).toMatchObject({ workspaces: true, workspace_ttl_days: 7 })
+  })
+
+  it('assumes nothing is offered when the server cannot be reached', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline') }))
+    expect(await getAuthStatus()).toEqual({ required: false, demo: false, workspaces: false })
   })
 })

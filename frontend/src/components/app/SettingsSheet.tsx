@@ -1,6 +1,6 @@
 // Side sheet for theme, layout, grouping and API token settings.
 import { useState } from 'react'
-import { Monitor, Moon, Sun } from 'lucide-react'
+import { Monitor, Moon, Sun, Trash2 } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -8,7 +8,9 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Switch } from '@/components/ui/switch'
+import { useDashboard } from '@/hooks/useDashboard'
 import { useSettings } from '@/hooks/useSettings'
+import { api, sessionMode, type ApiError } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
 /** Theme choices offered in settings. */
@@ -22,7 +24,26 @@ const THEMES = [
 export function SettingsSheet({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const { theme, setTheme } = useTheme()
   const { compact, setCompact, token, saveToken } = useSettings()
+  const { refreshAll } = useDashboard()
   const [draft, setDraft] = useState(token)
+  const [confirmReset, setConfirmReset] = useState(false)
+  const inWorkspace = sessionMode(token) === 'workspace'
+
+  /** Delete this workspace's feeds, watchlist and articles (asks twice, since it cannot be undone). */
+  const resetWorkspace = async () => {
+    if (!confirmReset) {
+      setConfirmReset(true)
+      return
+    }
+    setConfirmReset(false)
+    try {
+      await api.resetWorkspace()
+      toast.success('Workspace reset')
+      await refreshAll()
+    } catch (err) {
+      toast.error(`Could not reset: ${(err as ApiError).message}`)
+    }
+  }
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -65,10 +86,24 @@ export function SettingsSheet({ open, onOpenChange }: { open: boolean; onOpenCha
             <Switch id="compact" checked={compact} onCheckedChange={setCompact} />
           </section>
 
+          {inWorkspace && (
+            <section className="space-y-2.5 rounded-lg border p-3.5">
+              <Label>Your workspace</Label>
+              <p className="text-[13px] leading-snug text-muted-foreground">
+                Your feeds, watchlist and articles are private to this browser. Reset wipes them; the shared news is not affected.
+              </p>
+              <Button variant={confirmReset ? 'destructive' : 'outline'} onClick={() => void resetWorkspace()} onBlur={() => setConfirmReset(false)}>
+                <Trash2 data-icon="inline-start" /> {confirmReset ? 'Click again to confirm' : 'Reset workspace'}
+              </Button>
+            </section>
+          )}
+
           <section className="space-y-2.5">
-            <Label htmlFor="token">API token</Label>
+            <Label htmlFor="token">{inWorkspace ? 'Owner API token' : 'API token'}</Label>
             <p className="text-[13px] leading-snug text-muted-foreground">
-              Only needed if the server sets <code className="rounded bg-muted px-1">API_TOKEN</code>. It is required for ingest, feed changes and sending the brief.
+              {inWorkspace
+                ? 'For the site owner only: visitors never need this. Saving a token replaces your workspace in this browser.'
+                : <>Only needed if the server sets <code className="rounded bg-muted px-1">API_TOKEN</code>. It is required for ingest, feed changes and sending the brief.</>}
             </p>
             <div className="flex gap-2">
               <Input id="token" type="password" autoComplete="off" placeholder="X-API-Key" value={draft} onChange={(e) => setDraft(e.target.value)} />

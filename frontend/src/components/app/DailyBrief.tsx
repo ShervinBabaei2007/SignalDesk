@@ -9,7 +9,8 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ToneIcon, toneText } from '@/components/app/Sentiment'
 import { useDashboard } from '@/hooks/useDashboard'
-import { api, ApiError, type DigestItem } from '@/lib/api'
+import { useSettings } from '@/hooks/useSettings'
+import { api, ApiError, authMessage, type DigestItem } from '@/lib/api'
 import { describeSentiment } from '@/lib/sentiment'
 import { cn } from '@/lib/utils'
 
@@ -42,15 +43,16 @@ function DigestGroup({ title, items, tone }: { title: string; items: DigestItem[
 }
 
 /** Friendly message for a failed brief send. */
-function sendErrorMessage(e: ApiError): string {
+function sendErrorMessage(e: ApiError, token: string): string {
   if (e.status === 400) return 'No delivery channel configured — set Slack or SMTP settings'
-  if (e.status === 401) return 'Add your API token in Settings first'
+  if (e.status === 401) return authMessage(token)
   return `Could not send brief: ${e.message}`
 }
 
 /** Today at a glance: the one-line headline plus the most positive and negative stories. */
 export function DailyBrief() {
   const { digest } = useDashboard()
+  const { token } = useSettings()
   const [sending, setSending] = useState(false)
 
   const send = async () => {
@@ -59,7 +61,7 @@ export function DailyBrief() {
       const r = await api.sendDigest()
       toast.success(`Daily brief sent via ${r.sent.join(' + ')}`)
     } catch (err) {
-      toast.error(sendErrorMessage(err as ApiError))
+      toast.error(sendErrorMessage(err as ApiError, token))
     } finally {
       setSending(false)
     }

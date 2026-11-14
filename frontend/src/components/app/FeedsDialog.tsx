@@ -8,7 +8,8 @@ import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { useDashboard } from '@/hooks/useDashboard'
-import { api, ApiError, type Feed } from '@/lib/api'
+import { useSettings } from '@/hooks/useSettings'
+import { api, ApiError, authMessage, sessionMode, type Feed } from '@/lib/api'
 import { timeAgo } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -18,8 +19,8 @@ function feedStatus(feed: Feed): string {
   return feed.last_fetched_at ? `${feed.last_status} · ${timeAgo(feed.last_fetched_at)}` : feed.last_status
 }
 
-/** One feed row with its status and a delete button. */
-function FeedRow({ feed, onDelete }: { feed: Feed; onDelete: () => void }) {
+/** One feed row with its status and, when the visitor may remove it, a delete button. */
+function FeedRow({ feed, onDelete, canRemove }: { feed: Feed; onDelete: () => void; canRemove: boolean }) {
   const failed = !!feed.last_status?.startsWith('error')
   return (
     <li className="flex items-center justify-between gap-3 rounded-lg border bg-background/50 px-3 py-2.5">
@@ -30,9 +31,13 @@ function FeedRow({ feed, onDelete }: { feed: Feed; onDelete: () => void }) {
           {feedStatus(feed)}
         </div>
       </div>
-      <Button variant="ghost" size="icon" aria-label={`Remove ${feed.name}`} className="text-negative hover:text-negative" onClick={onDelete}>
-        <Trash2 />
-      </Button>
+      {canRemove ? (
+        <Button variant="ghost" size="icon" aria-label={`Remove ${feed.name}`} className="text-negative hover:text-negative" onClick={onDelete}>
+          <Trash2 />
+        </Button>
+      ) : (
+        <span className="shrink-0 text-[11px] text-muted-foreground">Shared</span>
+      )}
     </li>
   )
 }
@@ -40,6 +45,10 @@ function FeedRow({ feed, onDelete }: { feed: Feed; onDelete: () => void }) {
 /** The feeds management dialog. */
 export function FeedsDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const { feeds, refreshFeeds } = useDashboard()
+  const { token } = useSettings()
+  const mode = sessionMode(token)
+  const owner = mode === 'owner'
+  const canEdit = owner || mode === 'workspace'
   const [name, setName] = useState('')
   const [url, setUrl] = useState('')
   const [busy, setBusy] = useState(false)
@@ -51,7 +60,7 @@ export function FeedsDialog({ open, onOpenChange }: { open: boolean; onOpenChang
       await refreshFeeds()
     } catch (err) {
       const e = err as ApiError
-      toast.error(e.status === 401 ? 'Add your API token in Settings first' : e.message)
+      toast.error(e.status === 401 ? authMessage(token) : e.message)
     } finally {
       setBusy(false)
     }
@@ -79,32 +88,44 @@ export function FeedsDialog({ open, onOpenChange }: { open: boolean; onOpenChang
         <DialogHeader>
           <DialogTitle className="text-base">RSS feeds</DialogTitle>
           <DialogDescription>
-            Every active feed is fetched when you run an ingest, and automatically every 15 minutes. {feeds.length} feeds configured.
+            {mode === 'workspace'
+              ? 'Shared feeds keep themselves up to date. Add your own and run Ingest feeds to pull them into your private workspace.'
+              : 'Every active feed is fetched when you run an ingest, and automatically every 15 minutes.'}{' '}
+            {feeds.length} feeds configured.
           </DialogDescription>
         </DialogHeader>
 
         <ScrollArea className="max-h-72 pr-3">
           <ul className="space-y-2">
             {feeds.map((f) => (
-              <FeedRow key={f.id} feed={f} onDelete={() => void guard(async () => { await api.deleteFeed(f.id) })} />
+              <FeedRow key={f.id} feed={f} canRemove={owner || !f.shared} onDelete={() => void guard(async () => { await api.deleteFeed(f.id) })} />
             ))}
           </ul>
         </ScrollArea>
 
-        <Button variant="secondary" onClick={addRecommended} disabled={busy}>
-          {busy ? <Loader2 className="animate-spin" data-icon="inline-start" /> : <Sparkles data-icon="inline-start" />}
-          Add recommended feeds
-        </Button>
+        {owner && (
+          <Button variant="secondary" onClick={addRecommended} disabled={busy}>
+            {busy ? <Loader2 className="animate-spin" data-icon="inline-start" /> : <Sparkles data-icon="inline-start" />}
+            Add recommended feeds
+          </Button>
+        )}
 
         <Separator />
 
-        <form onSubmit={add} className="grid gap-2">
-          <Input placeholder="Feed name" aria-label="Feed name" value={name} onChange={(e) => setName(e.target.value)} required maxLength={200} />
-          <Input type="url" placeholder="https://example.com/rss.xml" aria-label="Feed URL" value={url} onChange={(e) => setUrl(e.target.value)} required />
-          <Button type="submit" disabled={busy}>
-            <Plus data-icon="inline-start" /> Add feed
-          </Button>
-        </form>
+        {canEdit ? (
+          <form onSubmit={add} className="grid gap-2">
+            <Input placeholder="Feed name" aria-label="Feed name" value={name} onChange={(e) => setName(e.target.value)} required maxLength={200} />
+            <Input type="url" placeholder="https://example.com/rss.xml" aria-label="Feed URL" value={url} onChange={(e) => setUrl(e.target.value)} required />
+            <Button type="submit" disabled={busy}>
+              <Plus data-icon="inline-start" /> Add feed
+            </Button>
+          </form>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            You are on the demo tour, which uses the shared feeds. Leave and choose <strong className="text-foreground">Open my workspace</strong> to
+            add your own feeds.
+          </p>
+        )}
       </DialogContent>
     </Dialog>
   )

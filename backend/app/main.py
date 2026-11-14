@@ -265,7 +265,8 @@ def health(db: Session = Depends(scoped_db)):
 @app.get("/api/auth/status", tags=["System"])
 def auth_status():
     """Tell the dashboard whether mutating requests need an API token."""
-    return {"required": bool(config.API_TOKEN), "demo": config.DEMO_MODE, "workspaces": workspace.enabled()}
+    return {"required": bool(config.API_TOKEN), "demo": config.DEMO_MODE, "workspaces": workspace.enabled(),
+            "workspace_ttl_days": config.WORKSPACE_TTL_DAYS}
 
 
 def _client_ip(request: Request) -> str:

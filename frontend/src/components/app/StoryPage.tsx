@@ -10,7 +10,8 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { OutletComparison } from '@/components/app/OutletComparison'
 import { ReportRow } from '@/components/app/StoryReports'
 import { SentimentBadge } from '@/components/app/Sentiment'
-import { api, ApiError, type StoryBrief, type StoryDetail } from '@/lib/api'
+import { useSettings } from '@/hooks/useSettings'
+import { api, ApiError, authMessage, type StoryBrief, type StoryDetail } from '@/lib/api'
 import { timeAgo } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -107,6 +108,7 @@ function StorySkeleton() {
 
 /** One event in depth: the brief, how each outlet covered it, and every report ranked. */
 export function StoryPage({ id }: { id: number }) {
+  const { token } = useSettings()
   const [story, setStory] = useState<StoryDetail | null>(null)
   const [error, setError] = useState('')
   const [refreshing, setRefreshing] = useState(false)
@@ -132,7 +134,7 @@ export function StoryPage({ id }: { id: number }) {
       toast.success('Brief rewritten')
     } catch (err) {
       const e = err as ApiError
-      toast.error(e.status === 401 ? 'Add your API token in Settings first' : `Could not refresh: ${e.message}`)
+      toast.error(e.status === 401 ? authMessage(token) : `Could not refresh: ${e.message}`)
     } finally {
       setRefreshing(false)
     }
