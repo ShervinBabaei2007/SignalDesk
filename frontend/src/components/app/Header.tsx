@@ -1,13 +1,15 @@
 // Top bar with branding, ingest button, feeds, watchlist and settings access.
 import { useState, type MouseEvent } from 'react'
-import { Bell, FileSpreadsheet, Loader2, Mail, Menu, RefreshCw, Rss, Settings as SettingsIcon, UserRoundX, Zap } from 'lucide-react'
+import { Activity, Bell, FileSpreadsheet, Loader2, Mail, Menu, RefreshCw, Rss, Settings as SettingsIcon, ShieldCheck, UserRoundX, Zap } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ShimmerButton } from '@/components/ui/shimmer-button'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { FeedsDialog } from '@/components/app/FeedsDialog'
+import { PipelineDialog } from '@/components/app/PipelineDialog'
 import { SettingsSheet } from '@/components/app/SettingsSheet'
+import { SourcesDialog } from '@/components/app/SourcesDialog'
 import { WatchlistDialog } from '@/components/app/WatchlistDialog'
 import { useDashboard } from '@/hooks/useDashboard'
 import { goHome, leaveDashboard } from '@/hooks/useRoute'
@@ -26,6 +28,8 @@ export function Header() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [watchOpen, setWatchOpen] = useState(false)
+  const [sourcesOpen, setSourcesOpen] = useState(false)
+  const [pipelineOpen, setPipelineOpen] = useState(false)
 
   // The logo always means "take me home": back to the dashboard, filters cleared, scrolled to top.
   const onLogo = (e: MouseEvent) => {
@@ -116,6 +120,12 @@ export function Header() {
             <Button variant="ghost" onClick={() => setWatchOpen(true)}>
               <Bell data-icon="inline-start" /> Watchlist
             </Button>
+            <Button variant="ghost" onClick={() => setSourcesOpen(true)}>
+              <ShieldCheck data-icon="inline-start" /> Sources
+            </Button>
+            <Button variant="ghost" onClick={() => setPipelineOpen(true)}>
+              <Activity data-icon="inline-start" /> Pipeline
+            </Button>
             <Button variant="ghost" onClick={() => setSettingsOpen(true)}>
               <SettingsIcon data-icon="inline-start" /> Settings
             </Button>
@@ -154,6 +164,12 @@ export function Header() {
             <Button variant="outline" size="lg" className="h-11 justify-start" render={<a href="/api/articles/export.csv" download />}>
               <FileSpreadsheet data-icon="inline-start" /> Export CSV
             </Button>
+            <Button variant="outline" size="lg" className="h-11 justify-start" onClick={fromMenu(() => setSourcesOpen(true))}>
+              <ShieldCheck data-icon="inline-start" /> Source profiles
+            </Button>
+            <Button variant="outline" size="lg" className="h-11 justify-start" onClick={fromMenu(() => setPipelineOpen(true))}>
+              <Activity data-icon="inline-start" /> Pipeline health
+            </Button>
             <Button variant="outline" size="lg" className="h-11 justify-start" onClick={fromMenu(() => setSettingsOpen(true))}>
               <SettingsIcon data-icon="inline-start" /> Settings
             </Button>
@@ -169,6 +185,8 @@ export function Header() {
       <FeedsDialog open={feedsOpen} onOpenChange={setFeedsOpen} />
       <WatchlistDialog open={watchOpen} onOpenChange={setWatchOpen} />
       <SettingsSheet open={settingsOpen} onOpenChange={setSettingsOpen} />
+      <SourcesDialog open={sourcesOpen} onOpenChange={setSourcesOpen} />
+      <PipelineDialog open={pipelineOpen} onOpenChange={setPipelineOpen} />
     </header>
   )
 }

@@ -90,6 +90,108 @@ export interface OutletStat {
   quotes: number
   published_at: string | null
   badges: string[]
+  /** The outlet's source-signals score, when there is enough data. */
+  reliability: number | null
+  reliability_label: string | null
+}
+
+/** One factual claim and how the outlets treat it. */
+export interface Claim {
+  text: string
+  status: 'agreed' | 'disputed' | 'single'
+  outlets: string[]
+  /** Each outlet's figure, for disputed claims. */
+  values: Record<string, string> | null
+}
+
+/** The claim-level comparison of a story. */
+export interface Claims {
+  kind: 'ai' | 'auto'
+  items: Claim[]
+}
+
+/** One day of an event's coverage. */
+export interface TimelineDay {
+  date: string
+  reports: number
+  outlets: number
+  new_outlets: string[]
+  avg_sentiment: number | null
+  headline: string | null
+}
+
+/** How coverage of an event developed day by day. */
+export interface StoryTimeline {
+  event_id: number | null
+  first_seen: string | null
+  last_seen: string | null
+  days_active: number
+  reports: number
+  outlets: number
+  peak_reports: number
+  sentiment_shift: number
+  first_reported_by: string | null
+  days: TimelineDay[]
+}
+
+/** One part of a source's signals score, with its working. */
+export interface ScoreComponent {
+  key: string
+  label: string
+  /** Null when there is not enough evidence yet. */
+  points: number | null
+  max: number
+  detail: string
+}
+
+/** An evidence-based profile of one outlet (not an editorial rating). */
+export interface SourceProfile {
+  source: string
+  articles: number
+  score: number | null
+  label: string
+  breakdown: ScoreComponent[]
+  corroboration_rate: number
+  first_report_rate: number | null
+  corrections: { notices: number; rate: number; policy: boolean }
+}
+
+/** All outlet profiles with the standing disclaimer. */
+export interface SourceList {
+  note: string
+  window_days: number
+  items: SourceProfile[]
+}
+
+/** How one feed behaved in the window. */
+export interface FeedHealth {
+  feed: string
+  runs: number
+  failures: number
+  failure_rate: number
+  p95_latency_ms: number
+  articles_added: number
+  last_error: string | null
+  last_ok_at: string | null
+}
+
+/** Pipeline health for the shared data. */
+export interface Observability {
+  window_hours: number
+  runs: {
+    total: number
+    failed: number
+    success_rate: number | null
+    p50_ms: number
+    p95_ms: number
+    last_at: string | null
+    last_ok_at: string | null
+    minutes_since_ok: number | null
+  }
+  throughput: { added: number; per_hour: number; series: { at: string; added: number }[] }
+  feeds: { ok: number; failing: number; items: FeedHealth[] }
+  extraction: { page: number; fallback: number; success_rate: number | null }
+  backlog: { awaiting_enrichment: number; awaiting_embedding: number | null }
 }
 
 /** What outlets agree on and where they differ. */
@@ -113,6 +215,7 @@ export interface StoryDetail {
   reports: ReportBrief[]
   comparison: OutletStat[]
   brief: StoryBrief
+  claims: Claims
 }
 
 /** An article with its full text and analysis. */
@@ -166,6 +269,9 @@ export interface TrendingStory {
   topic: string
   avg_sentiment: number
   latest_at: string
+  /** When the event was first covered, if it is tracked. */
+  first_seen?: string | null
+  days_active?: number
 }
 
 /** The daily brief. */
@@ -422,6 +528,9 @@ export const api = {
     request<StoryPage>(`/stories?${feedParams(filters, offset, limit, ids)}`),
   story: (id: number) => request<StoryDetail>(`/stories/${id}`),
   refreshBrief: (id: number) => request<StoryDetail>(`/stories/${id}/brief`, { method: 'POST' }),
+  timeline: (id: number) => request<StoryTimeline>(`/stories/${id}/timeline`),
+  sources: () => request<SourceList>('/sources'),
+  observability: (hours = 24) => request<Observability>(`/observability?hours=${hours}`),
   article: (id: number) => request<ArticleDetail>(`/articles/${id}`),
   summarize: (id: number) => request<ArticleDetail>(`/articles/${id}/summarize`, { method: 'POST' }),
   feeds: () => request<Feed[]>('/feeds'),

@@ -52,6 +52,11 @@ export function HotStories() {
                           <span>{t.reports} reports</span>
                           <span>·</span>
                           <span>{timeAgo(t.latest_at)}</span>
+                          {(t.days_active ?? 1) > 1 && (
+                            <span className="font-medium text-foreground/80" title="How long this event has been in the news">
+                              · active {t.days_active} days
+                            </span>
+                          )}
                           <span className={cn('inline-flex items-center gap-0.5', toneText[tone.tone])} title={`${tone.label} wording`}>
                             <ToneIcon tone={tone.tone} className="size-2.5" />
                           </span>

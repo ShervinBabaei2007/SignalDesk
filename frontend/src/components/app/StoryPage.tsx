@@ -11,7 +11,9 @@ import { OutletComparison } from '@/components/app/OutletComparison'
 import { ReportRow } from '@/components/app/StoryReports'
 import { SentimentBadge } from '@/components/app/Sentiment'
 import { useSettings } from '@/hooks/useSettings'
-import { api, ApiError, authMessage, type StoryBrief, type StoryDetail } from '@/lib/api'
+import { ClaimsCard } from '@/components/app/ClaimsCard'
+import { TimelineCard } from '@/components/app/TimelineCard'
+import { api, ApiError, authMessage, type StoryBrief, type StoryDetail, type StoryTimeline } from '@/lib/api'
 import { timeAgo } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -110,17 +112,24 @@ function StorySkeleton() {
 export function StoryPage({ id }: { id: number }) {
   const { token } = useSettings()
   const [story, setStory] = useState<StoryDetail | null>(null)
+  const [timeline, setTimeline] = useState<StoryTimeline | null>(null)
   const [error, setError] = useState('')
   const [refreshing, setRefreshing] = useState(false)
 
   useEffect(() => {
     setStory(null)
+    setTimeline(null)
     setError('')
     window.scrollTo({ top: 0 })
     let live = true
     api.story(id).then(
       (s) => live && setStory(s),
       (e: Error) => live && setError(e.message),
+    )
+    // the timeline is a nice-to-have: a failure just leaves the card out
+    api.timeline(id).then(
+      (t) => live && setTimeline(t),
+      () => {},
     )
     return () => {
       live = false
@@ -169,9 +178,21 @@ export function StoryPage({ id }: { id: number }) {
             <BriefCard brief={story.brief} onRefresh={() => void refresh()} refreshing={refreshing} />
           </BlurFade>
 
+          {story.claims && (
+            <BlurFade delay={0.08}>
+              <ClaimsCard claims={story.claims} />
+            </BlurFade>
+          )}
+
           <BlurFade delay={0.1}>
             <OutletComparison rows={story.comparison} />
           </BlurFade>
+
+          {timeline && timeline.reports > 0 && (
+            <BlurFade delay={0.12}>
+              <TimelineCard timeline={timeline} />
+            </BlurFade>
+          )}
 
           <BlurFade delay={0.15}>
             <Card>

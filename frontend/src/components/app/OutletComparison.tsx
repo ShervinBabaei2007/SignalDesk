@@ -5,9 +5,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { SourceAvatar } from '@/components/app/AlsoCoveredBy'
 import { InfoScore } from '@/components/app/InfoScore'
-import { SentimentBadge } from '@/components/app/Sentiment'
+import { SentimentBadge, toneBg, toneText } from '@/components/app/Sentiment'
 import type { OutletStat } from '@/lib/api'
 import { sourceHue } from '@/lib/format'
+import { cn } from '@/lib/utils'
+import { reliabilityTone } from '@/lib/insights'
 import { describeSentiment, formatScore, scalePosition } from '@/lib/sentiment'
 
 /** Every outlet's wording on one −1…+1 line, so a difference in tone is visible at a glance. */
@@ -77,6 +79,25 @@ function Row({ row, index }: { row: OutletStat; index: number }) {
           </span>
         </span>
         <InfoScore score={row.info_score} variant="bar" />
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <span
+                className={cn(
+                  'w-16 rounded-md border px-1.5 py-0.5 text-center text-[11px] font-semibold tabular-nums',
+                  row.reliability === null ? 'text-muted-foreground' : [toneBg[reliabilityTone(row.reliability)!], toneText[reliabilityTone(row.reliability)!]],
+                )}
+              />
+            }
+          >
+            {row.reliability === null ? 'no data' : `${row.reliability}/100`}
+          </TooltipTrigger>
+          <TooltipContent>
+            {row.reliability === null
+              ? 'Not enough articles read from this outlet to profile how it publishes.'
+              : `${row.reliability_label}: how this outlet publishes (bylines, dates, sources, corrections), not whether it is right. Open Sources for the working.`}
+          </TooltipContent>
+        </Tooltip>
         <span className="w-24 text-xs text-muted-foreground tabular-nums">
           {words ? `≈ ${words.toLocaleString()} words` : 'excerpt only'}
         </span>
