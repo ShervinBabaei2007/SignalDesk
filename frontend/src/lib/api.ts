@@ -192,6 +192,7 @@ export interface Filters {
   sentiment: string
   cluster: string
   hot: string // '1' = only articles from the hot stories
+  saved: string // '1' = only the reader's saved articles (ids come from the browser)
   order: string
 }
 
@@ -202,6 +203,7 @@ export const EMPTY_FILTERS: Filters = {
   sentiment: '',
   cluster: '',
   hot: '',
+  saved: '',
   order: 'newest',
 }
 
@@ -253,11 +255,12 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return (res.status === 204 ? null : await res.json()) as T
 }
 
-function feedParams(filters: Filters, offset: number, limit: number): URLSearchParams {
+function feedParams(filters: Filters, offset: number, limit: number, ids?: string): URLSearchParams {
   const params = new URLSearchParams({ limit: String(limit), offset: String(offset), order: filters.order })
   for (const [key, value] of Object.entries(filters)) {
-    if (key !== 'order' && value.trim()) params.set(key, value.trim())
+    if (key !== 'order' && key !== 'saved' && value.trim()) params.set(key, value.trim())
   }
+  if (ids !== undefined) params.set('ids', ids) // "0" matches nothing: an empty saved list shows an empty feed
   return params
 }
 
@@ -267,10 +270,10 @@ export const api = {
   digest: () => request<Digest>('/digest'),
   trending: (limit = 8) => request<TrendingStory[]>(`/trending?limit=${limit}`),
   sendDigest: () => request<{ sent: string[] }>('/digest/send', { method: 'POST' }),
-  articles: (filters: Filters, offset: number, limit: number) =>
-    request<ArticlePage>(`/articles?${feedParams(filters, offset, limit)}`),
-  stories: (filters: Filters, offset: number, limit: number) =>
-    request<StoryPage>(`/stories?${feedParams(filters, offset, limit)}`),
+  articles: (filters: Filters, offset: number, limit: number, ids?: string) =>
+    request<ArticlePage>(`/articles?${feedParams(filters, offset, limit, ids)}`),
+  stories: (filters: Filters, offset: number, limit: number, ids?: string) =>
+    request<StoryPage>(`/stories?${feedParams(filters, offset, limit, ids)}`),
   story: (id: number) => request<StoryDetail>(`/stories/${id}`),
   refreshBrief: (id: number) => request<StoryDetail>(`/stories/${id}/brief`, { method: 'POST' }),
   article: (id: number) => request<ArticleDetail>(`/articles/${id}`),

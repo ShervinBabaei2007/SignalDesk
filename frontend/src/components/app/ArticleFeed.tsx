@@ -1,5 +1,6 @@
 import { Award, ChevronLeft, ChevronRight, ExternalLink, FileText, Link2, Newspaper, Satellite, Sparkles, Sprout, Star, X } from 'lucide-react'
 import { useRef } from 'react'
+import { BookmarkButton } from '@/components/app/BookmarkButton'
 import { Alert, AlertAction, AlertDescription } from '@/components/ui/alert'
 import { BlurFade } from '@/components/ui/blur-fade'
 import { Badge } from '@/components/ui/badge'
@@ -15,10 +16,12 @@ import { InfoScore } from '@/components/app/InfoScore'
 import { StoryReports } from '@/components/app/StoryReports'
 import { SentimentBadge } from '@/components/app/Sentiment'
 import { PAGE_SIZE, useDashboard } from '@/hooks/useDashboard'
+import { useLibrary } from '@/hooks/useLibrary'
 import { useSettings } from '@/hooks/useSettings'
 import type { Article, Story } from '@/lib/api'
 import { domainOf, keywordList, timeAgo, TOPIC_EMOJI } from '@/lib/format'
 import { pageWindow } from '@/lib/pagination'
+import { cn } from '@/lib/utils'
 
 function StoryChip({ article }: { article: Article }) {
   const { openStory } = useDashboard()
@@ -50,6 +53,8 @@ function ArticleCard({
   article: a, index, story, defaultOpen = false,
 }: { article: Article; index: number; story?: Story; defaultOpen?: boolean }) {
   const summary = a.summary_deep || a.summary
+  const { isRead } = useLibrary()
+  const read = isRead(a.id)
   const domain = a.is_seed ? '' : domainOf(a.url)
   const open = () => {
     location.hash = `#/article/${a.id}`
@@ -98,7 +103,7 @@ function ArticleCard({
           </div>
 
           <h3 className="text-[15.5px] leading-snug font-semibold tracking-tight">
-            <a href={`#/article/${a.id}`} onClick={(e) => e.stopPropagation()} className="hover:text-link">
+            <a href={`#/article/${a.id}`} onClick={(e) => e.stopPropagation()} className={cn('hover:text-link', read && 'text-muted-foreground')}>
               {a.title}
             </a>
           </h3>
@@ -122,7 +127,8 @@ function ArticleCard({
                 </Badge>
               ))}
             </div>
-            <div className="ml-auto flex gap-2">
+            <div className="ml-auto flex items-center gap-2">
+              <BookmarkButton id={a.id} />
               <Button variant="outline" size="sm" onClick={open}>
                 <FileText data-icon="inline-start" />
                 Summary
@@ -274,9 +280,11 @@ export function ArticleFeed() {
       ) : count === 0 ? (
         <Card className="items-center py-14 text-center">
           <Satellite className="size-9 text-muted-foreground" aria-hidden />
-          <h3 className="text-base font-semibold">No signals found</h3>
+          <h3 className="text-base font-semibold">{filters.saved ? 'Nothing saved yet' : 'No signals found'}</h3>
           <p className="max-w-xs text-sm text-muted-foreground">
-            Nothing matches these filters. Try a different search, or run an ingest to pull in fresh articles.
+            {filters.saved
+              ? 'Tap the bookmark on any article to keep it here. Your saved articles stay in this browser.'
+              : 'Nothing matches these filters. Try a different search, or run an ingest to pull in fresh articles.'}
           </p>
           {hasActiveFilters && (
             <Button variant="outline" onClick={clearFilters}>

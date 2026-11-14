@@ -1,0 +1,84 @@
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { addRead, parseIds, toggleId } from '@/lib/library'
+
+const SAVED_KEY = 'signaldesk-saved'
+const READ_KEY = 'signaldesk-read'
+
+interface LibraryValue {
+  /** Saved article ids, newest first. */
+  saved: number[]
+  isSaved: (id: number) => boolean
+  toggleSaved: (id: number) => void
+  isRead: (id: number) => boolean
+  markRead: (id: number) => void
+}
+
+const Ctx = createContext<LibraryValue | null>(null)
+
+function load(key: string): number[] {
+  try {
+    return parseIds(localStorage.getItem(key))
+  } catch {
+    return []
+  }
+}
+
+function save(key: string, ids: number[]) {
+  try {
+    localStorage.setItem(key, JSON.stringify(ids))
+  } catch {
+    /* storage unavailable (private mode): the library just won't persist */
+  }
+}
+
+/** Saved and read articles, kept in this browser only (no account needed). */
+export function LibraryProvider({ children }: { children: ReactNode }) {
+  const [saved, setSaved] = useState<number[]>(() => load(SAVED_KEY))
+  const [read, setRead] = useState<number[]>(() => load(READ_KEY))
+  const readSet = useMemo(() => new Set(read), [read])
+
+  // keep several open tabs in step
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === SAVED_KEY) setSaved(load(SAVED_KEY))
+      if (e.key === READ_KEY) setRead(load(READ_KEY))
+    }
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
+  }, [])
+
+  const toggleSaved = useCallback((id: number) => {
+    setSaved((prev) => {
+      const next = toggleId(prev, id)
+      save(SAVED_KEY, next)
+      return next
+    })
+  }, [])
+
+  const markRead = useCallback((id: number) => {
+    setRead((prev) => {
+      if (prev[0] === id) return prev
+      const next = addRead(prev, id)
+      save(READ_KEY, next)
+      return next
+    })
+  }, [])
+
+  const value = useMemo<LibraryValue>(
+    () => ({
+      saved,
+      isSaved: (id) => saved.includes(id),
+      toggleSaved,
+      isRead: (id) => readSet.has(id),
+      markRead,
+    }),
+    [saved, readSet, toggleSaved, markRead],
+  )
+  return <Ctx.Provider value={value}>{children}</Ctx.Provider>
+}
+
+export function useLibrary(): LibraryValue {
+  const v = useContext(Ctx)
+  if (!v) throw new Error('useLibrary must be used inside LibraryProvider')
+  return v
+}

@@ -58,9 +58,13 @@ export function Filters() {
       />
       <FilterSelect
         label="Topic"
-        value={filters.hot ? 'hot' : filters.topic}
-        onChange={(v) => setFilter(v === 'hot' ? { hot: '1', topic: '' } : { topic: v, hot: '' })}
-        options={[{ value: ALL, label: 'All topics' }, { value: 'hot', label: '🔥 Hot topics' }, ...topics.map((t) => ({ value: t, label: `${TOPIC_EMOJI[t] ?? '📰'} ${t}` }))]}
+        value={filters.saved ? 'saved' : filters.hot ? 'hot' : filters.topic}
+        onChange={(v) =>
+          setFilter(
+            v === 'hot' ? { hot: '1', topic: '', saved: '' } : v === 'saved' ? { saved: '1', topic: '', hot: '' } : { topic: v, hot: '', saved: '' },
+          )
+        }
+        options={[{ value: ALL, label: 'All topics' }, { value: 'hot', label: '🔥 Hot topics' }, { value: 'saved', label: '🔖 Saved' }, ...topics.map((t) => ({ value: t, label: `${TOPIC_EMOJI[t] ?? '📰'} ${t}` }))]}
       />
       <FilterSelect
         label="Sentiment"

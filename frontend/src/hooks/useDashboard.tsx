@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
+import { useLibrary } from '@/hooks/useLibrary'
 import { useSettings } from '@/hooks/useSettings'
 import {
   api, ApiError, EMPTY_FILTERS,
@@ -48,10 +49,14 @@ interface Query {
   filters: Filters
   page: number
   grouped: boolean
+  /** Comma-separated saved ids when the Saved category is selected ('0' = none). */
+  ids?: string
 }
 
 export function DashboardProvider({ children }: { children: ReactNode }) {
   const { grouped } = useSettings()
+  const { saved } = useLibrary()
+  const savedKey = saved.join(',') || '0'
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS)
   const [page, setPageState] = useState(1)
   const [applied, setApplied] = useState<Query>({ filters: EMPTY_FILTERS, page: 1, grouped })
@@ -75,14 +80,14 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     try {
       const offset = (q.page - 1) * PAGE_SIZE
       if (q.grouped) {
-        const res = await api.stories(q.filters, offset, PAGE_SIZE)
+        const res = await api.stories(q.filters, offset, PAGE_SIZE, q.ids)
         if (id !== requestId.current) return // a newer request superseded this one
         setStories(res.items)
         setArticles([])
         setTotal(res.total)
         setArticleTotal(res.article_total)
       } else {
-        const res = await api.articles(q.filters, offset, PAGE_SIZE)
+        const res = await api.articles(q.filters, offset, PAGE_SIZE, q.ids)
         if (id !== requestId.current) return
         setArticles(res.items)
         setStories([])
@@ -110,10 +115,10 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   // Typing in search is debounced; filter changes and page clicks apply immediately.
   useEffect(() => {
     const searchChanged = filters.search !== applied.filters.search
-    const t = setTimeout(() => setApplied({ filters, page, grouped }), searchChanged ? 250 : 0)
+    const t = setTimeout(() => setApplied({ filters, page, grouped, ids: filters.saved ? savedKey : undefined }), searchChanged ? 250 : 0)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `applied` is only read to detect a search change
-  }, [filters, page, grouped])
+  }, [filters, page, grouped, savedKey])
 
   useEffect(() => {
     void loadArticles(applied)
@@ -163,7 +168,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     }
   }, [refreshAll])
 
-  const hasActiveFilters = !!(filters.search || filters.source || filters.topic || filters.sentiment || filters.cluster || filters.hot)
+  const hasActiveFilters = !!(filters.search || filters.source || filters.topic || filters.sentiment || filters.cluster || filters.hot || filters.saved)
   const sources = useMemo(() => feeds.map((f) => f.name).sort(), [feeds])
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE))
   const hotCount = trending.reduce((n, t) => n + t.reports, 0)

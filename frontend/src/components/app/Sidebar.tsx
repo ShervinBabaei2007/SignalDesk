@@ -1,8 +1,9 @@
 import type { ReactNode } from 'react'
-import { Flame } from 'lucide-react'
+import { Bookmark, Flame } from 'lucide-react'
 import { BlurFade } from '@/components/ui/blur-fade'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useDashboard } from '@/hooks/useDashboard'
+import { useLibrary } from '@/hooks/useLibrary'
 import { TOPIC_EMOJI } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -37,6 +38,7 @@ function CategoryRow({
 /** The only sidebar block: browse by category. Short enough to stay on screen without scrolling. */
 export function Sidebar() {
   const { stats, filters, setFilter, hotCount } = useDashboard()
+  const { saved } = useLibrary()
   const entries = Object.entries(stats?.topic_breakdown ?? {}).sort((a, b) => b[1] - a[1])
   const max = Math.max(...entries.map(([, n]) => n), 1)
   return (
@@ -55,7 +57,16 @@ export function Sidebar() {
               max={Math.max(max, hotCount)}
               active={filters.hot === '1'}
               hint="Stories many outlets are covering right now"
-              onClick={() => setFilter({ hot: filters.hot === '1' ? '' : '1', topic: '' })}
+              onClick={() => setFilter({ hot: filters.hot === '1' ? '' : '1', topic: '', saved: '' })}
+            />
+            <CategoryRow
+              label="Saved"
+              icon={<Bookmark className="size-4 text-link" aria-hidden />}
+              count={saved.length}
+              max={Math.max(max, saved.length)}
+              active={filters.saved === '1'}
+              hint="Articles you saved for later (stored in this browser)"
+              onClick={() => setFilter({ saved: filters.saved === '1' ? '' : '1', hot: '', topic: '', cluster: '' })}
             />
             {entries.map(([topic, n]) => (
               <CategoryRow
@@ -65,7 +76,7 @@ export function Sidebar() {
                 count={n}
                 max={max}
                 active={filters.topic === topic}
-                onClick={() => setFilter({ topic: filters.topic === topic ? '' : topic, hot: '' })}
+                onClick={() => setFilter({ topic: filters.topic === topic ? '' : topic, hot: '', saved: '' })}
               />
             ))}
           </CardContent>

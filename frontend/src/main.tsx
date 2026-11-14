@@ -5,6 +5,7 @@ import App from '@/App'
 import { Toaster } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { DashboardProvider } from '@/hooks/useDashboard'
+import { LibraryProvider } from '@/hooks/useLibrary'
 import { SettingsProvider } from '@/hooks/useSettings'
 import './index.css'
 
@@ -13,9 +14,11 @@ createRoot(document.getElementById('root')!).render(
     <ThemeProvider attribute="class" defaultTheme="dark" enableSystem storageKey="signaldesk-theme">
       <SettingsProvider>
         <TooltipProvider delay={150}>
-          <DashboardProvider>
-            <App />
-          </DashboardProvider>
+          <LibraryProvider>
+            <DashboardProvider>
+              <App />
+            </DashboardProvider>
+          </LibraryProvider>
           <Toaster position="bottom-center" />
         </TooltipProvider>
       </SettingsProvider>

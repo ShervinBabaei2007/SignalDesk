@@ -2,12 +2,14 @@ import { useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, ExternalLink, Loader2, Sparkles } from 'lucide-react'
 import { toast } from 'sonner'
 import { AlsoCoveredBy } from '@/components/app/AlsoCoveredBy'
+import { BookmarkButton } from '@/components/app/BookmarkButton'
 import { SentimentBadge, SentimentInfo, SentimentScale, toneBg, toneText } from '@/components/app/Sentiment'
 import { Badge } from '@/components/ui/badge'
 import { BlurFade } from '@/components/ui/blur-fade'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useLibrary } from '@/hooks/useLibrary'
 import { api, type ArticleDetail } from '@/lib/api'
 import { domainOf, keywordList, timeAgo, TOPIC_EMOJI } from '@/lib/format'
 import { describeSentiment } from '@/lib/sentiment'
@@ -55,6 +57,7 @@ export function Reader({ id }: { id: number }) {
   const [article, setArticle] = useState<ArticleDetail | null>(null)
   const [error, setError] = useState('')
   const [generating, setGenerating] = useState(false)
+  const { markRead } = useLibrary()
 
   useEffect(() => {
     setArticle(null)
@@ -62,7 +65,11 @@ export function Reader({ id }: { id: number }) {
     window.scrollTo({ top: 0 })
     let live = true
     api.article(id).then(
-      (a) => live && setArticle(a),
+      (a) => {
+        if (!live) return
+        setArticle(a)
+        markRead(a.id)
+      },
       (e: Error) => live && setError(e.message),
     )
     return () => {
@@ -178,11 +185,14 @@ export function Reader({ id }: { id: number }) {
 
             <SentimentPanel score={article.sentiment} />
 
-            {!article.is_seed && (
-              <Button size="lg" className="mt-5 h-10" render={<a href={article.url} target="_blank" rel="noopener" />}>
-                <ExternalLink data-icon="inline-end" /> Read the original article
-              </Button>
-            )}
+            <div className="mt-5 flex flex-wrap items-center gap-2">
+              {!article.is_seed && (
+                <Button size="lg" className="h-10" render={<a href={article.url} target="_blank" rel="noopener" />}>
+                  <ExternalLink data-icon="inline-end" /> Read the original article
+                </Button>
+              )}
+              <BookmarkButton id={article.id} withLabel />
+            </div>
           </CardContent>
         </Card>
       )}
