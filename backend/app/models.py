@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, Float, String, Text
+from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .database import Base
@@ -73,4 +73,28 @@ class StoryBrief(Base):
     cluster_id: Mapped[int] = mapped_column(primary_key=True)
     member_hash: Mapped[str] = mapped_column(String(40), nullable=False)
     payload: Mapped[str] = mapped_column(Text, nullable=False)  # JSON: kind, headline, agree, differ, model
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class Watch(Base):
+    """A term to watch for: alerts when a story matching it is covered by enough outlets."""
+    __tablename__ = "watches"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    term: Mapped[str] = mapped_column(String(100), nullable=False)
+    topic: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    min_outlets: Mapped[int] = mapped_column(Integer, default=2)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class WatchAlert(Base):
+    """Remembers that a watch already fired for a story, so it never alerts twice."""
+    __tablename__ = "watch_alerts"
+    __table_args__ = (UniqueConstraint("watch_id", "story_key", name="uq_watch_story"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    watch_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    story_key: Mapped[str] = mapped_column(String(32), nullable=False)
+    notified: Mapped[bool] = mapped_column(Boolean, default=False)  # delivered to Slack/email
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

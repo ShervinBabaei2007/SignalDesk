@@ -147,6 +147,26 @@ def configured_channels() -> list[str]:
     return channels
 
 
+def deliver_alert(subject: str, text: str) -> dict:
+    """Send a watchlist alert to every configured channel (same shape as deliver_digest)."""
+    result: dict = {"channels": configured_channels(), "sent": [], "errors": []}
+    if config.SLACK_WEBHOOK_URL:
+        try:
+            send_slack(text)
+            result["sent"].append("slack")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[alert] Slack delivery failed: %s", exc)
+            result["errors"].append({"channel": "slack", "error": str(exc)})
+    if config.DIGEST_EMAILS:
+        try:
+            send_email(subject, text)
+            result["sent"].append("email")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[alert] email delivery failed: %s", exc)
+            result["errors"].append({"channel": "email", "error": str(exc)})
+    return result
+
+
 def deliver_digest(digest) -> dict:
     """Send a digest to every configured channel.
 

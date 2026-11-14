@@ -26,11 +26,12 @@ from sqlalchemy.orm import Session
 
 from . import config, notifications
 from .database import SessionLocal, ensure_columns, engine, get_db
-from . import clustering, stories as story_logic
+from . import clustering, stories as story_logic, watches
 from .enrichment import enrich_article, enrich_pending_articles
 from .ingestion import add_missing_default_feeds, ingest_all
-from .models import Article, Base, Feed
-from .schemas import (ArticleDetail, ArticlePage, StoryDetail, StoryPage, Digest, DigestItem,
+from .analysis import TOPIC_EMOJI
+from .models import Article, Base, Feed, Watch, WatchAlert
+from .schemas import (ArticleDetail, ArticlePage, StoryDetail, StoryPage, WatchAlertOut, WatchIn, WatchOut, WatchPatch, Digest, DigestItem,
                       FeedCreate, FeedOut, FeedIngestResult, IngestResult,
                       Stats, TrendingStory)
 from .quality import backfill_info_scores
@@ -66,6 +67,7 @@ async def _scheduled_ingestion():
                 results = ingest_all(db, feeds, feed_rows=feed_rows)
                 added = sum(r["added"] for r in results)
                 logger.info("[scheduler] auto-ingest finished: +%s new articles", added)
+                watches.check_watches(db)
         except Exception:  # noqa: BLE001
             logger.exception("[scheduler] auto-ingest failed")
 
@@ -372,6 +374,75 @@ def refresh_story_brief(cluster_id: int, db: Session = Depends(get_db)):
     return story_logic.story_detail(db, _cluster_or_404(db, cluster_id), force_brief=True)
 
 
+# --------------------------------------------------------------------------- #
+# Watchlist
+# --------------------------------------------------------------------------- #
+
+def _watch_rows(db: Session) -> list[Watch]:
+    return list(db.execute(select(Watch).order_by(Watch.id)).scalars())
+
+
+def _with_counts(db: Session, rows: list[Watch]) -> list[Watch]:
+    stories = watches.recent_stories(db)
+    for w in rows:
+        w.matches = sum(1 for _, m in stories
+                        if len({x.source for x in m}) >= w.min_outlets and watches.matches(w, m))
+    return rows
+
+
+@app.get("/api/watches", response_model=list[WatchOut], tags=["Watchlist"])
+def list_watches(db: Session = Depends(get_db)):
+    return _with_counts(db, _watch_rows(db))
+
+
+@app.post("/api/watches", response_model=WatchOut, status_code=201, tags=["Watchlist"],
+          dependencies=[Depends(require_api_token)])
+def create_watch(body: WatchIn, db: Session = Depends(get_db)):
+    term = " ".join(body.term.split())
+    topic = (body.topic or "").strip() or None
+    if not term:
+        raise HTTPException(422, "A watch needs a word or phrase")
+    if topic and topic not in TOPIC_EMOJI:
+        raise HTTPException(422, f"topic must be one of: {', '.join(TOPIC_EMOJI)}")
+    existing = _watch_rows(db)
+    if len(existing) >= watches.MAX_WATCHES:
+        raise HTTPException(409, f"You can watch up to {watches.MAX_WATCHES} terms; remove one first")
+    if any(w.term.lower() == term.lower() and w.topic == topic for w in existing):
+        raise HTTPException(409, "You are already watching that")
+    watch = Watch(term=term, topic=topic, min_outlets=body.min_outlets, is_active=True)
+    db.add(watch)
+    db.commit()
+    db.refresh(watch)
+    watches.baseline(db, watch)  # today's matches are not "news": only later stories alert
+    return _with_counts(db, [watch])[0]
+
+
+@app.patch("/api/watches/{watch_id}", response_model=WatchOut, tags=["Watchlist"],
+           dependencies=[Depends(require_api_token)])
+def update_watch(watch_id: int, body: WatchPatch, db: Session = Depends(get_db)):
+    watch = db.get(Watch, watch_id)
+    if not watch:
+        raise HTTPException(404, "Watch not found")
+    if body.is_active and not watch.is_active:
+        watches.baseline(db, watch)  # resuming should not replay what happened while paused
+    watch.is_active = body.is_active
+    db.commit()
+    db.refresh(watch)
+    return _with_counts(db, [watch])[0]
+
+
+@app.delete("/api/watches/{watch_id}", status_code=204, tags=["Watchlist"],
+            dependencies=[Depends(require_api_token)])
+def delete_watch(watch_id: int, db: Session = Depends(get_db)):
+    watch = db.get(Watch, watch_id)
+    if not watch:
+        raise HTTPException(404, "Watch not found")
+    for row in db.execute(select(WatchAlert).where(WatchAlert.watch_id == watch_id)).scalars():
+        db.delete(row)
+    db.delete(watch)
+    db.commit()
+
+
 @app.get("/api/articles/export.csv", tags=["Articles"])
 def export_articles_csv(
     db: Session = Depends(get_db),
@@ -600,7 +671,14 @@ def ingest(db: Session = Depends(get_db), background_tasks: BackgroundTasks = No
     if background_tasks and (pending or missing_images):
         background_tasks.add_task(_enrich_background)
 
+    try:
+        alerts = watches.check_watches(db)
+    except Exception:  # noqa: BLE001 - a watchlist problem must never fail an ingest
+        logger.exception("[watch] check failed")
+        alerts = []
+
     return IngestResult(
+        alerts=[WatchAlertOut(**a) for a in alerts],
         added=sum(r["added"] for r in results),
         fetched=sum(r["fetched"] for r in results),
         skipped=sum(r["skipped"] for r in results),

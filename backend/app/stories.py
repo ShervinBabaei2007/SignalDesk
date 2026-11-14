@@ -18,7 +18,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import Select
 
-from . import briefs, clustering
+from . import briefs, clustering, watches
 from .quality import _sections
 from .models import Article
 
@@ -148,6 +148,7 @@ def build_page(db: Session, ordered_ids: list[int], offset: int, limit: int) -> 
     page_ids = [i for k in page_keys for i in groups[k]]
     articles = {a.id: a for a in db.execute(select(Article).where(Article.id.in_(page_ids or [0]))).scalars()}
 
+    active_watches = watches.active(db)
     stories = []
     leads = []
     for key in page_keys:
@@ -166,6 +167,7 @@ def build_page(db: Session, ordered_ids: list[int], offset: int, limit: int) -> 
             "outlets": len(sources),
             "sources": sources,
             "best_score": lead.info_score,
+            "watch_matches": watches.matching_terms(active_watches, members) if active_watches else [],
         })
     clustering.annotate(db, leads)
     return {"stories": stories, "total": len(keys), "article_total": len(ordered_ids)}

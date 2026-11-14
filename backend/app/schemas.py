@@ -156,6 +156,39 @@ class FeedIngestResult(BaseModel):
     error: str | None = None
 
 
+class WatchIn(BaseModel):
+    term: str = Field(min_length=1, max_length=100)
+    topic: str | None = Field(default=None, max_length=50)
+    min_outlets: int = Field(default=2, ge=1, le=10)
+
+
+class WatchPatch(BaseModel):
+    is_active: bool
+
+
+class WatchOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    term: str
+    topic: str | None
+    min_outlets: int
+    is_active: bool
+    created_at: datetime
+    matches: int = 0  # stories matching it right now
+
+
+class WatchAlertOut(BaseModel):
+    watch_id: int
+    term: str
+    story_key: str
+    cluster_id: int | None
+    article_id: int
+    title: str
+    outlets: int
+    reports: int
+
+
 class IngestResult(BaseModel):
     added: int
     fetched: int
@@ -163,6 +196,7 @@ class IngestResult(BaseModel):
     results: list[FeedIngestResult]
     duration_seconds: float
     enrich_queued: int = 0
+    alerts: list[WatchAlertOut] = []  # watchlist stories that newly matched
 
 
 class TrendingStory(BaseModel):
