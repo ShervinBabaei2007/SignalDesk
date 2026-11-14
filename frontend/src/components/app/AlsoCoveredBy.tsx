@@ -1,4 +1,4 @@
-import { ChevronRight, Newspaper } from 'lucide-react'
+import { ArrowRight, ChevronRight, Newspaper } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { BlurFade } from '@/components/ui/blur-fade'
@@ -70,7 +70,7 @@ function Row({ item, index }: { item: RelatedArticle; index: number }) {
 }
 
 /** Other outlets' coverage of the same story. */
-export function AlsoCoveredBy({ items }: { items: RelatedArticle[] }) {
+export function AlsoCoveredBy({ items, clusterId }: { items: RelatedArticle[]; clusterId?: number | null }) {
   if (!items.length) return null
   const outlets = new Set(items.map((i) => i.source)).size
   return (
@@ -90,6 +90,14 @@ export function AlsoCoveredBy({ items }: { items: RelatedArticle[] }) {
         {items.map((item, i) => (
           <Row key={item.id} item={item} index={i} />
         ))}
+        {clusterId != null && (
+          <a
+            href={`#/story/${clusterId}`}
+            className="inline-flex items-center gap-1 rounded-md px-1 py-1 text-sm font-medium text-link hover:underline focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+          >
+            See the full story: brief and outlet comparison <ArrowRight className="size-3.5" aria-hidden />
+          </a>
+        )}
       </CardContent>
     </Card>
   )

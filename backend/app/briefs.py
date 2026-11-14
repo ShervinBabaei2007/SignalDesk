@@ -59,8 +59,23 @@ def _text(a: Article) -> str:
     return a.full_text or a.summary_deep or a.summary or ""
 
 
+def _strip_title(text: str, title: str) -> str:
+    """Extracted page text often starts with the headline; it is not a fact."""
+    text = text.lstrip()
+    if title and text.lower().startswith(title.lower()):
+        return text[len(title):].lstrip(" :-\u2013\u2014")
+    return text
+
+
 def _sentences(a: Article) -> list[str]:
-    return _clean_sentences(_text(a))
+    return _clean_sentences(_strip_title(_text(a), a.title))
+
+
+def _wording(sentiment: float, gap: float) -> str:
+    """Plain-English comparison of an outlet's wording with the other outlets'."""
+    if gap > 0:
+        return "more positively" if sentiment >= 0 else "less negatively"
+    return "less positively" if sentiment > 0 else "more negatively"
 
 
 def extractive_brief(title: str, members: list[Article]) -> dict[str, Any]:
@@ -77,7 +92,11 @@ def extractive_brief(title: str, members: list[Article]) -> dict[str, Any]:
     agree: list[str] = []
 
     def add(line: str, store: list[str]) -> None:
-        if line and all(_overlap(line, existing) < 0.6 for existing in store):
+        line = line.strip()
+        # skip fragments cut mid-sentence (they start in lowercase) and near-duplicates
+        if not line or not (line[0].isupper() or line[0].isdigit() or line[0] in "\"\u201c'$"):
+            return
+        if all(_overlap(line, existing) < 0.6 for existing in store):
             store.append(line)
 
     # 1. figures cited by two or more outlets
@@ -101,7 +120,7 @@ def extractive_brief(title: str, members: list[Article]) -> dict[str, Any]:
         key_points = _sections(lead.summary_structured).get("Key points") or sentences[lead.id][:8]
         others = [s for m in outlets[1:] for s in sentences[m.id]]
         for point in key_points:
-            point = point.lstrip("- ").strip()
+            point = _strip_title(point.lstrip("- ").strip(), lead.title)
             if len(agree) >= 4:
                 break
             if any(_overlap(point, o) >= 0.45 for o in others):
@@ -116,8 +135,7 @@ def extractive_brief(title: str, members: list[Article]) -> dict[str, Any]:
         for m in outlets:
             gap = m.sentiment - avg
             if abs(gap) >= SENTIMENT_GAP and len(differ) < 2:
-                mood = "positive" if gap > 0 else "negative"
-                differ.append(f"{m.source} uses noticeably more {mood} wording than the other outlets.")
+                differ.append(f"{m.source} words this {_wording(m.sentiment, gap)} than the other outlets.")
     if len(outlets) >= 3:
         counts = {norm: len(sources) for norm, sources in shared.items()}
         for m in outlets:

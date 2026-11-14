@@ -144,7 +144,7 @@ function ArticleCard({
               )}
             </div>
           </div>
-          {story && <StoryReports others={story.others} defaultOpen={defaultOpen} />}
+          {story && <StoryReports others={story.others} defaultOpen={defaultOpen} clusterId={story.cluster_id} />}
         </CardContent>
       </Card>
     </BlurFade>

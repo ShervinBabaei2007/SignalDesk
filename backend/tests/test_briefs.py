@@ -64,7 +64,7 @@ def test_extractive_brief_finds_shared_figures_and_corroborated_points():
 def test_extractive_brief_flags_outlier_wording_and_single_outlet_figures():
     brief = extractive_brief("Outage grounds flights", [LEAD, SECOND, THIRD])
     differ = " ".join(brief["differ"])
-    assert "Gamma uses noticeably more negative wording" in differ
+    assert "Gamma words this more negatively than the other outlets." in differ
     assert "Only Beta cites $400 million" in differ
 
 
@@ -182,3 +182,16 @@ def test_refresh_brief_requires_a_token_when_configured(comet_story, monkeypatch
     assert client.post(f"/api/stories/{comet_story}/brief").status_code == 401
     ok = client.post(f"/api/stories/{comet_story}/brief", headers={"X-API-Key": "s3cret"})
     assert ok.status_code == 200 and ok.json()["brief"]["agree"]
+
+
+def test_headline_prefix_and_lowercase_fragments_never_become_facts():
+    title = "Outage grounds flights across the country"
+    lead = report(1, "Alpha", 0.0, [
+        f"{title} The agency said about 1,200 flights were grounded on Friday afternoon, officials said.",
+        "and then throughout the afternoon the rest of the delays continued across several airports.",
+    ], structured="## Key points\n- and then throughout the afternoon the rest of the delays continued across several airports.")
+    lead.title = title
+    other = report(2, "Beta", 0.0, ["The agency said about 1,200 flights were grounded on Friday afternoon, officials said."])
+    brief = extractive_brief(title, [lead, other])
+    assert all(line[0].isupper() or line[0].isdigit() for line in brief["agree"])
+    assert not any(line.startswith(title) for line in brief["agree"])

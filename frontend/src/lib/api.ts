@@ -74,6 +74,40 @@ export interface StoryPage {
   limit: number
 }
 
+export interface OutletStat {
+  source: string
+  report_id: number
+  title: string
+  info_score: number | null
+  sentiment: number
+  chars: number
+  numbers: number
+  quotes: number
+  published_at: string | null
+  badges: string[]
+}
+
+export interface StoryBrief {
+  kind: 'ai' | 'auto'
+  headline: string
+  agree: string[]
+  differ: string[]
+  model: string | null
+  generated_at: string | null
+}
+
+export interface StoryDetail {
+  cluster_id: number
+  title: string
+  report_count: number
+  outlets: number
+  avg_sentiment: number
+  sentiment_spread: number
+  reports: ReportBrief[]
+  comparison: OutletStat[]
+  brief: StoryBrief
+}
+
 export interface ArticleDetail extends Article {
   related: RelatedArticle[]
   full_text: string | null
@@ -237,6 +271,8 @@ export const api = {
     request<ArticlePage>(`/articles?${feedParams(filters, offset, limit)}`),
   stories: (filters: Filters, offset: number, limit: number) =>
     request<StoryPage>(`/stories?${feedParams(filters, offset, limit)}`),
+  story: (id: number) => request<StoryDetail>(`/stories/${id}`),
+  refreshBrief: (id: number) => request<StoryDetail>(`/stories/${id}/brief`, { method: 'POST' }),
   article: (id: number) => request<ArticleDetail>(`/articles/${id}`),
   summarize: (id: number) => request<ArticleDetail>(`/articles/${id}/summarize`, { method: 'POST' }),
   feeds: () => request<Feed[]>('/feeds'),

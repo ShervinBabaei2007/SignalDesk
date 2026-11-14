@@ -172,7 +172,7 @@ export function Reader({ id }: { id: number }) {
 
             {article.related.length > 0 && (
               <div className="mt-6">
-                <AlsoCoveredBy items={article.related} />
+                <AlsoCoveredBy items={article.related} clusterId={article.cluster_id} />
               </div>
             )}
 

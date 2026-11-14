@@ -4,6 +4,7 @@ import { DailyBrief } from '@/components/app/DailyBrief'
 import { Filters } from '@/components/app/Filters'
 import { Header } from '@/components/app/Header'
 import { Reader } from '@/components/app/Reader'
+import { StoryPage } from '@/components/app/StoryPage'
 import { Sidebar } from '@/components/app/Sidebar'
 import { StatsRow } from '@/components/app/StatsRow'
 import { useRoute } from '@/hooks/useRoute'
@@ -37,13 +38,13 @@ export default function App() {
         <main className="mx-auto max-w-7xl px-4 py-5">
           <AnimatePresence mode="wait" initial={false}>
             <motion.div
-              key={route.name === 'article' ? `article-${route.id}` : 'home'}
+              key={route.name === 'home' ? 'home' : `${route.name}-${route.id}`}
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.18 }}
             >
-              {route.name === 'article' ? <Reader id={route.id} /> : <Dashboard />}
+              {route.name === 'article' ? <Reader id={route.id} /> : route.name === 'story' ? <StoryPage id={route.id} /> : <Dashboard />}
             </motion.div>
           </AnimatePresence>
         </main>

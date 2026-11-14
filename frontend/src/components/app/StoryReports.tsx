@@ -1,4 +1,4 @@
-import { ChevronDown, Newspaper } from 'lucide-react'
+import { ArrowRight, ChevronDown, Newspaper } from 'lucide-react'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { InfoScore } from '@/components/app/InfoScore'
 import { SentimentBadge } from '@/components/app/Sentiment'
@@ -6,10 +6,40 @@ import { SourceAvatar } from '@/components/app/AlsoCoveredBy'
 import type { ReportBrief } from '@/lib/api'
 import { timeAgo } from '@/lib/format'
 
+/** One report: outlet, headline, how much information it carries, and its wording. */
+export function ReportRow({ report: r, rank, best }: { report: ReportBrief; rank?: number; best?: boolean }) {
+  return (
+    <a
+      href={`#/article/${r.id}`}
+      className="group/row flex items-center gap-3 rounded-lg border bg-background/50 px-3 py-2 transition-colors hover:border-foreground/20 hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+    >
+      {rank !== undefined && (
+        <span className="grid size-5 shrink-0 place-items-center rounded-md bg-muted text-[11px] font-semibold text-muted-foreground tabular-nums">
+          {rank}
+        </span>
+      )}
+      <SourceAvatar name={r.source} size="default" />
+      <span className="min-w-0 flex-1">
+        <span className="line-clamp-2 text-[13px] leading-snug font-medium group-hover/row:text-link">{r.title}</span>
+        <span className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
+          <span className="font-medium text-foreground/80">{r.source}</span>
+          <span>·</span>
+          <span>{timeAgo(r.published_at)}</span>
+          {best && <span className="font-semibold text-link">· Best coverage</span>}
+        </span>
+      </span>
+      <InfoScore score={r.info_score} variant="bar" className="hidden sm:inline-flex" />
+      <span className="hidden w-28 justify-end md:flex">
+        <SentimentBadge score={r.sentiment} />
+      </span>
+    </a>
+  )
+}
+
 /** The other outlets' reports of a story, already ordered best-informed first. */
 export function StoryReports({
-  others, defaultOpen = false,
-}: { others: ReportBrief[]; defaultOpen?: boolean }) {
+  others, defaultOpen = false, clusterId = null,
+}: { others: ReportBrief[]; defaultOpen?: boolean; clusterId?: number | null }) {
   if (!others.length) return null
   const outlets = new Set(others.map((o) => o.source)).size
   return (
@@ -30,25 +60,18 @@ export function StoryReports({
         <ol className="mt-2 space-y-1.5">
           {others.map((r) => (
             <li key={r.id}>
-              <a
-                href={`#/article/${r.id}`}
-                className="group/row flex items-center gap-3 rounded-lg border bg-background/50 px-3 py-2 transition-colors hover:border-foreground/20 hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
-              >
-                <SourceAvatar name={r.source} size="default" />
-                <span className="min-w-0 flex-1">
-                  <span className="line-clamp-2 text-[13px] leading-snug font-medium group-hover/row:text-link">{r.title}</span>
-                  <span className="mt-0.5 block text-xs text-muted-foreground">
-                    <span className="font-medium text-foreground/80">{r.source}</span> · {timeAgo(r.published_at)}
-                  </span>
-                </span>
-                <InfoScore score={r.info_score} variant="bar" className="hidden sm:inline-flex" />
-                <span className="hidden w-28 justify-end md:flex">
-                  <SentimentBadge score={r.sentiment} />
-                </span>
-              </a>
+              <ReportRow report={r} />
             </li>
           ))}
         </ol>
+        {clusterId != null && (
+          <a
+            href={`#/story/${clusterId}`}
+            className="mt-2 inline-flex items-center gap-1 rounded-md px-1 py-1 text-sm font-medium text-link hover:underline focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+          >
+            Open the full story: brief and outlet comparison <ArrowRight className="size-3.5" aria-hidden />
+          </a>
+        )}
       </CollapsibleContent>
     </Collapsible>
   )

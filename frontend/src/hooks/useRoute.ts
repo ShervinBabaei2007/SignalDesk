@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
 
-export type Route = { name: 'home' } | { name: 'article'; id: number }
+export type Route = { name: 'home' } | { name: 'article'; id: number } | { name: 'story'; id: number }
 
 function parse(): Route {
-  const m = location.hash.match(/^#\/article\/(\d+)$/)
-  return m ? { name: 'article', id: Number(m[1]) } : { name: 'home' }
+  const article = location.hash.match(/^#\/article\/(\d+)$/)
+  if (article) return { name: 'article', id: Number(article[1]) }
+  const story = location.hash.match(/^#\/story\/(\d+)$/)
+  return story ? { name: 'story', id: Number(story[1]) } : { name: 'home' }
 }
 
 /** Hash routing keeps existing `/#/article/:id` links working with no server rewrite. */
