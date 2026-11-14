@@ -278,6 +278,9 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return (res.status === 204 ? null : await res.json()) as T
 }
 
+/** How many top stories count as "hot". Mirrors HOT_STORIES in backend/app/story_index.py. */
+export const HOT_STORIES = 8
+
 export function feedParams(filters: Filters, offset: number, limit: number, ids?: string): URLSearchParams {
   const params = new URLSearchParams({ limit: String(limit), offset: String(offset), order: filters.order })
   for (const [key, value] of Object.entries(filters)) {
@@ -291,7 +294,7 @@ export const api = {
   health: () => request<Health>('/health'),
   stats: () => request<Stats>('/stats'),
   digest: () => request<Digest>('/digest'),
-  trending: (limit = 8) => request<TrendingStory[]>(`/trending?limit=${limit}`),
+  trending: (limit = HOT_STORIES) => request<TrendingStory[]>(`/trending?limit=${limit}`),
   sendDigest: () => request<{ sent: string[] }>('/digest/send', { method: 'POST' }),
   articles: (filters: Filters, offset: number, limit: number, ids?: string) =>
     request<ArticlePage>(`/articles?${feedParams(filters, offset, limit, ids)}`),

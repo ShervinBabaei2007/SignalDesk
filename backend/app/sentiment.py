@@ -26,14 +26,14 @@ def label(score: float) -> str:
     return "neutral"
 
 
-def clauses(column, wanted: str) -> list:
+def conditions(column, wanted: str) -> tuple:
     """SQL conditions (to AND together) selecting rows whose `column` has the `wanted` label."""
     if wanted == "positive":
-        return [column > POSITIVE_ABOVE]
+        return (column > POSITIVE_ABOVE,)
     if wanted == "negative":
-        return [column < NEGATIVE_BELOW]
+        return (column < NEGATIVE_BELOW,)
     if wanted == "neutral":
-        return [column >= NEGATIVE_BELOW, column <= POSITIVE_ABOVE]
+        return (column >= NEGATIVE_BELOW, column <= POSITIVE_ABOVE)
     raise ValueError(f"unknown sentiment label: {wanted!r}")
 
 

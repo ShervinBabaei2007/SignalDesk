@@ -18,6 +18,9 @@ from .models import Article
 from .schemas import Digest, DigestItem, Stats
 
 
+DAY = timedelta(hours=24)
+
+
 def stats(db: Session) -> Stats:
     total = db.scalar(select(func.count()).select_from(Article)) or 0
     if total == 0:
@@ -26,7 +29,7 @@ def stats(db: Session) -> Stats:
                      topic_breakdown={}, sentiment_7d=[])
 
     now = datetime.now(timezone.utc)
-    day_ago = now - timedelta(hours=24)
+    day_ago = now - DAY
     week_ago = now - timedelta(days=7)
 
     ingested_24h = db.scalar(
@@ -68,7 +71,7 @@ def stats(db: Session) -> Stats:
 def digest(db: Session) -> Digest:
     """Build the daily brief. Shared by the API, the scheduler, and delivery."""
     now = datetime.now(timezone.utc)
-    day_ago = now - timedelta(hours=24)
+    day_ago = now - DAY
     recent = db.execute(
         select(Article).where(Article.published_at >= day_ago).order_by(Article.published_at.desc())
     ).scalars().all()

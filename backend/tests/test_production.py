@@ -31,18 +31,17 @@ def test_feed_rejects_non_http_scheme():
     assert res.status_code == 422
 
 
-def test_ingest_cooldown_returns_429(monkeypatch):
-    """A second ingest inside the cooldown window is refused with a friendly message."""
+def test_ingest_answers_429_when_the_pipeline_is_busy(monkeypatch):
+    """A refused cycle becomes a friendly 429. (The cooldown rules themselves: tests/test_pipeline.py.)"""
     from app import pipeline
 
-    # Hermetic: never touch the network from a unit test.
-    monkeypatch.setattr(pipeline, "ingest_all", lambda *a, **k: [])
-    monkeypatch.setattr(pipeline, "enrich_backlog", lambda *a, **k: None)
-    first = client.post("/api/ingest")
-    assert first.status_code in (200, 429)  # first call may already be in cooldown from other tests
-    second = client.post("/api/ingest")
-    assert second.status_code == 429
-    assert "ingestion" in second.json()["detail"].lower()
+    def busy(db, *, manual, ingest=None):
+        raise pipeline.Busy("An ingestion just ran — give the feeds a moment before refreshing again.")
+
+    monkeypatch.setattr(pipeline, "ingest_cycle", busy)
+    res = client.post("/api/ingest")
+    assert res.status_code == 429
+    assert "ingestion" in res.json()["detail"].lower()
 
 
 def test_add_default_feeds_is_idempotent():

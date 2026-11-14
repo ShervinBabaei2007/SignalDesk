@@ -50,11 +50,12 @@ class CycleResult:
     enrich_needed: bool = False     # pending summaries or missing lead images to fill in
 
 
-def ingest_cycle(db: Session, *, manual: bool = True,
+def ingest_cycle(db: Session, *, manual: bool,
                  ingest: Callable[..., list[dict]] | None = None) -> CycleResult:
     """Fetch every active feed and check the watchlist. Raises :class:`Busy` if not allowed now.
 
-    `manual` runs also respect the cooldown. `ingest` is the fetch seam (defaults to
+    `manual` is the button; those runs respect and start the cooldown, scheduled runs do neither
+    (they only wait for a free slot). `ingest` is the fetch seam (defaults to
     :func:`app.ingestion.ingest_all`); tests pass a fake so nothing touches the network.
     """
     global _last_finished
@@ -69,15 +70,14 @@ def ingest_cycle(db: Session, *, manual: bool = True,
         started = time.perf_counter()
         results = (ingest or ingest_all)(db, feeds, feed_rows=feed_rows)
         duration = time.perf_counter() - started
-        _last_finished = time.time()
+        if manual:
+            _last_finished = time.time()
     finally:
         _lock.release()
 
     pending = db.scalar(select(func.count()).select_from(Article).where(*enrichment.pending_clauses())) or 0
     missing_images = db.scalar(
-        select(func.count()).select_from(Article).where(
-            Article.image_url.is_(None), Article.is_seed.is_(False))
-    ) or 0
+        select(func.count()).select_from(Article).where(*enrichment.missing_image_clauses())) or 0
 
     try:
         alerts = watches.check_watches(db)

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { api, EMPTY_FILTERS, type Filters } from '@/lib/api'
 import {
@@ -17,6 +17,7 @@ export function useFeedQuery(grouped: boolean, saved: number[]) {
   const [feed, setFeed] = useState<FeedPage>(EMPTY_PAGE)
   const [loading, setLoading] = useState(true)
   const gate = useRef(latestOnly())
+  // The search text last sent to the server; typing differs from it and is debounced, other changes are not.
   const appliedSearch = useRef(applied.filters.search)
 
   const load = useCallback(async (q: FeedQuery) => {
@@ -61,7 +62,7 @@ export function useFeedQuery(grouped: boolean, saved: number[]) {
 
   return {
     filters, setFilter, clearFilters, openStory, page, setPage: setPageState,
-    hasActiveFilters: useMemo(() => hasActiveFilters(filters), [filters]),
+    hasActiveFilters: hasActiveFilters(filters),
     stories: feed.stories, articles: feed.articles, total: feed.total, articleTotal: feed.articleTotal,
     pageCount: pageCount(feed.total), loading, reload,
   }

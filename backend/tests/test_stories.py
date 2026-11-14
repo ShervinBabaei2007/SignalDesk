@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from fastapi.testclient import TestClient  # noqa: E402
 
-from app import clustering  # noqa: E402
+from app import story_index  # noqa: E402
 from app.database import Base, SessionLocal, engine  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import Article  # noqa: E402
@@ -45,7 +45,7 @@ def setup_module(_):
                            is_seed=False))
         db.commit()
         MINE.extend(a.id for a in db.query(Article).filter(Article.url.like("https://s.example/%")))
-    clustering._cache["key"] = None
+    story_index.reset_cache()
 
 
 def stories(**params):

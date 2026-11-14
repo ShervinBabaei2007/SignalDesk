@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
-from app import briefs, clustering, llm  # noqa: E402
+from app import briefs, llm, story_index  # noqa: E402
 from app.briefs import extractive_brief, figures, member_hash  # noqa: E402
 from app.database import Base, SessionLocal, engine  # noqa: E402
 from app.main import app  # noqa: E402
@@ -130,7 +130,7 @@ def comet_story():
         _add(db, 2, "Bout", "Comet giant visible to the naked eye over Europe tonight", 88.0, 1200, 0.1, numbers, minutes=10)
         _add(db, 3, "Cout", "Naked eye visible giant comet tonight over Europe skies", 60.0, 700, 0.0, minutes=20)
         db.commit()
-    clustering._cache["key"] = None
+    story_index.reset_cache()
     stories = client.get("/api/stories?limit=50").json()["items"]
     story = next(s for s in stories if "comet" in s["lead"]["title"].lower())
     return story["cluster_id"]
@@ -164,7 +164,7 @@ def test_brief_is_cached_until_the_story_changes(comet_story, monkeypatch):
     with SessionLocal() as db:  # a new report joins the story
         _add(db, 4, "Dout", "Giant comet visible to naked eye tonight over Europe sky watchers", 30.0, 200, 0.0, minutes=5)
         db.commit()
-    clustering._cache["key"] = None
+    story_index.reset_cache()
     detail = client.get(f"/api/stories/{comet_story}").json()
     assert detail["report_count"] == 4
     assert len(calls) == before + 1  # the changed story was re-briefed

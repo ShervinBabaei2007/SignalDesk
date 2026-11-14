@@ -53,7 +53,7 @@ def test_tone_follows_the_same_thresholds():
 
 def test_sql_filter_agrees_with_label_for_every_boundary_score(db):
     for wanted in sentiment.LABELS:
-        q = select(Article.sentiment).where(*sentiment.clauses(Article.sentiment, wanted))
+        q = select(Article.sentiment).where(*sentiment.conditions(Article.sentiment, wanted))
         selected = sorted(s for (s,) in db.execute(q))
         expected = sorted(s for s in BOUNDARY_SCORES if sentiment.label(s) == wanted)
         assert selected == expected

@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 
 from . import config, notifications, pipeline, reporting
 from .database import SessionLocal, ensure_columns, engine, get_db
-from . import clustering, stories as story_logic, watches
+from . import stories as story_logic, story_index, watches
 from .enrichment import enrich_article
 from .ingestion import add_missing_default_feeds
 from .models import Article, Base, Feed
@@ -229,9 +229,9 @@ def stats(db: Session = Depends(get_db)):
 # --------------------------------------------------------------------------- #
 
 @app.get("/api/trending", response_model=list[TrendingStory], tags=["Intelligence"])
-def trending_stories(limit: int = Query(clustering.HOT_STORIES, ge=1, le=20), db: Session = Depends(get_db)):
+def trending_stories(limit: int = Query(story_index.HOT_STORIES, ge=1, le=20), db: Session = Depends(get_db)):
     """Hot topics: the stories the most outlets are covering right now."""
-    return clustering.trending(db, limit)
+    return story_index.trending(db, limit)
 
 
 def _filtered(db: Session, search, source, topic, sentiment, cluster, hot, ids, order):
@@ -265,7 +265,7 @@ def list_articles(
     total = story_logic.count_matching(db, q)
     q = q.order_by(*story_logic.ordering(order))
     items = db.execute(q.offset(offset).limit(limit)).scalars().all()
-    clustering.annotate(db, items)
+    story_index.annotate(db, items)
     return ArticlePage(total=total, items=items, offset=offset, limit=limit)
 
 
@@ -292,7 +292,7 @@ def list_stories(
 
 
 def _cluster_or_404(db: Session, cluster_id: int):
-    _, by_id = clustering.get_clusters(db)
+    _, by_id = story_index.get_clusters(db)
     cluster = by_id.get(cluster_id)
     if cluster is None:
         raise HTTPException(404, "Story not found. It may have aged out or merged into another story.")
@@ -316,12 +316,9 @@ def refresh_story_brief(cluster_id: int, db: Session = Depends(get_db)):
 # Watchlist
 # --------------------------------------------------------------------------- #
 
-_WATCH_STATUS = {"invalid": 422, "conflict": 409, "not_found": 404}
-
-
 @app.exception_handler(watches.WatchError)
 async def watch_error_handler(request: Request, exc: watches.WatchError):
-    return JSONResponse(status_code=_WATCH_STATUS[exc.kind], content={"detail": exc.message})
+    return JSONResponse(status_code=exc.status_code, content={"detail": exc.message})
 
 
 @app.get("/api/watches", response_model=list[WatchOut], tags=["Watchlist"])
@@ -384,10 +381,10 @@ def get_article(article_id: int, db: Session = Depends(get_db)):
 
 def _with_related(db: Session, article: Article) -> Article:
     """Annotate an article with its story cluster and the other coverage of it."""
-    clustering.annotate(db, [article])
+    story_index.annotate(db, [article])
     others = []
     if article.cluster_id:
-        _, by_id = clustering.get_clusters(db)
+        _, by_id = story_index.get_clusters(db)
         ids = [i for i in by_id[article.cluster_id].article_ids if i != article.id]
         # best-informed report first, so "Also covered by" is ranked, not just chronological
         others = story_logic.ranked(db.execute(select(Article).where(Article.id.in_(ids))).scalars().all())

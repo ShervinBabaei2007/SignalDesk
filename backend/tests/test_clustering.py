@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from fastapi.testclient import TestClient  # noqa: E402
 
-from app import clustering  # noqa: E402
+from app import story_index  # noqa: E402
 from app.clustering import cluster_rows, title_terms  # noqa: E402
 from app.database import Base, SessionLocal, engine  # noqa: E402
 from app.main import app  # noqa: E402
@@ -76,7 +76,7 @@ def test_api_exposes_cluster_fields_filter_and_related():
             db.add(Article(title=title, url=f"https://x.example/{i}", source=src, topic="World",
                            sentiment=0.0, published_at=NOW, is_seed=False))
         db.commit()
-    clustering._cache["key"] = None
+    story_index.reset_cache()
     client = TestClient(app)
 
     items = client.get("/api/articles?limit=50").json()["items"]
@@ -125,7 +125,7 @@ def test_trending_api_ranks_multi_outlet_stories_and_skips_single_source():
             db.add(Article(title=title, url=f"https://t.example/{i}", source=src, topic="World",
                            sentiment=-0.3, published_at=NOW, is_seed=False))
         db.commit()
-    clustering._cache["key"] = None
+    story_index.reset_cache()
     client = TestClient(app)
     stories = client.get("/api/trending?limit=20").json()
     # the DB is shared with other test modules, so find our story rather than assuming it ranks first
@@ -149,10 +149,3 @@ def test_hot_filter_matches_the_union_of_hot_stories():
     assert {a["id"] for a in hot["items"]} == expected
     assert hot["total"] == sum(s["reports"] for s in stories)
 
-
-def test_story_key_round_trips_and_distinguishes_clusters_from_lone_reports():
-    cluster = clustering.Cluster(id=7, article_ids=(7, 9), sources=("A", "B"))
-    assert clustering.story_key(cluster, 9) == "c7"
-    assert clustering.story_key(None, 9) == "a9"
-    assert clustering.parse_story_key("c7") == ("c", 7)
-    assert clustering.parse_story_key("a9") == ("a", 9)

@@ -5,28 +5,20 @@ their headlines share enough distinctive words (Jaccard similarity, or a high
 overlap with at least three shared terms) and were published close together.
 Links are merged transitively (union-find), so A~B and B~C yields one story.
 
-Clustering is computed on demand over a recent window rather than stored:
-the window is small (a few hundred headlines), the result is cached until the
-article set changes, and nothing needs migrating.
+This module is the pure grouping step (headlines in, clusters out). The recent
+window, the cache and the story keys live in :mod:`app.story_index`.
 """
 
 from __future__ import annotations
 
 import re
-import threading
-from collections import Counter
 from html import unescape
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
-from sqlalchemy import func, select
-from sqlalchemy.orm import Session
 
 from .analysis import STOPWORDS
-from .models import Article
 
-WINDOW_DAYS = 3                # only cluster stories this recent
-MAX_ARTICLES = 600             # hard cap on the pairwise comparison set
 MAX_GAP = timedelta(hours=48)  # items published further apart are different stories
 JACCARD_MIN = 0.45
 OVERLAP_MIN = 0.6              # |A & B| / min(|A|, |B|), needs MIN_SHARED terms
@@ -128,133 +120,3 @@ def cluster_rows(rows: list[tuple[int, str, str, datetime | None]]) -> list[Clus
         clusters.append(Cluster(id=ids[0], article_ids=ids, sources=tuple(sources),
                                 title=rows[lead][1], lead_id=rows[lead][0]))
     return clusters
-
-
-def story_key(cluster: "Cluster | None", article_id: int) -> str:
-    """Stable key of a story: 'c<cluster id>' for a clustered story, 'a<article id>' for a lone report."""
-    return f"c{cluster.id}" if cluster else f"a{article_id}"
-
-
-def parse_story_key(key: str) -> tuple[str, int]:
-    """Inverse of :func:`story_key`: ('c' | 'a', id)."""
-    return key[0], int(key[1:])
-
-
-def _window(now: datetime) -> tuple:
-    """WHERE conditions for the recent, non-seed reports that stories are built from."""
-    cutoff = now - timedelta(days=WINDOW_DAYS)
-    return (Article.is_seed.is_(False),
-            (Article.published_at >= cutoff) | Article.published_at.is_(None))
-
-
-_cache: dict = {"key": None, "by_article": {}, "by_id": {}}
-_cache_lock = threading.Lock()
-
-
-def get_clusters(db: Session) -> tuple[dict[int, Cluster], dict[int, Cluster]]:
-    """Return ({article_id: Cluster}, {cluster_id: Cluster}) for the recent window."""
-    now = datetime.now(timezone.utc)
-    count, max_id = db.execute(
-        select(func.count(Article.id), func.max(Article.id)).where(Article.is_seed.is_(False))
-    ).one()
-    key = (count, max_id, now.strftime("%Y%m%d%H"))
-    with _cache_lock:
-        if _cache["key"] == key:
-            return _cache["by_article"], _cache["by_id"]
-        rows = db.execute(
-            select(Article.id, Article.title, Article.source, Article.published_at)
-            .where(*_window(now))
-            .order_by(Article.id.desc())
-            .limit(MAX_ARTICLES)
-        ).all()
-        norm = [(i, t, s, (p.replace(tzinfo=timezone.utc) if p and p.tzinfo is None else p))
-                for i, t, s, p in rows]
-        clusters = cluster_rows(norm)
-        by_article = {aid: c for c in clusters for aid in c.article_ids}
-        by_id = {c.id: c for c in clusters}
-        _cache.update(key=key, by_article=by_article, by_id=by_id)
-        return by_article, by_id
-
-
-def recent_stories(db: Session) -> list[tuple[str, list[Article]]]:
-    """[(story key, member articles)] for the recent window, in the same window get_clusters uses."""
-    rows = db.execute(
-        select(Article).where(*_window(datetime.now(timezone.utc)))
-        .order_by(Article.id.desc()).limit(MAX_ARTICLES)
-    ).scalars().all()
-    by_article, _ = get_clusters(db)
-    groups: dict[str, list[Article]] = {}
-    for a in rows:
-        groups.setdefault(story_key(by_article.get(a.id), a.id), []).append(a)
-    return list(groups.items())
-
-
-def annotate(db: Session, articles) -> None:
-    """Attach cluster_id / cluster_size / cluster_sources to ORM objects in place."""
-    by_article, _ = get_clusters(db)
-    for a in articles:
-        c = by_article.get(a.id)
-        a.cluster_id = c.id if c else None
-        a.cluster_size = c.size if c else 1
-        a.cluster_sources = list(c.sources) if c else []
-
-
-def to_hrs(dt: datetime | None, now: datetime) -> float:
-    if dt is None:
-        return 0.0
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return max((now - dt).total_seconds() / 3600, 0.0)
-
-
-HOT_STORIES = 8  # how many top stories count as "hot topics" (list and feed filter agree)
-
-
-def _ranked(db: Session) -> list[tuple[Cluster, dict]]:
-    """The biggest stories right now: covered by several outlets and recent.
-
-    score = (2 x distinct outlets + reports) x 0.5^(age / 24h), so a story that
-    many outlets are running today beats a bigger one from two days ago.
-    """
-    _, by_id = get_clusters(db)
-    if not by_id:
-        return []
-    ids = {i for c in by_id.values() for i in c.article_ids}
-    info = {r.id: r for r in db.execute(
-        select(Article.id, Article.topic, Article.sentiment, Article.published_at, Article.ingested_at)
-        .where(Article.id.in_(ids))).all()}
-    now = datetime.now(timezone.utc)
-    ranked = []
-    for c in by_id.values():
-        if len(c.sources) < 2:  # "hot" means more than one outlet is running it
-            continue
-        members = [info[i] for i in c.article_ids if i in info]
-        if not members:
-            continue
-        stamps = [m.published_at or m.ingested_at for m in members]
-        latest = max(stamps, key=lambda d: d if d.tzinfo else d.replace(tzinfo=timezone.utc))
-        age = min(to_hrs(d, now) for d in stamps)
-        score = (len(c.sources) * 2 + c.size) * 0.5 ** (age / 24)
-        ranked.append((score, c, {
-            "cluster_id": c.id,
-            "article_id": c.lead_id,
-            "title": c.title,
-            "reports": c.size,
-            "outlets": len(c.sources),
-            "sources": list(c.sources),
-            "topic": Counter(m.topic for m in members).most_common(1)[0][0],
-            "avg_sentiment": round(sum(m.sentiment for m in members) / len(members), 3),
-            "latest_at": latest if latest.tzinfo else latest.replace(tzinfo=timezone.utc),
-        }))
-    ranked.sort(key=lambda t: t[0], reverse=True)
-    return [(c, story) for _, c, story in ranked]
-
-
-def trending(db: Session, limit: int = HOT_STORIES) -> list[dict]:
-    """The top `limit` hot stories (see _ranked for how they are scored)."""
-    return [story for _, story in _ranked(db)[:limit]]
-
-
-def hot_article_ids(db: Session, limit: int = HOT_STORIES) -> list[int]:
-    """Every article that belongs to one of the hot stories."""
-    return [i for c, _ in _ranked(db)[:limit] for i in c.article_ids]

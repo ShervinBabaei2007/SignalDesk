@@ -6,9 +6,6 @@ import { EMPTY_FILTERS, type Article, type ArticlePage, type Filters, type Story
 
 export const PAGE_SIZE = 20
 
-/** How many top stories count as "hot". Mirrors HOT_STORIES in backend/app/clustering.py. */
-export const HOT_STORIES = 8
-
 /** What the server is asked for: the filters, a page, grouped or flat, and saved ids. */
 export interface FeedQuery {
   filters: Filters

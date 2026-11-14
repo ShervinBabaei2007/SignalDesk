@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from fastapi.testclient import TestClient  # noqa: E402
 
-from app import clustering, notifications, watches  # noqa: E402
+from app import notifications, story_index, watches  # noqa: E402
 from app.database import Base, SessionLocal, engine  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import Article, Watch, WatchAlert  # noqa: E402
@@ -30,7 +30,7 @@ def add_story(db, titles_sources, topic="World"):
         db.add(Article(title=title, url=f"https://w.example/{_counter[0]}", source=source, topic=topic,
                        sentiment=0.0, published_at=NOW - timedelta(minutes=_counter[0]), is_seed=False))
     db.commit()
-    clustering._cache["key"] = None
+    story_index.reset_cache()
 
 
 def reset_watches(db):
@@ -155,11 +155,7 @@ def test_watch_writes_require_a_token_when_configured(monkeypatch):
 
 
 def test_delivery_seam_marks_only_the_alerts_it_delivered():
-    delivered = []
-
-    def recording(alerts):
-        delivered.append(alerts)
-        return True
+    recording = watches.RecordingDelivery()
 
     with SessionLocal() as db:
         reset_watches(db)
@@ -174,7 +170,7 @@ def test_delivery_seam_marks_only_the_alerts_it_delivered():
         db.add(a)
         db.commit()
         alerts = watches.check_watches(db, notify=recording)
-        assert [x["term"] for x in alerts] == ["island resort"] and len(delivered) == 1
+        assert [x["term"] for x in alerts] == ["island resort"] and len(recording.batches) == 1
         rows = {r.watch_id: r.notified for r in db.query(WatchAlert).all()}
         assert rows[a.id] is True
         assert [v for k, v in rows.items() if k != a.id] == [False]
@@ -185,7 +181,7 @@ def test_failed_delivery_leaves_alerts_unnotified():
         reset_watches(db)
         client.post("/api/watches", json={"term": "typhoon", "min_outlets": 1})
         add_story(db, [("Typhoon forces airport closures across the southern archipelago", "Alpha")])
-        assert len(watches.check_watches(db, notify=lambda alerts: False)) == 1
+        assert len(watches.check_watches(db, notify=watches.RecordingDelivery(succeeds=False))) == 1
         assert db.query(WatchAlert).filter_by(notified=True).count() == 0
 
 
@@ -194,7 +190,7 @@ def test_story_matches_is_the_single_rule_for_counts_and_alerts():
         reset_watches(db)
         add_story(db, [("Heatwave grips central plains as records fall for third day", "Alpha")])
         watch = Watch(term="heatwave", min_outlets=2, is_active=True)
-        members = [m for k, ms in watches.recent_stories(db) for m in ms if "heatwave" in m.title.lower()]
+        members = [m for k, ms in story_index.recent_stories(db) for m in ms if "heatwave" in m.title.lower()]
         assert not watches.story_matches(watch, members)  # one outlet is not enough
         watch.min_outlets = 1
         assert watches.story_matches(watch, members)

@@ -1,7 +1,7 @@
 """Stories: one card per event, with the best-informed report on top.
 
 Several outlets usually cover the same event. Instead of listing each report
-separately, the feed groups them (see :mod:`app.clustering`) and orders the
+separately, the feed groups them (see :mod:`app.story_index`) and orders the
 reports inside each story by how much real information they carry (see
 :mod:`app.quality`): best score first, then longer text, then newer.
 
@@ -18,8 +18,9 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import Select
 
-from . import briefs, clustering, watches
+from . import briefs, story_index, watches
 from . import sentiment as sentiment_scale
+from .clustering import Cluster
 from .quality import _sections
 from .models import Article
 
@@ -73,11 +74,11 @@ def apply_filters(
     if topic:
         q = q.where(Article.topic == topic)
     if sentiment in sentiment_scale.LABELS:
-        q = q.where(*sentiment_scale.clauses(Article.sentiment, sentiment))
+        q = q.where(*sentiment_scale.conditions(Article.sentiment, sentiment))
     if hot:
-        q = q.where(Article.id.in_(clustering.hot_article_ids(db) or [0]))
+        q = q.where(Article.id.in_(story_index.hot_article_ids(db) or [0]))
     if cluster is not None:
-        _, by_id = clustering.get_clusters(db)
+        _, by_id = story_index.get_clusters(db)
         story = by_id.get(cluster)
         q = q.where(Article.id.in_(story.article_ids if story else [0]))
     if ids is not None:
@@ -133,10 +134,10 @@ def build_page(db: Session, ordered_ids: list[int], offset: int, limit: int) -> 
     A story's position is where its first report appears in the requested order,
     so "newest" sorts stories by their newest report and "info" by their best.
     """
-    by_article, _ = clustering.get_clusters(db)
+    by_article, _ = story_index.get_clusters(db)
     groups: dict[str, list[int]] = {}
     for article_id in ordered_ids:
-        groups.setdefault(clustering.story_key(by_article.get(article_id), article_id), []).append(article_id)
+        groups.setdefault(story_index.story_key(by_article.get(article_id), article_id), []).append(article_id)
 
     keys = list(groups)
     page_keys = keys[offset: offset + limit]
@@ -150,12 +151,13 @@ def build_page(db: Session, ordered_ids: list[int], offset: int, limit: int) -> 
         members = ranked([articles[i] for i in groups[key] if i in articles])
         if not members:
             continue
+        parsed = story_index.parse_story_key(key)
         lead = members[0]
         leads.append(lead)
         sources = list(dict.fromkeys(m.source for m in members))
         stories.append({
             "key": key,
-            "cluster_id": clustering.parse_story_key(key)[1] if key[0] == "c" else None,
+            "cluster_id": parsed.id if parsed.is_cluster else None,
             "lead": lead,
             "others": [brief(m) for m in members[1:]],
             "report_count": len(members),
@@ -164,7 +166,7 @@ def build_page(db: Session, ordered_ids: list[int], offset: int, limit: int) -> 
             "best_score": lead.info_score,
             "watch_matches": watches.matching_terms(active_watches, members) if active_watches else [],
         })
-    clustering.annotate(db, leads)
+    story_index.annotate(db, leads)
     return {"stories": stories, "total": len(keys), "article_total": len(ordered_ids)}
 
 
@@ -204,7 +206,7 @@ def outlet_stats(members: list[Article]) -> list[dict]:
     return sorted(rows, key=lambda r: (r["info_score"] or 0.0), reverse=True)
 
 
-def story_detail(db: Session, cluster: "clustering.Cluster", force_brief: bool = False) -> dict:
+def story_detail(db: Session, cluster: Cluster, force_brief: bool = False) -> dict:
     members = ranked(list(db.execute(select(Article).where(Article.id.in_(cluster.article_ids))).scalars()))
     avg = sum(m.sentiment for m in members) / len(members) if members else 0.0
     sentiments = [m.sentiment for m in members]

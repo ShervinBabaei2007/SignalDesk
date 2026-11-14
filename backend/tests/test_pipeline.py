@@ -43,7 +43,7 @@ def fake_ingest(calls):
 def test_cycle_fetches_only_active_feeds_and_reports_what_is_waiting(session_factory):
     calls = []
     with session_factory() as db:
-        result = pipeline.ingest_cycle(db, ingest=fake_ingest(calls))
+        result = pipeline.ingest_cycle(db, manual=True, ingest=fake_ingest(calls))
     assert calls == [["Active"]]
     assert result.enrich_pending == 1          # the seed article never counts as pending
     assert result.enrich_needed is True
@@ -52,10 +52,16 @@ def test_cycle_fetches_only_active_feeds_and_reports_what_is_waiting(session_fac
 
 def test_manual_runs_respect_the_cooldown_but_the_scheduler_does_not(session_factory):
     with session_factory() as db:
-        pipeline.ingest_cycle(db, ingest=fake_ingest([]))
+        pipeline.ingest_cycle(db, manual=True, ingest=fake_ingest([]))
         with pytest.raises(pipeline.Busy):
             pipeline.ingest_cycle(db, manual=True, ingest=fake_ingest([]))
         pipeline.ingest_cycle(db, manual=False, ingest=fake_ingest([]))  # no exception
+
+
+def test_a_scheduled_run_does_not_start_the_manual_cooldown(session_factory):
+    pipeline.scheduled_cycle(session_factory, ingest=fake_ingest([]), enrich=lambda db: {"enriched": 0, "remaining": 0})
+    with session_factory() as db:
+        pipeline.ingest_cycle(db, manual=True, ingest=fake_ingest([]))  # the button still works right after
 
 
 def test_a_running_cycle_blocks_both_manual_and_scheduled_runs(session_factory):
@@ -76,7 +82,7 @@ def test_a_failing_watch_check_never_fails_the_ingest(session_factory, monkeypat
         raise RuntimeError("watch table is broken")
     monkeypatch.setattr(pipeline.watches, "check_watches", boom)
     with session_factory() as db:
-        result = pipeline.ingest_cycle(db, ingest=fake_ingest([]))
+        result = pipeline.ingest_cycle(db, manual=True, ingest=fake_ingest([]))
     assert result.alerts == [] and result.results
 
 

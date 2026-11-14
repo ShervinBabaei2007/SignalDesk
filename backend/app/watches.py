@@ -24,7 +24,7 @@ from typing import Callable
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import clustering, notifications
+from . import notifications, story_index
 from .analysis import TOPIC_EMOJI
 from .models import Article, Watch, WatchAlert
 
@@ -34,12 +34,25 @@ MAX_WATCHES = 25
 
 
 class WatchError(Exception):
-    """A watch rule was broken. `kind` is 'invalid', 'conflict' or 'not_found'."""
+    """A watch rule was broken. `status_code` is the HTTP status the API answers with."""
 
-    def __init__(self, kind: str, message: str):
+    status_code = 400
+
+    def __init__(self, message: str):
         super().__init__(message)
-        self.kind = kind
         self.message = message
+
+
+class InvalidWatch(WatchError):
+    status_code = 422
+
+
+class WatchConflict(WatchError):
+    status_code = 409
+
+
+class WatchNotFound(WatchError):
+    status_code = 404
 
 
 def term_matches(term: str, text: str) -> bool:
@@ -57,9 +70,13 @@ def matches(watch: Watch, members: list[Article]) -> bool:
     return term_matches(watch.term, story_text(members))
 
 
+def outlet_count(members: list[Article]) -> int:
+    return len({m.source for m in members})
+
+
 def story_matches(watch: Watch, members: list[Article]) -> bool:
     """The one rule for "this watch fires on this story": enough outlets, and the term/topic match."""
-    return len({m.source for m in members}) >= watch.min_outlets and matches(watch, members)
+    return outlet_count(members) >= watch.min_outlets and matches(watch, members)
 
 
 def matching_terms(watches: list[Watch], members: list[Article]) -> list[str]:
@@ -71,23 +88,18 @@ def active(db: Session) -> list[Watch]:
     return list(db.execute(select(Watch).where(Watch.is_active.is_(True)).order_by(Watch.id)).scalars())
 
 
-def recent_stories(db: Session) -> list[tuple[str, list[Article]]]:
-    """[(story key, member articles)] for the recent window; keys match the feed's story keys."""
-    return clustering.recent_stories(db)
-
-
 def _headline(key: str, members: list[Article], by_id: dict) -> tuple[str, int | None, int]:
     """(title, cluster id, lead article id) for an alert."""
-    kind, ident = clustering.parse_story_key(key)
-    if kind == "c":
-        cluster = by_id.get(ident)
+    parsed = story_index.parse_story_key(key)
+    if parsed.is_cluster:
+        cluster = by_id.get(parsed.id)
         if cluster is not None:
             return cluster.title, cluster.id, cluster.lead_id
     return members[0].title, None, members[0].id
 
 
 def matching_stories(db: Session, watch: Watch) -> list[tuple[str, list[Article]]]:
-    return [(key, members) for key, members in recent_stories(db) if story_matches(watch, members)]
+    return [(key, members) for key, members in story_index.recent_stories(db) if story_matches(watch, members)]
 
 
 def baseline(db: Session, watch: Watch) -> int:
@@ -104,10 +116,25 @@ def baseline(db: Session, watch: Watch) -> int:
 
 
 def deliver_to_channels(alerts: list[dict]) -> bool:
-    """Default delivery adapter: Slack/email, when any channel is configured. True if it was sent."""
+    """Production delivery adapter: Slack/email, when any channel is configured. True if it was sent."""
     if not notifications.configured_channels():
         return False
     return bool(notifications.deliver_alert(alert_subject(alerts), alert_text(alerts))["sent"])
+
+
+class RecordingDelivery:
+    """In-memory delivery adapter for tests and dry runs: remembers each batch, never sends anything.
+
+    `succeeds=False` simulates a channel that is down.
+    """
+
+    def __init__(self, succeeds: bool = True):
+        self.succeeds = succeeds
+        self.batches: list[list[dict]] = []
+
+    def __call__(self, alerts: list[dict]) -> bool:
+        self.batches.append(alerts)
+        return self.succeeds
 
 
 def check_watches(db: Session, deliver: bool = True,
@@ -120,8 +147,8 @@ def check_watches(db: Session, deliver: bool = True,
     watches = active(db)
     if not watches:
         return []
-    _, by_id = clustering.get_clusters(db)
-    stories = recent_stories(db)
+    _, by_id = story_index.get_clusters(db)
+    stories = story_index.recent_stories(db)
     alerts: list[dict] = []
     for watch in watches:
         seen = {k for (k,) in db.execute(select(WatchAlert.story_key).where(WatchAlert.watch_id == watch.id))}
@@ -132,7 +159,7 @@ def check_watches(db: Session, deliver: bool = True,
             db.add(WatchAlert(watch_id=watch.id, story_key=key, notified=False))
             alerts.append({
                 "watch_id": watch.id, "term": watch.term, "story_key": key, "cluster_id": cluster_id,
-                "article_id": article_id, "title": title, "outlets": len({m.source for m in members}),
+                "article_id": article_id, "title": title, "outlets": outlet_count(members),
                 "reports": len(members),
             })
     if alerts:
@@ -174,7 +201,7 @@ def all_watches(db: Session) -> list[Watch]:
 
 def with_counts(db: Session, rows: list[Watch]) -> list[Watch]:
     """Set `.matches` on each watch: how many recent stories it fires on right now."""
-    stories = recent_stories(db)
+    stories = story_index.recent_stories(db)
     for w in rows:
         w.matches = sum(1 for _, members in stories if story_matches(w, members))
     return rows
@@ -184,14 +211,14 @@ def create(db: Session, term: str, topic: str | None, min_outlets: int) -> Watch
     term = " ".join(term.split())
     topic = (topic or "").strip() or None
     if not term:
-        raise WatchError("invalid", "A watch needs a word or phrase")
+        raise InvalidWatch("A watch needs a word or phrase")
     if topic and topic not in TOPIC_EMOJI:
-        raise WatchError("invalid", f"topic must be one of: {', '.join(TOPIC_EMOJI)}")
+        raise InvalidWatch(f"topic must be one of: {', '.join(TOPIC_EMOJI)}")
     existing = all_watches(db)
     if len(existing) >= MAX_WATCHES:
-        raise WatchError("conflict", f"You can watch up to {MAX_WATCHES} terms; remove one first")
+        raise WatchConflict(f"You can watch up to {MAX_WATCHES} terms; remove one first")
     if any(w.term.lower() == term.lower() and w.topic == topic for w in existing):
-        raise WatchError("conflict", "You are already watching that")
+        raise WatchConflict("You are already watching that")
     watch = Watch(term=term, topic=topic, min_outlets=min_outlets, is_active=True)
     db.add(watch)
     db.commit()
@@ -203,7 +230,7 @@ def create(db: Session, term: str, topic: str | None, min_outlets: int) -> Watch
 def _get(db: Session, watch_id: int) -> Watch:
     watch = db.get(Watch, watch_id)
     if not watch:
-        raise WatchError("not_found", "Watch not found")
+        raise WatchNotFound("Watch not found")
     return watch
 
 

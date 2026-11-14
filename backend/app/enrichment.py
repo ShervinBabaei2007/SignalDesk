@@ -133,6 +133,11 @@ def pending_clauses() -> tuple:
     return (Article.enriched_at.is_(None), Article.is_seed.is_(False))
 
 
+def missing_image_clauses() -> tuple:
+    """WHERE conditions for "no lead image looked up yet" (an empty string means looked, found none)."""
+    return (Article.image_url.is_(None), Article.is_seed.is_(False))
+
+
 def enrich_pending_articles(db: Session, limit: int | None = None) -> dict:
     """Enrich up to `limit` articles that don't have a deep summary yet."""
     from . import config as _config
@@ -156,8 +161,7 @@ def enrich_pending_articles(db: Session, limit: int | None = None) -> dict:
         if not pending:
             for article in db.execute(
                 select(Article)
-                .where(Article.image_url.is_(None), Article.is_seed.is_(False),
-                       Article.enriched_at.is_not(None))
+                .where(*missing_image_clauses(), Article.enriched_at.is_not(None))
                 .order_by(Article.published_at.desc().nullslast())
                 .limit(limit)
             ).scalars():
