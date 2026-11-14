@@ -44,7 +44,7 @@ def stats(db: Session) -> Stats:
     # Daily average sentiment for the last 7 days (for the trend chart)
     rows = db.execute(
         select(Article.published_at, Article.sentiment)
-        .where(Article.published_at >= week_ago)
+        .where(Article.published_at >= week_ago, Article.published_at <= now)
     ).all()
     buckets: dict[str, list[float]] = {}
     for published, sentiment in rows:

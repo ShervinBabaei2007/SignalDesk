@@ -1,11 +1,11 @@
 """RSS ingestion pipeline: fetch feeds, dedupe, analyze, store."""
 
+import calendar
 import logging
 import re
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from html import unescape
-from time import mktime
 
 import feedparser
 from sqlalchemy import select
@@ -19,6 +19,17 @@ from .models import Article, Feed
 from .quality import information_score
 
 logger = logging.getLogger("signaldesk.ingestion")
+
+# Feeds sometimes date entries ahead of now (scheduled posts, wrong timezones); allow only small clock skew.
+FUTURE_SKEW = timedelta(hours=1)
+
+
+def clamp_future(published_at: datetime | None, now: datetime | None = None) -> datetime | None:
+    """Return the fetch time instead of a publish date that is more than FUTURE_SKEW in the future."""
+    now = now or datetime.now(timezone.utc)
+    if published_at is not None and published_at.tzinfo is not None and published_at > now + FUTURE_SKEW:
+        return now
+    return published_at
 
 DEFAULT_FEEDS = [
     {"name": "BBC World", "url": "https://feeds.bbci.co.uk/news/world/rss.xml"},
@@ -69,7 +80,7 @@ def _parse_published(entry) -> datetime | None:
         value = getattr(entry, attr, None)
         if value:
             try:
-                return datetime.fromtimestamp(mktime(value), tz=timezone.utc)
+                return datetime.fromtimestamp(calendar.timegm(value), tz=timezone.utc)
             except Exception:  # noqa: BLE001
                 pass
     for attr in ("published", "updated"):
@@ -169,7 +180,7 @@ def ingest_feed(
             continue
 
         text = _entry_text(entry)
-        published_at = _parse_published(entry)
+        published_at = clamp_future(_parse_published(entry))
         if config.MAX_ARTICLE_AGE_DAYS > 0 and published_at is not None:
             cutoff = datetime.now(timezone.utc) - timedelta(days=config.MAX_ARTICLE_AGE_DAYS)
             if published_at < cutoff:
