@@ -158,6 +158,19 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
       toast.success(
         r.added ? `${r.added} new article${r.added === 1 ? '' : 's'} added` : 'All caught up — no new articles right now',
       )
+      if (r.alerts?.length) {
+        const first = r.alerts[0]
+        toast(`🔔 ${r.alerts.length} watched ${r.alerts.length === 1 ? 'story' : 'stories'} matched`, {
+          description: r.alerts.slice(0, 3).map((a) => `“${a.term}”: ${a.title}`).join('\n'),
+          duration: 10000,
+          action: {
+            label: 'Open',
+            onClick: () => {
+              location.hash = first.cluster_id ? `#/story/${first.cluster_id}` : `#/article/${first.article_id}`
+            },
+          },
+        })
+      }
       await refreshAll()
     } catch (err) {
       const e = err as ApiError

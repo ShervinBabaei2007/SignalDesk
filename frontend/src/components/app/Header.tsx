@@ -1,5 +1,5 @@
 import { useState, type MouseEvent } from 'react'
-import { Download, Loader2, Mail, Menu, Radio, Settings as SettingsIcon, Zap } from 'lucide-react'
+import { Bell, Download, Loader2, Mail, Menu, Radio, Settings as SettingsIcon, Zap } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -7,6 +7,7 @@ import { ShimmerButton } from '@/components/ui/shimmer-button'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { FeedsDialog } from '@/components/app/FeedsDialog'
 import { SettingsSheet } from '@/components/app/SettingsSheet'
+import { WatchlistDialog } from '@/components/app/WatchlistDialog'
 import { useDashboard } from '@/hooks/useDashboard'
 import { goHome } from '@/hooks/useRoute'
 import { api, ApiError } from '@/lib/api'
@@ -16,6 +17,7 @@ export function Header() {
   const [feedsOpen, setFeedsOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [watchOpen, setWatchOpen] = useState(false)
 
   // The logo always means "take me home": back to the dashboard, filters cleared, scrolled to top.
   const onLogo = (e: MouseEvent) => {
@@ -81,6 +83,9 @@ export function Header() {
             <Button variant="ghost" onClick={() => setFeedsOpen(true)}>
               <Radio data-icon="inline-start" /> Feeds
             </Button>
+            <Button variant="ghost" onClick={() => setWatchOpen(true)}>
+              <Bell data-icon="inline-start" /> Watchlist
+            </Button>
             <Button variant="ghost" onClick={() => setSettingsOpen(true)}>
               <SettingsIcon data-icon="inline-start" /> Settings
             </Button>
@@ -105,6 +110,9 @@ export function Header() {
             <Button variant="outline" size="lg" className="h-11 justify-start" onClick={() => { setMenuOpen(false); setFeedsOpen(true) }}>
               <Radio data-icon="inline-start" /> Manage feeds
             </Button>
+            <Button variant="outline" size="lg" className="h-11 justify-start" onClick={() => { setMenuOpen(false); setWatchOpen(true) }}>
+              <Bell data-icon="inline-start" /> Watchlist
+            </Button>
             <Button variant="outline" size="lg" className="h-11 justify-start" onClick={() => { setMenuOpen(false); void sendBrief() }}>
               <Mail data-icon="inline-start" /> Send daily brief
             </Button>
@@ -119,6 +127,7 @@ export function Header() {
       </Sheet>
 
       <FeedsDialog open={feedsOpen} onOpenChange={setFeedsOpen} />
+      <WatchlistDialog open={watchOpen} onOpenChange={setWatchOpen} />
       <SettingsSheet open={settingsOpen} onOpenChange={setSettingsOpen} />
     </header>
   )

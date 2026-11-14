@@ -171,18 +171,41 @@ export interface Feed {
   last_status: string | null
 }
 
+export interface Watch {
+  id: number
+  term: string
+  topic: string | null
+  min_outlets: number
+  is_active: boolean
+  created_at: string
+  matches: number
+}
+
+export interface WatchAlert {
+  watch_id: number
+  term: string
+  story_key: string
+  cluster_id: number | null
+  article_id: number
+  title: string
+  outlets: number
+  reports: number
+}
+
 export interface IngestResult {
   added: number
   fetched: number
   skipped: number
   duration_seconds: number
   enrich_queued: number
+  alerts: WatchAlert[]
 }
 
 export interface Health {
   status: string
   articles: number
   feeds: number
+  features?: { digest_delivery?: string[]; llm_analysis?: boolean; auth_required?: boolean }
 }
 
 export interface Filters {
@@ -283,5 +306,11 @@ export const api = {
     request<Feed>('/feeds', { method: 'POST', body: JSON.stringify({ name, url }) }),
   addDefaultFeeds: () => request<Feed[]>('/feeds/defaults', { method: 'POST' }),
   deleteFeed: (id: number) => request<null>(`/feeds/${id}`, { method: 'DELETE' }),
+  watches: () => request<Watch[]>('/watches'),
+  addWatch: (term: string, topic: string | null, minOutlets: number) =>
+    request<Watch>('/watches', { method: 'POST', body: JSON.stringify({ term, topic, min_outlets: minOutlets }) }),
+  setWatchActive: (id: number, isActive: boolean) =>
+    request<Watch>(`/watches/${id}`, { method: 'PATCH', body: JSON.stringify({ is_active: isActive }) }),
+  deleteWatch: (id: number) => request<null>(`/watches/${id}`, { method: 'DELETE' }),
   ingest: () => request<IngestResult>('/ingest', { method: 'POST' }),
 }

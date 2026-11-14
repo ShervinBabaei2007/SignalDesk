@@ -1,4 +1,4 @@
-import { Award, ChevronLeft, ChevronRight, ExternalLink, FileText, Link2, Newspaper, Satellite, Sparkles, Sprout, Star, X } from 'lucide-react'
+import { Award, Bell, ChevronLeft, ChevronRight, ExternalLink, FileText, Link2, Newspaper, Satellite, Sparkles, Sprout, Star, X } from 'lucide-react'
 import { useRef } from 'react'
 import { BookmarkButton } from '@/components/app/BookmarkButton'
 import { Alert, AlertAction, AlertDescription } from '@/components/ui/alert'
@@ -90,6 +90,12 @@ function ArticleCard({
               </Badge>
             )}
             <InfoScore score={a.info_score} />
+            {story && story.watch_matches.length > 0 && (
+              <Badge variant="outline" className="gap-1 border-amber-500/40 font-medium text-amber-500" title="Matches your watchlist">
+                <Bell className="size-3" aria-hidden />
+                Watching: {story.watch_matches.join(', ')}
+              </Badge>
+            )}
             {story ? (
               story.report_count > 1 && (
                 <Badge variant="outline" className="gap-1 border-link/40 font-semibold text-link" title="The most informative of this story's reports">

@@ -48,26 +48,38 @@ _ingest_lock = threading.Lock()  # prevents overlapping ingestion runs
 _ingest_last_finished = 0.0
 
 
-async def _scheduled_ingestion():
-    """Auto-pilot: periodically run the ingestion pipeline in the background."""
+def _scheduled_cycle() -> None:
+    """One auto-pilot round, run in a worker thread so the web server stays responsive:
+    ingest every feed, check the watchlist, then enrich whatever is waiting."""
     from .database import SessionLocal as _SL
 
+    with _SL() as db:
+        feeds = [
+            {"name": f.name, "url": f.url}
+            for f in db.execute(select(Feed).where(Feed.is_active)).scalars().all()
+        ]
+        feed_rows = {f.name: f for f in db.execute(select(Feed)).scalars().all()}
+        results = ingest_all(db, feeds, feed_rows=feed_rows)
+        added = sum(r["added"] for r in results)
+        logger.info("[scheduler] auto-ingest finished: +%s new articles", added)
+        try:
+            watches.check_watches(db)
+        except Exception:  # noqa: BLE001
+            logger.exception("[watch] scheduled check failed")
+    # Enrich the backlog too; without this, scheduled articles would keep low
+    # information scores until someone pressed "Ingest feeds".
+    _enrich_background()
+
+
+async def _scheduled_ingestion():
+    """Auto-pilot: periodically run the ingestion pipeline in the background."""
     first_run = True
     while True:
         wait = 30 if first_run else INGEST_INTERVAL_MINUTES * 60
         first_run = False
         await asyncio.sleep(wait)
         try:
-            with _SL() as db:
-                feeds = [
-                    {"name": f.name, "url": f.url}
-                    for f in db.execute(select(Feed).where(Feed.is_active)).scalars().all()
-                ]
-                feed_rows = {f.name: f for f in db.execute(select(Feed)).scalars().all()}
-                results = ingest_all(db, feeds, feed_rows=feed_rows)
-                added = sum(r["added"] for r in results)
-                logger.info("[scheduler] auto-ingest finished: +%s new articles", added)
-                watches.check_watches(db)
+            await asyncio.to_thread(_scheduled_cycle)
         except Exception:  # noqa: BLE001
             logger.exception("[scheduler] auto-ingest failed")
 
