@@ -15,5 +15,5 @@
     { "source": "/api/(.*)", "destination": { "service": "backend" } },
     { "source": "/(.*)", "destination": { "service": "frontend" } }
   ],
-  "crons": [{ "path": "/api/cron/ingest", "schedule": "*/15 * * * *" }]
+  "crons": [{ "path": "/api/cron/ingest", "schedule": "0 6 * * *" }]
 }

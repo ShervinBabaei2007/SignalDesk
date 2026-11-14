@@ -1,0 +1,17 @@
+# Calls the deployed app every 15 minutes, since Vercel Hobby cron jobs can only run once a day.
+name: Scheduled ingest
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger an ingest round
+        run: |
+          curl --fail --silent --show-error --max-time 300 \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "${{ secrets.APP_URL }}/api/cron/ingest"
