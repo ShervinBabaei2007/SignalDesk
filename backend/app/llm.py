@@ -200,6 +200,33 @@ class LLMProvider:
         raise NotImplementedError
 
 
+STORY_PROMPT = """You compare several news reports about the same event.
+
+Use only what the supplied reports say. Do not invent facts, numbers, quotes or events.
+Write in plain, simple English that anyone can follow.
+
+Return valid JSON with exactly these fields:
+{
+  "headline": "One plain sentence saying what happened.",
+  "agree": ["3-4 short facts that several of the reports share"],
+  "differ": ["0-3 short points where the reports differ in emphasis, figures or tone; name the outlet"]
+}"""
+
+
+def normalize_story_brief(data: dict[str, Any]) -> dict[str, Any] | None:
+    """Validate raw model JSON for a story brief; None when it is unusable."""
+    if not isinstance(data, dict):
+        return None
+    agree = _clean_list(data.get("agree"), 5, 320)
+    if not agree:
+        return None
+    return {
+        "headline": _clean_str(data.get("headline"), 220),
+        "agree": agree,
+        "differ": _clean_list(data.get("differ"), 4, 320),
+    }
+
+
 class OpenAICompatibleProvider(LLMProvider):
     """Provider for OpenAI and any server exposing /chat/completions."""
 
@@ -266,6 +293,52 @@ class OpenAICompatibleProvider(LLMProvider):
         if analysis is None:
             logger.warning("[llm] unusable response (first 120 chars): %.120s", content)
         return analysis
+
+
+def _complete_json(provider: "OpenAICompatibleProvider", system: str, user: str) -> str | None:
+    """One chat completion that is asked for JSON; returns the message text or None."""
+    headers = {"Content-Type": "application/json"}
+    if provider.api_key:
+        headers["Authorization"] = f"Bearer {provider.api_key}"
+
+    def _post(json_mode: bool) -> httpx.Response:
+        payload: dict[str, Any] = {
+            "model": provider.model, "temperature": 0.2,
+            "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
+        }
+        if json_mode:
+            payload["response_format"] = {"type": "json_object"}
+        return httpx.post(f"{provider.base_url}/chat/completions", headers=headers, json=payload,
+                          timeout=provider.timeout)
+
+    try:
+        resp = _post(True)
+        if resp.status_code == 400:
+            resp = _post(False)
+        resp.raise_for_status()
+        return resp.json()["choices"][0]["message"]["content"]
+    except Exception as exc:  # noqa: BLE001 - a failed brief must never break the page
+        logger.warning("[llm] story brief failed: %s", exc)
+        return None
+
+
+def story_brief(*, title: str, reports: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Ask the configured model to compare a story's reports. None when LLM is off or unusable."""
+    provider = get_provider()
+    if provider is None or not reports:
+        return None
+    body = "\n\n".join(
+        f"[{r['source']}] {r['title']}\n{r['text'][: config.LLM_MAX_INPUT_CHARS // max(len(reports), 1)]}"
+        for r in reports
+    )
+    content = _complete_json(provider, STORY_PROMPT, f"Story: {title}\n\nReports:\n{body}")
+    raw = _extract_json(content or "")
+    brief = normalize_story_brief(raw) if raw else None
+    if brief is None:
+        logger.warning("[llm] unusable story brief (first 120 chars): %.120s", content or "")
+        return None
+    brief["model"] = provider.model
+    return brief
 
 
 def get_provider() -> LLMProvider | None:

@@ -62,3 +62,15 @@ class Feed(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     last_fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_status: Mapped[str | None] = mapped_column(String(300), nullable=True)
+
+
+class StoryBrief(Base):
+    """Cached "what everyone agrees on / where they differ" for one story.
+
+    Rewritten only when the story's reports change (`member_hash`)."""
+    __tablename__ = "story_briefs"
+
+    cluster_id: Mapped[int] = mapped_column(primary_key=True)
+    member_hash: Mapped[str] = mapped_column(String(40), nullable=False)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)  # JSON: kind, headline, agree, differ, model
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

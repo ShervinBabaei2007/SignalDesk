@@ -91,6 +91,40 @@ class StoryPage(BaseModel):
     limit: int
 
 
+class OutletStat(BaseModel):
+    source: str
+    report_id: int
+    title: str
+    info_score: float | None
+    sentiment: float
+    chars: int
+    numbers: int  # figures called out in the report's "By the numbers"
+    quotes: int
+    published_at: datetime | None
+    badges: list[str] = []
+
+
+class StoryBriefOut(BaseModel):
+    kind: str  # "ai" (written by the configured model) or "auto" (extractive fallback)
+    headline: str
+    agree: list[str]
+    differ: list[str]
+    model: str | None = None
+    generated_at: datetime | None = None
+
+
+class StoryDetail(BaseModel):
+    cluster_id: int
+    title: str
+    report_count: int
+    outlets: int
+    avg_sentiment: float
+    sentiment_spread: float
+    reports: list[ReportBrief]  # best-informed first
+    comparison: list[OutletStat]
+    brief: StoryBriefOut
+
+
 class ArticlePage(BaseModel):
     total: int
     items: list[ArticleOut]

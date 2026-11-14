@@ -18,7 +18,8 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import Select
 
-from . import clustering
+from . import briefs, clustering
+from .quality import _sections
 from .models import Article
 
 SENTIMENTS = ("positive", "neutral", "negative")
@@ -172,3 +173,52 @@ def build_page(db: Session, ordered_ids: list[int], offset: int, limit: int) -> 
 
 def count_matching(db: Session, q: Select) -> int:
     return db.scalar(select(func.count()).select_from(q.subquery())) or 0
+
+
+def outlet_stats(members: list[Article]) -> list[dict]:
+    """One row per outlet (its best report): information, wording, depth and who was first.
+
+    Badges are relative to the other outlets of the same story."""
+    best: dict[str, Article] = {}
+    for m in ranked(members):
+        best.setdefault(m.source, m)
+    rows = []
+    for m in best.values():
+        sections = _sections(m.summary_structured)
+        rows.append({
+            "source": m.source, "report_id": m.id, "title": m.title, "info_score": m.info_score,
+            "sentiment": m.sentiment, "chars": len(m.full_text or ""),
+            "numbers": len(sections.get("By the numbers", [])), "quotes": len(sections.get("Notable quotes", [])),
+            "published_at": m.published_at, "badges": [],
+        })
+    if len(rows) > 1:
+        dated = [r for r in rows if r["published_at"]]
+        if dated:
+            min(dated, key=lambda r: _ts(r["published_at"]))["badges"].append("First to report")
+        deepest = max(rows, key=lambda r: r["chars"])
+        if deepest["chars"]:
+            deepest["badges"].append("Most detailed")
+        figures_row = max(rows, key=lambda r: r["numbers"])
+        if figures_row["numbers"]:
+            figures_row["badges"].append("Most figures")
+        quotes_row = max(rows, key=lambda r: r["quotes"])
+        if quotes_row["quotes"]:
+            quotes_row["badges"].append("Most quotes")
+    return sorted(rows, key=lambda r: (r["info_score"] or 0.0), reverse=True)
+
+
+def story_detail(db: Session, cluster: "clustering.Cluster", force_brief: bool = False) -> dict:
+    members = ranked(list(db.execute(select(Article).where(Article.id.in_(cluster.article_ids))).scalars()))
+    avg = sum(m.sentiment for m in members) / len(members) if members else 0.0
+    sentiments = [m.sentiment for m in members]
+    return {
+        "cluster_id": cluster.id,
+        "title": cluster.title,
+        "report_count": len(members),
+        "outlets": len({m.source for m in members}),
+        "avg_sentiment": round(avg, 3),
+        "sentiment_spread": round(max(sentiments) - min(sentiments), 3) if sentiments else 0.0,
+        "reports": [brief(m) for m in members],
+        "comparison": outlet_stats(members),
+        "brief": briefs.get_brief(db, cluster.id, cluster.title, members, force=force_brief),
+    }

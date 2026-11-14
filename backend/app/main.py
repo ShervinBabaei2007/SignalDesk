@@ -30,7 +30,7 @@ from . import clustering, stories as story_logic
 from .enrichment import enrich_article, enrich_pending_articles
 from .ingestion import add_missing_default_feeds, ingest_all
 from .models import Article, Base, Feed
-from .schemas import (ArticleDetail, ArticlePage, StoryPage, Digest, DigestItem,
+from .schemas import (ArticleDetail, ArticlePage, StoryDetail, StoryPage, Digest, DigestItem,
                       FeedCreate, FeedOut, FeedIngestResult, IngestResult,
                       Stats, TrendingStory)
 from .quality import backfill_info_scores
@@ -349,6 +349,27 @@ def list_stories(
     page = story_logic.build_page(db, list(ordered), offset, limit)
     return StoryPage(total=page["total"], article_total=page["article_total"],
                      items=page["stories"], offset=offset, limit=limit)
+
+
+def _cluster_or_404(db: Session, cluster_id: int):
+    _, by_id = clustering.get_clusters(db)
+    cluster = by_id.get(cluster_id)
+    if cluster is None:
+        raise HTTPException(404, "Story not found. It may have aged out or merged into another story.")
+    return cluster
+
+
+@app.get("/api/stories/{cluster_id}", response_model=StoryDetail, tags=["Articles"])
+def story_detail(cluster_id: int, db: Session = Depends(get_db)):
+    """One story in depth: its brief, how the outlets compare, and every report ranked."""
+    return story_logic.story_detail(db, _cluster_or_404(db, cluster_id))
+
+
+@app.post("/api/stories/{cluster_id}/brief", response_model=StoryDetail, tags=["Articles"],
+          dependencies=[Depends(require_api_token)])
+def refresh_story_brief(cluster_id: int, db: Session = Depends(get_db)):
+    """Rewrite the story brief now (uses the language model when one is configured)."""
+    return story_logic.story_detail(db, _cluster_or_404(db, cluster_id), force_brief=True)
 
 
 @app.get("/api/articles/export.csv", tags=["Articles"])
