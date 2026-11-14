@@ -79,7 +79,7 @@ export function FeedsDialog({ open, onOpenChange }: { open: boolean; onOpenChang
         <DialogHeader>
           <DialogTitle className="text-base">RSS feeds</DialogTitle>
           <DialogDescription>
-            Every active feed is fetched when you run an ingest, and automatically every 30 minutes. {feeds.length} feeds configured.
+            Every active feed is fetched when you run an ingest, and automatically every 15 minutes. {feeds.length} feeds configured.
           </DialogDescription>
         </DialogHeader>
 

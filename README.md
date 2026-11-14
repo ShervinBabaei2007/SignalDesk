@@ -34,7 +34,7 @@ Every article that enters the system is automatically:
 - **Tagged** with extracted keywords
 - **Deduplicated** by URL, so re-running ingestion never creates duplicates
 
-And the platform runs itself: a built-in scheduler re-ingests every feed every 30 minutes — no cron, no external workers.
+And the platform runs itself: a built-in scheduler re-ingests every feed every 15 minutes — no cron, no external workers.
 
 ## Highlights
 
@@ -156,7 +156,7 @@ Interactive API docs live at **http://localhost:8000/docs** (Swagger UI).
 | `APP_ENV` | `development` | `production` for deployments (shown in `/api/health`) |
 | `CORS_ORIGINS` | `*` | Comma-separated allowed origins; set explicit origins in production |
 | `LOG_LEVEL` | `INFO` | Python log level |
-| `INGEST_INTERVAL_MINUTES` | `30` | Auto-pilot re-ingest interval; `0` disables the scheduler |
+| `INGEST_INTERVAL_MINUTES` | `15` | Auto-pilot re-ingest interval; `0` disables the scheduler |
 | `INGEST_COOLDOWN_SECONDS` | `20` | Minimum seconds between manual ingests (429 within the window) |
 | `ENRICH_BATCH_SIZE` | `30` | Articles enriched per background wave |
 | `SCHEDULER_DISABLED` | `false` | Set `true` in tests/CI to prevent boot-time network calls |
