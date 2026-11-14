@@ -240,6 +240,6 @@ MIT — see [MIT-LICENSE.txt](MIT-LICENSE.txt).
 
 1. Add a Postgres database (Vercel dashboard, Storage, Marketplace, Neon). It sets `DATABASE_URL` for you.
 2. In Settings, Environment Variables, add `APP_ENV=production`, `SCHEDULER_DISABLED=true`, `API_TOKEN`, `CRON_SECRET` (random strings) and `CORS_ORIGINS` (your Vercel URL).
-3. Deploy with `vercel --prod`. `vercel.json` builds the frontend, routes `/api/*` to `api/index.py`, and a cron calls `/api/cron/ingest` every 15 minutes.
+3. Deploy with `vercel --prod`. `vercel.json` deploys the `backend` (FastAPI) and `frontend` (Vite) as two services on one domain, routes `/api/*` to the backend, and a cron calls `/api/cron/ingest` every 15 minutes.
 
 Cron intervals under once a day need a Vercel Pro plan. On Hobby, change the schedule in `vercel.json` to daily.
