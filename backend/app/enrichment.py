@@ -14,7 +14,7 @@ import httpx
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from . import config, llm
+from . import config, llm, netguard
 from .analysis import extract_keywords, strip_boilerplate, structured_summary, summarize
 from .extractor import extract_image_url, extract_main_text
 from .ingestion import strip_feed_metadata
@@ -34,10 +34,16 @@ _HEADERS = {
 }
 
 
-def fetch_page(url: str, timeout: float = 12.0) -> tuple[str | None, str | None]:
-    """Download a page once; return (readable text, lead image URL). Either may be None."""
+def fetch_page(url: str, timeout: float = 12.0, guarded: bool = False) -> tuple[str | None, str | None]:
+    """Download a page once; return (readable text, lead image URL). Either may be None.
+
+    `guarded` is for URLs a visitor controls: only public addresses are fetched (see :mod:`app.netguard`).
+    """
     try:
-        resp = httpx.get(url, headers=_HEADERS, timeout=timeout, follow_redirects=True)
+        if guarded:
+            resp = netguard.fetch(url, headers=_HEADERS, timeout=timeout)
+        else:
+            resp = httpx.get(url, headers=_HEADERS, timeout=timeout, follow_redirects=True)
     except Exception:  # noqa: BLE001  (network errors are expected sometimes)
         return None, None
     if resp.status_code != 200:
@@ -75,7 +81,7 @@ def enrich_article(db: Session, article: Article) -> bool:
 
     fetched = None
     if not article.is_seed:
-        fetched, image = fetch_page(article.url)
+        fetched, image = fetch_page(article.url, guarded=bool(article.workspace_id))
         if image:
             article.image_url = image  # the page's own lead image beats the feed's thumbnail
 
@@ -84,7 +90,7 @@ def enrich_article(db: Session, article: Article) -> bool:
             article.full_text = strip_boilerplate(fetched)
 
         analysis = None
-        if article.full_text and llm.available():
+        if article.full_text and llm.available() and not article.workspace_id:  # never spend the owner's model quota on visitors
             analysis = llm.analyze_article(
                 title=article.title,
                 source=article.source,
@@ -160,7 +166,7 @@ def enrich_pending_articles(db: Session, limit: int | None = None) -> dict:
                 .order_by(Article.published_at.desc().nullslast())
                 .limit(limit)
             ).scalars():
-                article.image_url = fetch_page(article.url)[1] or ""
+                article.image_url = fetch_page(article.url, guarded=bool(article.workspace_id))[1] or ""
             db.commit()
 
         remaining = db.scalar(

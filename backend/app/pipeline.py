@@ -32,8 +32,11 @@ from .models import Article, Feed
 
 logger = logging.getLogger("signaldesk.pipeline")
 
-_lock = threading.Lock()  # prevents overlapping cycles
+_lock = threading.Lock()  # prevents overlapping cycles of the shared base data
 _last_finished = 0.0
+# A visitor's workspace has its own lock and cooldown, so visitors never block each other or the base ingest.
+_workspace_locks: dict[str, threading.Lock] = {}
+_workspace_finished: dict[str, float] = {}
 MAX_ENRICH_WAVES = 12
 
 
@@ -60,21 +63,29 @@ def ingest_cycle(db: Session, *, manual: bool,
     :func:`app.ingestion.ingest_all`); tests pass a fake so nothing touches the network.
     """
     global _last_finished
+    workspace = db.info.get("workspace", "")
+    lock = _workspace_locks.setdefault(workspace, threading.Lock()) if workspace else _lock
+    last_finished = _workspace_finished.get(workspace, 0.0) if workspace else _last_finished
     busy = Busy("An ingestion just ran — give the feeds a moment before refreshing again.")
-    if manual and time.time() - _last_finished < config.INGEST_COOLDOWN_SECONDS:
+    if manual and time.time() - last_finished < config.INGEST_COOLDOWN_SECONDS:
         raise busy
-    if not _lock.acquire(blocking=False):
+    if not lock.acquire(blocking=False):
         raise busy
     try:
-        feed_rows = {f.name: f for f in db.execute(select(Feed).where(Feed.is_active)).scalars().all()}
+        # a workspace fetches only its own feeds; the shared feeds are the scheduler's job
+        feed_rows = {f.name: f for f in db.execute(
+            select(Feed).where(Feed.is_active, Feed.workspace_id == workspace)).scalars().all()}
         feeds = [{"name": f.name, "url": f.url} for f in feed_rows.values()]
         started = time.perf_counter()
         results = (ingest or ingest_all)(db, feeds, feed_rows=feed_rows)
         duration = time.perf_counter() - started
         if manual:
-            _last_finished = time.time()
+            if workspace:
+                _workspace_finished[workspace] = time.time()
+            else:
+                _last_finished = time.time()
     finally:
-        _lock.release()
+        lock.release()
 
     pending = db.scalar(select(func.count()).select_from(Article).where(*enrichment.pending_clauses())) or 0
     missing_images = db.scalar(
@@ -91,10 +102,11 @@ def ingest_cycle(db: Session, *, manual: bool,
 
 
 def enrich_backlog(session_factory: Callable[[], Session] | None = None,
-                   enrich: Callable[[Session], dict] | None = None) -> None:
+                   enrich: Callable[[Session], dict] | None = None, workspace: str = "") -> None:
     """Enrich pending articles wave by wave, so a big ingest is fully enriched,
-    stopping if a wave makes no progress."""
+    stopping if a wave makes no progress. `workspace` enriches that visitor's articles instead of the shared ones."""
     with (session_factory or SessionLocal)() as db:
+        db.info["workspace"] = workspace
         try:
             for _ in range(MAX_ENRICH_WAVES):
                 stats = (enrich or enrichment.enrich_pending_articles)(db)

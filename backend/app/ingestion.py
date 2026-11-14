@@ -8,14 +8,14 @@ from email.utils import parsedate_to_datetime
 from html import unescape
 
 import feedparser
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from . import config
+from . import config, netguard
 from .analysis import analyze
 from .extractor import clean_image_url
-from .models import Article, Feed
+from .models import NO_WORKSPACE, Article, Feed
 from .quality import information_score
 
 logger = logging.getLogger("signaldesk.ingestion")
@@ -157,8 +157,12 @@ def ingest_feed(
             feed.last_status = status[:300]
             db.commit()
 
+    workspace = db.info.get("workspace", NO_WORKSPACE)
     try:
-        parsed = feedparser.parse(feed_url)
+        if workspace:  # a visitor's URL: fetch it ourselves so only public addresses are ever requested
+            parsed = feedparser.parse(netguard.fetch(feed_url, max_bytes=2_000_000).content)
+        else:
+            parsed = feedparser.parse(feed_url)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Feed %s failed to parse: %s", feed_url, exc)
         stats["error"] = str(exc)
@@ -167,6 +171,10 @@ def ingest_feed(
 
     entries = (parsed.entries or [])[:max_entries]
     stats["fetched"] = len(entries)
+    room = None  # how many more articles this workspace may store
+    if workspace:
+        owned = db.scalar(select(func.count()).select_from(Article).where(Article.workspace_id == workspace)) or 0
+        room = max(config.WORKSPACE_MAX_ARTICLES - owned, 0)
 
     for entry in entries:
         url = getattr(entry, "link", None)
@@ -176,6 +184,9 @@ def ingest_feed(
             continue
 
         if db.scalar(select(Article.id).where(Article.url == url)):
+            stats["skipped"] += 1
+            continue
+        if room is not None and stats["added"] >= room:
             stats["skipped"] += 1
             continue
 
@@ -198,6 +209,7 @@ def ingest_feed(
             sentiment=result["sentiment"],
             analysis_source="lexicon",
             published_at=published_at,
+            workspace_id=workspace,
         )
         article.info_score = information_score(article)
         db.add(article)

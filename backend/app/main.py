@@ -25,12 +25,12 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from . import config, demo, notifications, pipeline, reporting, story_index, watches
+from . import config, demo, netguard, notifications, pipeline, reporting, story_index, watches, workspace
 from . import stories as story_logic
 from .database import SessionLocal, ensure_columns, engine, get_db
 from .enrichment import enrich_article
 from .ingestion import add_missing_default_feeds
-from .models import Article, Base, Feed
+from .models import NO_WORKSPACE, Article, Base, Feed
 from .quality import backfill_info_scores
 from .schemas import (ArticleDetail, ArticlePage, Digest, FeedCreate, FeedIngestResult, FeedOut,
                       IngestResult, Stats, StoryDetail, StoryPage, TrendingStory, WatchAlertOut,
@@ -166,9 +166,34 @@ def _supplied_token(request: Request) -> str:
     return supplied
 
 
+def request_workspace(request: Request) -> str:
+    """The workspace a request belongs to: its signed token's id, else the shared base data."""
+    return workspace.verify(_supplied_token(request)) or NO_WORKSPACE
+
+
+def scoped_db(request: Request):
+    """A database session that only sees the shared base data plus the caller's own workspace."""
+    db = SessionLocal()
+    db.info["workspace"] = request_workspace(request)
+    try:
+        yield db
+    finally:
+        db.close()
+
+
 def require_ingest_access(request: Request) -> None:
-    """Let a valid demo token (when demo mode is on) or the real API token run an ingest."""
-    if config.API_TOKEN and config.DEMO_MODE and demo.is_valid(_supplied_token(request), config.API_TOKEN):
+    """Let a workspace, a valid demo token (when demo mode is on) or the real API token run an ingest."""
+    token = _supplied_token(request)
+    if workspace.verify(token):
+        return
+    if config.API_TOKEN and config.DEMO_MODE and demo.is_valid(token, config.API_TOKEN):
+        return
+    require_api_token(request)
+
+
+def require_writer(request: Request) -> None:
+    """Let a visitor's own workspace, or the owner's API token, change data (the owner's token is open when unset)."""
+    if workspace.verify(_supplied_token(request)):
         return
     require_api_token(request)
 
@@ -220,7 +245,7 @@ else:
 # --------------------------------------------------------------------------- #
 
 @app.get("/api/health", tags=["System"])
-def health(db: Session = Depends(get_db)):
+def health(db: Session = Depends(scoped_db)):
     """Liveness probe reporting status, version, environment and uptime."""
     return {
         "status": "healthy",
@@ -240,7 +265,35 @@ def health(db: Session = Depends(get_db)):
 @app.get("/api/auth/status", tags=["System"])
 def auth_status():
     """Tell the dashboard whether mutating requests need an API token."""
-    return {"required": bool(config.API_TOKEN), "demo": config.DEMO_MODE}
+    return {"required": bool(config.API_TOKEN), "demo": config.DEMO_MODE, "workspaces": workspace.enabled()}
+
+
+def _client_ip(request: Request) -> str:
+    """Best-effort client address (the first hop of X-Forwarded-For behind a proxy such as Vercel)."""
+    forwarded = request.headers.get("x-forwarded-for", "")
+    return forwarded.split(",")[0].strip() or (request.client.host if request.client else "unknown")
+
+
+@app.post("/api/workspace", status_code=201, tags=["Workspace"])
+def create_workspace(request: Request):
+    """Start a private workspace: the visitor's own feeds and watchlist, invisible to everyone else."""
+    if not workspace.enabled():
+        raise HTTPException(404, "Workspaces are not enabled")
+    if not workspace.creations.allow(_client_ip(request)):
+        raise HTTPException(429, "Too many workspaces created from this network; try again later")
+    _, token = workspace.issue()
+    return {"token": token, "expires_in_days": config.WORKSPACE_TTL_DAYS,
+            "limits": {"feeds": config.WORKSPACE_MAX_FEEDS, "watches": config.WORKSPACE_MAX_WATCHES,
+                       "articles": config.WORKSPACE_MAX_ARTICLES}}
+
+
+@app.delete("/api/workspace", status_code=204, tags=["Workspace"])
+def reset_workspace(request: Request, db: Session = Depends(scoped_db)):
+    """Delete everything in the caller's workspace (the shared data is never touched)."""
+    ws = request_workspace(request)
+    if not ws:
+        raise HTTPException(401, "A workspace token is required")
+    workspace.reset(db, ws)
 
 
 @app.post("/api/demo/session", tags=["System"])
@@ -253,7 +306,7 @@ def demo_session():
 
 
 @app.get("/api/stats", response_model=Stats, tags=["System"])
-def stats(db: Session = Depends(get_db)):
+def stats(db: Session = Depends(scoped_db)):
     """Dashboard totals, sentiment counts, topic breakdown and 7-day trend."""
     return reporting.stats(db)
 
@@ -263,7 +316,7 @@ def stats(db: Session = Depends(get_db)):
 # --------------------------------------------------------------------------- #
 
 @app.get("/api/trending", response_model=list[TrendingStory], tags=["Intelligence"])
-def trending_stories(limit: int = Query(story_index.HOT_STORIES, ge=1, le=20), db: Session = Depends(get_db)):
+def trending_stories(limit: int = Query(story_index.HOT_STORIES, ge=1, le=20), db: Session = Depends(scoped_db)):
     """Hot topics: the stories the most outlets are covering right now."""
     return story_index.trending(db, limit)
 
@@ -292,7 +345,7 @@ def list_articles(
     order: str = Query("newest"),
     limit: int = Query(25, ge=1, le=100),
     offset: int = Query(0, ge=0),
-    db: Session = Depends(get_db),
+    db: Session = Depends(scoped_db),
 ):
     """Flat list: every report on its own row."""
     q, order = _filtered(db, search, source, topic, sentiment, cluster, hot, ids, order)
@@ -315,7 +368,7 @@ def list_stories(
     order: str = Query("newest"),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
-    db: Session = Depends(get_db),
+    db: Session = Depends(scoped_db),
 ):
     """Grouped list: one card per event, the best-informed report leading it."""
     q, order = _filtered(db, search, source, topic, sentiment, cluster, hot, ids, order)
@@ -335,14 +388,14 @@ def _cluster_or_404(db: Session, cluster_id: int):
 
 
 @app.get("/api/stories/{cluster_id}", response_model=StoryDetail, tags=["Articles"])
-def story_detail(cluster_id: int, db: Session = Depends(get_db)):
+def story_detail(cluster_id: int, db: Session = Depends(scoped_db)):
     """One story in depth: its brief, how the outlets compare, and every report ranked."""
     return story_logic.story_detail(db, _cluster_or_404(db, cluster_id))
 
 
 @app.post("/api/stories/{cluster_id}/brief", response_model=StoryDetail, tags=["Articles"],
           dependencies=[Depends(require_api_token)])
-def refresh_story_brief(cluster_id: int, db: Session = Depends(get_db)):
+def refresh_story_brief(cluster_id: int, db: Session = Depends(scoped_db)):
     """Rewrite the story brief now (uses the language model when one is configured)."""
     return story_logic.story_detail(db, _cluster_or_404(db, cluster_id), force_brief=True)
 
@@ -358,36 +411,36 @@ async def watch_error_handler(request: Request, exc: watches.WatchError):
 
 
 @app.get("/api/watches", response_model=list[WatchOut], tags=["Watchlist"])
-def list_watches(db: Session = Depends(get_db)):
+def list_watches(db: Session = Depends(scoped_db)):
     """List all watches with how many recent stories each currently matches."""
     return watches.with_counts(db, watches.all_watches(db))
 
 
 @app.post("/api/watches", response_model=WatchOut, status_code=201, tags=["Watchlist"],
-          dependencies=[Depends(require_api_token)])
-def create_watch(body: WatchIn, db: Session = Depends(get_db)):
+          dependencies=[Depends(require_writer)])
+def create_watch(body: WatchIn, db: Session = Depends(scoped_db)):
     """Create a watch (token-protected when an API token is configured)."""
     watch = watches.create(db, body.term, body.topic, body.min_outlets)
     return watches.with_counts(db, [watch])[0]
 
 
 @app.patch("/api/watches/{watch_id}", response_model=WatchOut, tags=["Watchlist"],
-           dependencies=[Depends(require_api_token)])
-def update_watch(watch_id: int, body: WatchPatch, db: Session = Depends(get_db)):
+           dependencies=[Depends(require_writer)])
+def update_watch(watch_id: int, body: WatchPatch, db: Session = Depends(scoped_db)):
     """Pause or resume a watch."""
     watch = watches.set_active(db, watch_id, body.is_active)
     return watches.with_counts(db, [watch])[0]
 
 
 @app.delete("/api/watches/{watch_id}", status_code=204, tags=["Watchlist"],
-            dependencies=[Depends(require_api_token)])
-def delete_watch(watch_id: int, db: Session = Depends(get_db)):
+            dependencies=[Depends(require_writer)])
+def delete_watch(watch_id: int, db: Session = Depends(scoped_db)):
     """Delete a watch and its alert history."""
     watches.remove(db, watch_id)
 
 
 @app.get("/api/articles/export.csv", tags=["Articles"])
-def export_articles_csv(db: Session = Depends(get_db)):
+def export_articles_csv(db: Session = Depends(scoped_db)):
     """Export every article as CSV, newest first."""
     items = db.execute(select(Article).order_by(Article.published_at.desc().nullslast())).scalars().all()
     buffer = io.StringIO()
@@ -407,7 +460,7 @@ def export_articles_csv(db: Session = Depends(get_db)):
 
 
 @app.get("/api/articles/{article_id}", response_model=ArticleDetail, tags=["Articles"])
-def get_article(article_id: int, db: Session = Depends(get_db)):
+def get_article(article_id: int, db: Session = Depends(scoped_db)):
     """Full detail for one article, including related reports of the same story."""
     article = db.get(Article, article_id)
     if not article:
@@ -429,8 +482,8 @@ def _with_related(db: Session, article: Article) -> Article:
 
 
 @app.post("/api/articles/{article_id}/summarize", response_model=ArticleDetail,
-          tags=["Articles"], dependencies=[Depends(require_api_token)])
-def summarize_article(article_id: int, db: Session = Depends(get_db)):
+          tags=["Articles"], dependencies=[Depends(require_writer)])
+def summarize_article(article_id: int, db: Session = Depends(scoped_db)):
     """Generate a clean, straightforward summary for one article on demand.
 
     Fetches the linked page (unless already enriched or a demo seed), extracts
@@ -451,14 +504,14 @@ def summarize_article(article_id: int, db: Session = Depends(get_db)):
 # --------------------------------------------------------------------------- #
 
 @app.get("/api/digest", response_model=Digest, tags=["Intelligence"])
-def daily_digest(db: Session = Depends(get_db)):
+def daily_digest(db: Session = Depends(scoped_db)):
     """A generated intelligence brief: recent signals, extremes, and a headline."""
     return reporting.digest(db)
 
 
 @app.post("/api/digest/send", tags=["Intelligence"],
           dependencies=[Depends(require_api_token)])
-def send_digest(db: Session = Depends(get_db)):
+def send_digest(db: Session = Depends(scoped_db)):
     """Deliver the daily brief to every configured channel (Slack/email)."""
     if not notifications.configured_channels():
         raise HTTPException(
@@ -477,19 +530,27 @@ def send_digest(db: Session = Depends(get_db)):
 # --------------------------------------------------------------------------- #
 
 @app.get("/api/feeds", response_model=list[FeedOut], tags=["Feeds"])
-def list_feeds(db: Session = Depends(get_db)):
+def list_feeds(db: Session = Depends(scoped_db)):
     """List the configured RSS feeds."""
     return db.execute(select(Feed).order_by(Feed.name)).scalars().all()
 
 
 @app.post("/api/feeds", response_model=FeedOut, status_code=201, tags=["Feeds"],
-          dependencies=[Depends(require_api_token)])
-def create_feed(body: FeedCreate, db: Session = Depends(get_db)):
+          dependencies=[Depends(require_writer)])
+def create_feed(body: FeedCreate, db: Session = Depends(scoped_db)):
     """Add a new RSS feed."""
     parsed = urlparse(str(body.url))
     if parsed.scheme not in ("http", "https") or not parsed.netloc:
         raise HTTPException(422, "Feed URL must be an http(s) URL")
-    feed = Feed(name=body.name.strip(), url=str(body.url))
+    owner_ws = db.info.get("workspace", NO_WORKSPACE)
+    if owner_ws:  # a visitor's feed: public addresses only, and a cap so a workspace stays small
+        try:
+            netguard.check_url(str(body.url))
+        except netguard.UnsafeURL as exc:
+            raise HTTPException(422, str(exc)) from None
+        if workspace.count(db, Feed, owner_ws) >= config.WORKSPACE_MAX_FEEDS:
+            raise HTTPException(409, f"A workspace can have up to {config.WORKSPACE_MAX_FEEDS} feeds; remove one first")
+    feed = Feed(name=body.name.strip(), url=str(body.url), workspace_id=owner_ws)
     db.add(feed)
     try:
         db.commit()
@@ -502,17 +563,17 @@ def create_feed(body: FeedCreate, db: Session = Depends(get_db)):
 
 @app.post("/api/feeds/defaults", response_model=list[FeedOut], tags=["Feeds"],
           dependencies=[Depends(require_api_token)])
-def add_default_feeds(db: Session = Depends(get_db)):
+def add_default_feeds(db: Session = Depends(scoped_db)):
     """Add the recommended feeds that are missing. Returns only the newly added ones."""
     return add_missing_default_feeds(db)
 
 
 @app.delete("/api/feeds/{feed_id}", status_code=204, tags=["Feeds"],
-            dependencies=[Depends(require_api_token)])
-def delete_feed(feed_id: int, db: Session = Depends(get_db)):
+            dependencies=[Depends(require_writer)])
+def delete_feed(feed_id: int, db: Session = Depends(scoped_db)):
     """Remove an RSS feed."""
     feed = db.get(Feed, feed_id)
-    if not feed:
+    if not feed or feed.workspace_id != db.info.get("workspace", NO_WORKSPACE):
         raise HTTPException(404, "Feed not found")
     db.delete(feed)
     db.commit()
@@ -526,12 +587,16 @@ def cron_ingest(request: Request):
     if not config.CRON_SECRET or not hmac.compare_digest(supplied, expected):
         raise HTTPException(401, "Invalid cron secret")
     cycle = pipeline.scheduled_cycle()
+    with SessionLocal() as db:
+        purged = workspace.purge_expired(db)
+    if purged:
+        logger.info("[workspace] purged %s expired rows", purged)
     return {"ran": cycle is not None, "added": sum(r["added"] for r in cycle.results) if cycle else 0}
 
 
 @app.post("/api/ingest", response_model=IngestResult, tags=["Ingestion"],
           dependencies=[Depends(require_ingest_access)])
-def ingest(db: Session = Depends(get_db), background_tasks: BackgroundTasks = None):
+def ingest(db: Session = Depends(scoped_db), background_tasks: BackgroundTasks = None):
     """Fetch every active RSS feed, dedupe by URL, analyze, and store new articles.
 
     Full-text enrichment (fetching the linked pages and writing clean
@@ -542,7 +607,7 @@ def ingest(db: Session = Depends(get_db), background_tasks: BackgroundTasks = No
     except pipeline.Busy as busy:
         raise HTTPException(429, str(busy)) from None
     if background_tasks and cycle.enrich_needed:
-        background_tasks.add_task(pipeline.enrich_backlog)
+        background_tasks.add_task(pipeline.enrich_backlog, workspace=db.info.get("workspace", NO_WORKSPACE))
     results = cycle.results
     return IngestResult(
         alerts=[WatchAlertOut(**a) for a in cycle.alerts],

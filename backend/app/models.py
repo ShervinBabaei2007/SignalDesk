@@ -2,11 +2,15 @@
 
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text, UniqueConstraint
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text, UniqueConstraint, event
+from sqlalchemy.orm import Mapped, Session, mapped_column, with_loader_criteria
 
 from . import sentiment as sentiment_scale
 from .database import Base
+
+
+# The shared base data (seeded and cron-ingested) belongs to no workspace; a visitor's own rows carry their id.
+NO_WORKSPACE = ""
 
 
 def utcnow() -> datetime:
@@ -17,10 +21,11 @@ def utcnow() -> datetime:
 class Article(Base):
     """A news article with its analysis (sentiment, topic, summaries, information score)."""
     __tablename__ = "articles"
+    __table_args__ = (UniqueConstraint("workspace_id", "url", name="uq_article_workspace_url"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     title: Mapped[str] = mapped_column(String(500), nullable=False)
-    url: Mapped[str] = mapped_column(String(1000), unique=True, nullable=False, index=True)
+    url: Mapped[str] = mapped_column(String(1000), nullable=False, index=True)
     source: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)  # from RSS feed
     summary_deep: Mapped[str | None] = mapped_column(Text, nullable=True)  # TL;DR from full text
@@ -41,6 +46,8 @@ class Article(Base):
     ingested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     enriched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     is_seed: Mapped[bool] = mapped_column(Boolean, default=False)
+    workspace_id: Mapped[str] = mapped_column(String(40), default=NO_WORKSPACE, server_default=NO_WORKSPACE,
+                                              nullable=False, index=True)
 
     @property
     def sentiment_label(self) -> str:
@@ -56,14 +63,23 @@ class Article(Base):
 class Feed(Base):
     """An RSS feed source with its health status."""
     __tablename__ = "feeds"
+    __table_args__ = (UniqueConstraint("workspace_id", "name", name="uq_feed_workspace_name"),
+                      UniqueConstraint("workspace_id", "url", name="uq_feed_workspace_url"))
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(200), unique=True, nullable=False)
-    url: Mapped[str] = mapped_column(String(1000), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    url: Mapped[str] = mapped_column(String(1000), nullable=False)
+    workspace_id: Mapped[str] = mapped_column(String(40), default=NO_WORKSPACE, server_default=NO_WORKSPACE,
+                                              nullable=False, index=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     last_fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_status: Mapped[str | None] = mapped_column(String(300), nullable=True)
+
+    @property
+    def shared(self) -> bool:
+        """True for the shared base feeds, false for a visitor's own."""
+        return self.workspace_id == NO_WORKSPACE
 
 
 class StoryBrief(Base):
@@ -86,6 +102,8 @@ class Watch(Base):
     term: Mapped[str] = mapped_column(String(100), nullable=False)
     topic: Mapped[str | None] = mapped_column(String(50), nullable=True)
     min_outlets: Mapped[int] = mapped_column(Integer, default=2)
+    workspace_id: Mapped[str] = mapped_column(String(40), default=NO_WORKSPACE, server_default=NO_WORKSPACE,
+                                              nullable=False, index=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
@@ -100,3 +118,27 @@ class WatchAlert(Base):
     story_key: Mapped[str] = mapped_column(String(32), nullable=False)
     notified: Mapped[bool] = mapped_column(Boolean, default=False)  # delivered to Slack/email
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+# --------------------------------------------------------------------------- #
+# Workspace scoping
+# --------------------------------------------------------------------------- #
+# Every ORM SELECT on a session is narrowed to what that session's workspace may see, so the dozens
+# of `select(Article)` calls across the app need no workspace argument. `session.info["workspace"]`
+# holds the id (NO_WORKSPACE for the shared base data, which is what scheduled jobs and tests use):
+#   * articles and feeds: the shared base data plus the workspace's own rows,
+#   * watches: only the workspace's own (the shared base watchlist belongs to the owner).
+
+@event.listens_for(Session, "do_orm_execute")
+def _scope_to_workspace(state) -> None:
+    """Add the workspace visibility filters to every SELECT."""
+    if not state.is_select:
+        return
+    ws = state.session.info.get("workspace", NO_WORKSPACE)
+    state.statement = state.statement.options(
+        with_loader_criteria(Article, lambda c: (c.workspace_id == NO_WORKSPACE) | (c.workspace_id == ws),
+                             include_aliases=True),
+        with_loader_criteria(Feed, lambda c: (c.workspace_id == NO_WORKSPACE) | (c.workspace_id == ws),
+                             include_aliases=True),
+        with_loader_criteria(Watch, lambda c: c.workspace_id == ws, include_aliases=True),
+    )

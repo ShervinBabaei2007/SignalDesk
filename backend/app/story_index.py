@@ -72,14 +72,15 @@ def _window(now: datetime) -> tuple[ColumnElement, ...]:
             (Article.published_at >= cutoff) | Article.published_at.is_(None))
 
 
-_cache: dict = {"key": None, "by_article": {}, "by_id": {}, "window_ids": []}
+_CACHE_SIZE = 64  # workspaces cached at once; the oldest is dropped first
+_cache: dict[str, dict] = {}
 _cache_lock = threading.Lock()
 
 
 def reset_cache() -> None:
     """Forget the cached grouping (tests, and anything that edits articles in place)."""
     with _cache_lock:
-        _cache["key"] = None
+        _cache.clear()
 
 
 def get_clusters(db: Session) -> tuple[dict[int, Cluster], dict[int, Cluster]]:
@@ -90,13 +91,15 @@ def get_clusters(db: Session) -> tuple[dict[int, Cluster], dict[int, Cluster]]:
 def _load(db: Session) -> tuple[dict[int, Cluster], dict[int, Cluster], list[int]]:
     """Compute or fetch the cached clusters for the recent window."""
     now = datetime.now(timezone.utc)
+    workspace = db.info.get("workspace", "")  # the session only sees the base data plus its own articles
     count, max_id = db.execute(
         select(func.count(Article.id), func.max(Article.id)).where(Article.is_seed.is_(False))
     ).one()
     key = (count, max_id, now.strftime("%Y%m%d%H"))
     with _cache_lock:
-        if _cache["key"] == key:
-            return _cache["by_article"], _cache["by_id"], _cache["window_ids"]
+        entry = _cache.get(workspace)
+        if entry and entry["key"] == key:
+            return entry["by_article"], entry["by_id"], entry["window_ids"]
         rows = db.execute(
             select(Article.id, Article.title, Article.source, Article.published_at)
             .where(*_window(now))
@@ -107,7 +110,10 @@ def _load(db: Session) -> tuple[dict[int, Cluster], dict[int, Cluster], list[int
         by_article = {aid: c for c in clusters for aid in c.article_ids}
         by_id = {c.id: c for c in clusters}
         window_ids = [r[0] for r in rows]
-        _cache.update(key=key, by_article=by_article, by_id=by_id, window_ids=window_ids)
+        _cache.pop(workspace, None)
+        _cache[workspace] = {"key": key, "by_article": by_article, "by_id": by_id, "window_ids": window_ids}
+        while len(_cache) > _CACHE_SIZE:
+            _cache.pop(next(iter(_cache)))
         return by_article, by_id, window_ids
 
 

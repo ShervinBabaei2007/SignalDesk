@@ -24,9 +24,9 @@ from typing import Callable
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import notifications, story_index
+from . import config, notifications, story_index
 from .analysis import TOPIC_EMOJI
-from .models import Article, Watch, WatchAlert
+from .models import NO_WORKSPACE, Article, Watch, WatchAlert
 
 logger = logging.getLogger("signaldesk.watches")
 
@@ -178,7 +178,8 @@ def check_watches(db: Session, deliver: bool = True,
             })
     if alerts:
         db.commit()
-        if deliver and (notify or deliver_to_channels)(alerts):
+        # a visitor's alerts show in their dashboard only: the Slack/email channels belong to the owner
+        if deliver and not db.info.get("workspace") and (notify or deliver_to_channels)(alerts):
             pairs = {(a["watch_id"], a["story_key"]) for a in alerts}
             for row in db.execute(
                 select(WatchAlert).where(WatchAlert.notified.is_(False),
@@ -233,11 +234,13 @@ def create(db: Session, term: str, topic: str | None, min_outlets: int) -> Watch
     if topic and topic not in TOPIC_EMOJI:
         raise InvalidWatch(f"topic must be one of: {', '.join(TOPIC_EMOJI)}")
     existing = all_watches(db)
-    if len(existing) >= MAX_WATCHES:
-        raise WatchConflict(f"You can watch up to {MAX_WATCHES} terms; remove one first")
+    workspace = db.info.get("workspace", NO_WORKSPACE)
+    cap = config.WORKSPACE_MAX_WATCHES if workspace else MAX_WATCHES
+    if len(existing) >= cap:
+        raise WatchConflict(f"You can watch up to {cap} terms; remove one first")
     if any(w.term.lower() == term.lower() and w.topic == topic for w in existing):
         raise WatchConflict("You are already watching that")
-    watch = Watch(term=term, topic=topic, min_outlets=min_outlets, is_active=True)
+    watch = Watch(term=term, topic=topic, min_outlets=min_outlets, is_active=True, workspace_id=workspace)
     db.add(watch)
     db.commit()
     db.refresh(watch)

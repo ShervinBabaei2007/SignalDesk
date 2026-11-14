@@ -107,3 +107,15 @@ CRON_SECRET = os.getenv("CRON_SECRET", "").strip()
 # Demo mode: visitors can request a short-lived token that only allows running an ingest.
 DEMO_MODE = _bool("DEMO_MODE")
 DEMO_TTL_SECONDS = _int("DEMO_TTL_SECONDS", 2 * 60 * 60)
+
+# --------------------------------------------------------------------------- #
+# Private workspaces: each visitor gets their own feeds and watchlist, isolated from everyone else.
+# Tokens are signed with SESSION_SECRET (defaults to API_TOKEN); without either, workspaces are off.
+# --------------------------------------------------------------------------- #
+
+SESSION_SECRET = os.getenv("SESSION_SECRET", "").strip() or API_TOKEN
+WORKSPACE_TTL_DAYS = _int("WORKSPACE_TTL_DAYS", 7)  # a workspace's data is deleted after this
+WORKSPACE_MAX_FEEDS = _int("WORKSPACE_MAX_FEEDS", 8)
+WORKSPACE_MAX_WATCHES = _int("WORKSPACE_MAX_WATCHES", 10)
+WORKSPACE_MAX_ARTICLES = _int("WORKSPACE_MAX_ARTICLES", 600)
+WORKSPACE_CREATES_PER_HOUR = _int("WORKSPACE_CREATES_PER_HOUR", 20)  # per client IP

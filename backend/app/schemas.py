@@ -148,6 +148,7 @@ class FeedOut(BaseModel):
     name: str
     url: str
     is_active: bool
+    shared: bool = True  # part of the shared base data (a visitor cannot remove it) rather than their own
     last_fetched_at: datetime | None = None
     last_status: str | None = None
 
