@@ -44,6 +44,7 @@ _CORRECTION_NOTICE = re.compile(
 _SOCIAL = ("facebook.", "twitter.", "x.com", "t.co", "instagram.", "linkedin.", "pinterest.", "whatsapp.",
            "youtube.", "youtu.be", "tiktok.", "reddit.", "telegram.", "flipboard.", "mailto")
 MAX_SOURCES = 10
+MAX_SCAN = 3_000_000  # large news pages put megabytes of inline script before their meta tags (CNBC: ~600 KB)
 
 
 def _attrs(tag: str) -> dict[str, str]:
@@ -64,7 +65,7 @@ def has_correction_notice(text: str) -> bool:
 
 def extract_signals(html: str, base_url: str = "", text: str = "") -> dict:
     """Transparency signals of a page: byline, dates, sourcing links, a corrections policy, a correction notice."""
-    head = html[:400_000]
+    head = html[:MAX_SCAN]
     metas: dict[str, str] = {}
     for tag in _META_TAG.findall(head):
         a = _attrs(tag)

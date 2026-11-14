@@ -28,7 +28,8 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .models import Article, EventArticle, FeedRun, StoryBrief
+from . import story_index
+from .models import Article, FeedRun, StoryBrief
 from .story_index import _as_utc
 
 WINDOW_DAYS = 30
@@ -36,11 +37,13 @@ MIN_ARTICLES = 10      # reports needed before a profile is shown at all
 MIN_SIGNALS = 5        # pages with readable signals needed for transparency and corrections
 MIN_CLAIMS = 5         # compared claims needed for the agreement component
 MIN_FEED_RUNS = 10     # feed checks needed for availability
-MIN_KNOWN_WEIGHT = 40  # of 100: below this much evidence the score is withheld
+MIN_KNOWN_WEIGHT = 60  # of 100: below this much evidence the score is withheld (in practice: page signals are needed)
+MIN_WINDOW = 6         # recent reports needed before corroboration is judged
 CACHE_SECONDS = 600
 NOTE = ("Derived from signals SignalDesk observed in its own data over the last 30 days. It describes how an "
         "outlet publishes, not whether it is right, and is not an editorial rating.")
 
+STRONG, MIXED = 70, 45  # score bands; the frontend mirrors these in lib/insights.ts
 WEIGHTS = {"transparency": 30, "corrections": 10, "information": 20, "corroboration": 20,
            "agreement": 10, "availability": 10}
 LABELS = {"transparency": "Transparency", "corrections": "Corrections", "information": "Information",
@@ -60,7 +63,7 @@ def label_for(score: int | None) -> str:
     """Words for a score band. Deliberately about signals, not trustworthiness."""
     if score is None:
         return "Not enough data"
-    return "Strong signals" if score >= 75 else "Mixed signals" if score >= 55 else "Weak signals"
+    return "Strong signals" if score >= STRONG else "Mixed signals" if score >= MIXED else "Limited signals"
 
 
 def _pct(value: float) -> str:
@@ -102,22 +105,26 @@ def compute(db: Session, now: datetime | None = None) -> dict[str, dict]:
     now = now or datetime.now(timezone.utc)
     since = now - timedelta(days=WINDOW_DAYS)
     rows = db.execute(
-        select(Article.id, Article.source, Article.info_score, Article.signals, Article.published_at, Article.ingested_at,
-               EventArticle.event_id)
-        .outerjoin(EventArticle, EventArticle.article_id == Article.id)
+        select(Article.id, Article.source, Article.info_score, Article.signals, Article.published_at, Article.ingested_at)
         .where(Article.is_seed.is_(False), Article.workspace_id == "", Article.ingested_at >= since)
     ).all()
     by_source: dict[str, list] = defaultdict(list)
-    event_sources: dict[int, set[str]] = defaultdict(set)
-    event_first: dict[int, tuple[datetime, str]] = {}
     for r in rows:
         by_source[r.source].append(r)
-        if r.event_id is not None:
-            event_sources[r.event_id].add(r.source)
-            when = _as_utc(r.published_at or r.ingested_at)
-            if r.event_id not in event_first or when < event_first[r.event_id][0]:
-                event_first[r.event_id] = (when, r.source)
-    multi = {e for e, sources in event_sources.items() if len(sources) >= 2}
+
+    # Corroboration comes from the live story clusters of the shared data (the last few days), so it is
+    # judged on the same articles and the same grouping the app shows; older reports are not assessed.
+    previous = db.info.get("workspace", "")
+    db.info["workspace"] = ""
+    try:
+        by_article, _, window_ids = story_index._load(db)
+    finally:
+        db.info["workspace"] = previous
+    in_window = set(window_ids)
+    multi = {c.id: c for c in set(by_article.values()) if len(c.sources) >= 2}
+    stamp = {r.id: _as_utc(r.published_at or r.ingested_at) for r in rows}
+    source_of = {r.id: r.source for r in rows}
+    first_source = {cid: source_of.get(min(c.article_ids, key=lambda i: (stamp.get(i) or now, i))) for cid, c in multi.items()}
 
     feed_runs: dict[str, list[bool]] = defaultdict(list)
     for feed, ok in db.execute(select(FeedRun.feed, FeedRun.ok).where(FeedRun.at >= since)).all():
@@ -149,9 +156,10 @@ def compute(db: Session, now: datetime | None = None) -> dict[str, dict]:
                 sig.append(parsed)
         n = len(items)
         scores = [r.info_score for r in items if r.info_score is not None]
-        corroborated = sum(1 for r in items if r.event_id in multi) / n
-        led = [e for e in multi if source in event_sources[e]]
-        first_rate = sum(1 for e in led if event_first[e][1] == source) / len(led) if led else None
+        recent = [r for r in items if r.id in in_window]
+        corroborated = sum(1 for r in recent if by_article.get(r.id) and by_article[r.id].id in multi) / len(recent) if recent else 0.0
+        led = [cid for cid, c in multi.items() if source in c.sources]
+        first_rate = sum(1 for cid in led if first_source.get(cid) == source) / len(led) if led else None
         runs = feed_runs.get(source, [])
         claims_seen = agree[source] + dispute[source]
 
@@ -162,8 +170,8 @@ def compute(db: Session, now: datetime | None = None) -> dict[str, dict]:
             "corrections": (c_points, c_detail),
             "information": ((WEIGHTS["information"] * (sum(scores) / len(scores)) / 100, f"Mean information score {round(sum(scores) / len(scores))}/100 over {len(scores)} reports")
                             if len(scores) >= MIN_ARTICLES else (None, f"Only {len(scores)} scored reports so far")),
-            "corroboration": ((WEIGHTS["corroboration"] * min(1.0, corroborated / 0.5), f"{_pct(corroborated)} of its reports are on events other outlets also cover")
-                              if n >= MIN_ARTICLES else (None, f"Only {n} reports so far")),
+            "corroboration": ((WEIGHTS["corroboration"] * min(1.0, corroborated / 0.5), f"{_pct(corroborated)} of its last {len(recent)} recent reports are on events other outlets also cover")
+                              if len(recent) >= MIN_WINDOW else (None, f"Only {len(recent)} recent reports to compare so far")),
             "agreement": ((WEIGHTS["agreement"] * agree[source] / claims_seen, f"{agree[source]} of {claims_seen} compared claims agreed with other outlets")
                           if claims_seen >= MIN_CLAIMS else (None, f"Only {claims_seen} compared claims so far")),
             "availability": ((WEIGHTS["availability"] * sum(runs) / len(runs), f"Feed answered on {_pct(sum(runs) / len(runs))} of {len(runs)} checks")

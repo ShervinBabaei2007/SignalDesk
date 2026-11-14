@@ -22,7 +22,7 @@ from sqlalchemy.pool import StaticPool  # noqa: E402
 from app import briefs, claims, enrichment, reliability, signals, story_index  # noqa: E402
 from app.database import Base, SessionLocal, engine as app_engine  # noqa: E402
 from app.main import app  # noqa: E402
-from app.models import Article, Event, EventArticle, FeedRun, StoryBrief  # noqa: E402
+from app.models import Article, FeedRun, StoryBrief  # noqa: E402
 
 NOW = datetime.now(timezone.utc)
 
@@ -48,6 +48,17 @@ and <a href="https://news.example.com/other">our own earlier story</a>.</p>
 def test_a_transparent_page_shows_every_signal():
     s = signals.extract_signals(GOOD_PAGE, "https://news.example.com/a", "Body\nCorrection: an earlier headline misstated it.")
     assert s == {"byline": True, "published": True, "updated": True, "sources": 2, "policy": True, "correction": True}
+
+
+def test_signals_are_found_even_when_megabytes_of_script_come_first():
+    """Regression: CNBC-style pages put ~600 KB of inline script before the meta tags."""
+    padding = "<script>" + "var data = {};" * 60_000 + "</script>"  # ~840 KB
+    html = ("<html><head><meta property=\"og:type\" content=\"article\"/>" + padding +
+            "<meta name=\"author\" content=\"Jane Reporter\"/>"
+            "<meta property=\"article:published_time\" content=\"2026-01-05T09:00:00Z\"/></head><body></body></html>")
+    assert len(html) > 600_000
+    s = signals.extract_signals(html, "https://news.example.com/a")
+    assert s["byline"] and s["published"]
 
 
 def test_a_bare_page_shows_none():
@@ -110,30 +121,29 @@ FULL = {"byline": True, "published": True, "updated": False, "sources": 2, "poli
 NONE = {"byline": False, "published": False, "updated": False, "sources": 0, "policy": False, "correction": False}
 
 
-def seed(db, source, n, *, signals_=FULL, info=80.0, start=1, workspace="", event_for=lambda i: None):
-    """Add `n` reports for `source` (ids from `start`)."""
+def seed(db, source, n, *, signals_=FULL, info=80.0, start=1, workspace="", title=None):
+    """Add `n` reports for `source` (ids from `start`); `title(i)` can make outlets share a headline."""
     for i in range(start, start + n):
-        db.add(Article(id=i, title=f"{source} story {i}", url=f"https://{source}.test/{i}", source=source, topic="World",
+        db.add(Article(id=i, title=title(i) if title else f"{source} story {i}", url=f"https://{source}.test/{i}", source=source, topic="World",
                        sentiment=0.0, is_seed=False, info_score=info, workspace_id=workspace,
                        signals=json.dumps(signals_) if signals_ is not None else None,
                        published_at=NOW - timedelta(days=1), ingested_at=NOW - timedelta(days=1)))
-        if event_for(i) is not None:
-            db.add(EventArticle(article_id=i, event_id=event_for(i)))
     db.commit()
+    story_index.reset_cache()
 
 
-def corroborate(db, source_ids, other_ids, event_id):
-    """Put articles of two outlets into one event."""
-    db.add(Event(id=event_id, title="t", first_seen=NOW - timedelta(days=1), last_seen=NOW, peak_reports=2))
-    db.add_all([EventArticle(article_id=i, event_id=event_id) for i in (*source_ids, *other_ids)])
-    db.commit()
+DISTINCT = ["volcano", "earthquake", "election", "merger", "strike", "drought"]
+
+
+def shared_event(k):
+    """A headline with its own vocabulary, so two outlets using it cover one event and nothing else matches it."""
+    return f"{DISTINCT[k]} alpha{k}x bravo{k}y charlie{k}z delta{k}w"
 
 
 def test_a_well_evidenced_outlet_gets_an_explained_score_rescaled_over_what_is_known(db):
-    seed(db, "Alpha", 12)
-    seed(db, "Beta", 12, start=100)
-    for k, (a, b) in enumerate(zip(range(1, 7), range(100, 106))):  # half of Alpha's reports are on shared events
-        corroborate(db, [a], [b], k + 1)
+    # half of Alpha's reports are about events that Beta also covers (same headline), the rest are its own
+    seed(db, "Alpha", 12, title=lambda i: shared_event(i - 1) if i <= 6 else f"unique{i}a unique{i}b unique{i}c")
+    seed(db, "Beta", 6, start=100, title=lambda i: shared_event(i - 100))
     db.add_all([FeedRun(run_id=1, feed="Alpha", at=NOW - timedelta(hours=h), ok=True) for h in range(12)])
     db.commit()
     p = reliability.compute(db, NOW)["Alpha"]
@@ -142,14 +152,15 @@ def test_a_well_evidenced_outlet_gets_an_explained_score_rescaled_over_what_is_k
     assert parts["information"]["points"] == 16.0 and parts["corroboration"]["points"] == 20.0
     assert parts["availability"]["points"] == 10 and parts["agreement"]["points"] is None
     assert p["score"] == round(100 * 86 / 90) and p["label"] == "Strong signals"  # agreement is left out, not counted as zero
+    assert "12 recent reports" in parts["corroboration"]["detail"]
     assert "Only 0 compared claims" in parts["agreement"]["detail"]
-    assert p["corroboration_rate"] == 0.5 and p["first_report_rate"] is not None
+    assert p["corroboration_rate"] == 0.5 and p["first_report_rate"] is not None  # judged from live clusters, no events needed
 
 
-def test_an_opaque_low_information_outlet_scores_weak(db):
+def test_an_opaque_low_information_outlet_gets_limited_signals(db):
     seed(db, "Opaque", 12, signals_=NONE, info=20.0)
     p = reliability.compute(db, NOW)["Opaque"]
-    assert p["score"] is not None and p["score"] < 55 and p["label"] == "Weak signals"
+    assert p["score"] is not None and p["score"] < reliability.MIXED and p["label"] == "Limited signals"
     assert next(c for c in p["breakdown"] if c["key"] == "corrections")["points"] == 0  # no corrections practice
 
 
@@ -158,6 +169,24 @@ def test_too_little_evidence_withholds_the_score_instead_of_guessing(db):
     p = reliability.compute(db, NOW)["Thin"]
     assert p["score"] is None and p["label"] == "Not enough data" and p["articles"] == 3
     assert all(c["points"] is None for c in p["breakdown"])
+
+
+def test_without_page_signals_the_score_is_withheld_however_many_reports_there_are(db):
+    seed(db, "NoPages", 30, signals_=None)  # information and corroboration alone are only 40 of 100: too thin to score
+    p = reliability.compute(db, NOW)["NoPages"]
+    assert p["score"] is None and p["label"] == "Not enough data" and p["articles"] == 30
+    assert next(c for c in p["breakdown"] if c["key"] == "information")["points"] is not None  # the parts are still shown
+
+
+def test_corroboration_ignores_stories_older_than_the_window(db):
+    seed(db, "Alpha", 12, title=lambda i: shared_event(i % 6))
+    seed(db, "Beta", 6, start=100, title=lambda i: shared_event(i - 100))
+    old = NOW - timedelta(days=10)
+    for a in db.execute(select(Article).where(Article.source == "Beta")).scalars():
+        a.published_at = old  # Beta's matching reports are too old to count as the same event
+    db.commit()
+    story_index.reset_cache()
+    assert reliability.compute(db, NOW)["Alpha"]["corroboration_rate"] == 0.0
 
 
 def test_many_correction_notices_count_against_an_outlet(db):

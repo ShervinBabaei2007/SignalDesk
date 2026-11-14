@@ -41,6 +41,9 @@ _ATTRIBUTION = re.compile(
     r"\b(said|says|announced|confirmed|reported|according to|told|warned|estimated|expects?|plans?|"
     r"will|has been|have been|killed|injured|arrested|approved|signed|rose|fell|raised|cut)\b", re.IGNORECASE)
 _ENTITIES = re.compile(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b")
+_CLOCK = re.compile(r"\b\d{1,2}:\d{2}\b")  # 2:03 is a video length or a timestamp, not a figure
+_FURNITURE = re.compile(r"\b(watch now|in this article|click here|sign up|subscribe|read more|follow us|"
+                        r"advertisement|video \d)\b", re.IGNORECASE)
 _MULTIPLIER = {"thousand": 1e3, "million": 1e6, "billion": 1e9, "trillion": 1e12}
 
 
@@ -60,7 +63,9 @@ def figure_value(raw: str) -> tuple[str, float] | None:
 
 def is_checkable(sentence: str) -> bool:
     """A sentence worth comparing: it states a figure, quotes someone, or attributes a statement to a named party."""
-    if figures(sentence) or _QUOTE.search(sentence):
+    if _FURNITURE.search(sentence):
+        return False  # page furniture that slipped into the extracted text
+    if figures(_CLOCK.sub(" ", sentence)) or _QUOTE.search(sentence):
         return True
     return bool(_ATTRIBUTION.search(sentence)) and len(_ENTITIES.findall(sentence)) >= 2
 

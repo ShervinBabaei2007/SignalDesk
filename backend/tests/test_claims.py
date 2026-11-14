@@ -92,6 +92,14 @@ def test_magnitude_words_are_understood():
     assert claims.figure_value("no number") is None
 
 
+def test_page_furniture_and_video_timestamps_are_not_claims():
+    for junk in ("In this article MSFT watch now VIDEO 2:03 02:03 Widespread Microsoft outage stretches into second day",
+                 "Subscribe to our newsletter to read more about the 2:03 clip from the Federal Reserve announcement",
+                 "The clip runs for 2:03 and was filmed by the local broadcaster on the day"):
+        assert not claims.is_checkable(junk), junk
+    assert claims.is_checkable("The central bank raised rates by 0.5 percent on Wednesday, officials said.")
+
+
 def test_one_outlet_alone_has_no_agreement_and_nothing_crashes_on_empty_reports():
     solo = claims.extractive_claims("t", [article(1, "BBC", BBC)])
     assert all(c["status"] == "single" for c in solo) and len(solo) <= claims.MAX_SINGLE
