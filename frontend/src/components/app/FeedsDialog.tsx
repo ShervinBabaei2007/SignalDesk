@@ -11,6 +11,7 @@ import { useDashboard } from '@/hooks/useDashboard'
 import { useSettings } from '@/hooks/useSettings'
 import { api, ApiError, authMessage, sessionMode, type Feed } from '@/lib/api'
 import { timeAgo } from '@/lib/format'
+import { completeStep } from '@/lib/nav'
 import { cn } from '@/lib/utils'
 
 /** Short health text for a feed. */
@@ -72,6 +73,7 @@ export function FeedsDialog({ open, onOpenChange }: { open: boolean; onOpenChang
     e.preventDefault()
     void guard(async () => {
       await api.addFeed(name.trim(), url.trim())
+      completeStep('feed')
       setName('')
       setUrl('')
       toast.success('Feed added')

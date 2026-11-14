@@ -1,16 +1,21 @@
 // Card showing the daily brief with its top positive and negative stories and a send button.
 import { useState } from 'react'
-import { Loader2, Mail, Sun } from 'lucide-react'
+import { Copy, Download, Loader2, Mail, Sun } from 'lucide-react'
 import { toast } from 'sonner'
 import { BlurFade } from '@/components/ui/blur-fade'
 import { BorderBeam } from '@/components/ui/border-beam'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
+import { AppLink as Link } from '@/components/app/AppLink'
+import { LockMark } from '@/components/app/LockedDialog'
 import { ToneIcon, toneText } from '@/components/app/Sentiment'
 import { useDashboard } from '@/hooks/useDashboard'
+import { useMode } from '@/hooks/useMode'
 import { useSettings } from '@/hooks/useSettings'
-import { api, ApiError, authMessage, type DigestItem } from '@/lib/api'
+import { api, ApiError, authMessage, type Digest, type DigestItem } from '@/lib/api'
+import { copyBrief, downloadBrief } from '@/lib/briefActions'
+import { openLocked } from '@/lib/nav'
 import { describeSentiment } from '@/lib/sentiment'
 import { cn } from '@/lib/utils'
 
@@ -27,16 +32,16 @@ function DigestGroup({ title, items, tone }: { title: string; items: DigestItem[
         const level = describeSentiment(item.sentiment)
         // On small screens only the first story is shown to keep the card short.
         return (
-          <a
+          <Link
             key={item.id}
-            href={`#/article/${item.id}`}
+            to={`/article/${item.id}`}
             className={cn(i > 0 ? 'hidden md:block' : 'block', 'rounded-lg border bg-background/60 px-3 py-2 text-[13px] leading-snug transition-colors hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none')}
           >
             <span className={cn('mb-0.5 block text-[11px] font-semibold', toneText[tone])} title={`Score ${level.score} (−1 to +1)`}>
               {level.label}
             </span>
             <span className="line-clamp-2">{item.title}</span>
-          </a>
+          </Link>
         )
       })}
     </div>
@@ -50,10 +55,10 @@ function sendErrorMessage(e: ApiError, token: string): string {
   return `Could not send brief: ${e.message}`
 }
 
-/** Today at a glance: the one-line headline plus the most positive and negative stories. */
-export function DailyBrief() {
-  const { digest } = useDashboard()
+/** The brief's buttons: locked in the demo, copy and download in a workspace, send otherwise. */
+function BriefActions({ digest }: { digest: Digest | null }) {
   const { token } = useSettings()
+  const { mode, locked } = useMode()
   const [sending, setSending] = useState(false)
 
   /** Delivers the brief through the configured channels and reports the outcome in a toast. */
@@ -68,6 +73,38 @@ export function DailyBrief() {
       setSending(false)
     }
   }
+
+  if (locked('brief')) {
+    return (
+      <Button variant="outline" size="sm" className="w-fit" onClick={() => openLocked('brief')}>
+        <Copy data-icon="inline-start" /> Copy brief <LockMark feature="brief" />
+      </Button>
+    )
+  }
+  if (mode === 'workspace') {
+    // A workspace has no delivery channel of its own, so it shares the brief as text.
+    return (
+      <div className="flex flex-wrap gap-2">
+        <Button variant="outline" size="sm" onClick={() => void copyBrief(digest)} disabled={!digest}>
+          <Copy data-icon="inline-start" /> Copy brief
+        </Button>
+        <Button variant="ghost" size="sm" onClick={() => downloadBrief(digest)} disabled={!digest}>
+          <Download data-icon="inline-start" /> Download
+        </Button>
+      </div>
+    )
+  }
+  return (
+    <Button variant="outline" size="sm" className="w-fit" onClick={send} disabled={sending}>
+      {sending ? <Loader2 className="animate-spin" data-icon="inline-start" /> : <Mail data-icon="inline-start" />}
+      Send brief
+    </Button>
+  )
+}
+
+/** Today at a glance: the one-line headline plus the most positive and negative stories. */
+export function DailyBrief() {
+  const { digest } = useDashboard()
 
   return (
     <BlurFade delay={0.1} className="compact-hide">
@@ -88,10 +125,7 @@ export function DailyBrief() {
                 </div>
               )}
             </div>
-            <Button variant="outline" size="sm" className="w-fit" onClick={send} disabled={sending}>
-              {sending ? <Loader2 className="animate-spin" data-icon="inline-start" /> : <Mail data-icon="inline-start" />}
-              Send brief
-            </Button>
+            <BriefActions digest={digest} />
           </div>
           {digest ? (
             <>

@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { BlurFade } from '@/components/ui/blur-fade'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
+import { AppLink as Link } from '@/components/app/AppLink'
 import { InfoScore } from '@/components/app/InfoScore'
 import { SentimentBadge } from '@/components/app/Sentiment'
 import type { RelatedArticle } from '@/lib/api'
@@ -35,8 +36,8 @@ function Row({ item, index }: { item: RelatedArticle; index: number }) {
         <HoverCardTrigger
           delay={250}
           render={
-            <a
-              href={`#/article/${item.id}`}
+            <Link
+              to={`/article/${item.id}`}
               className="group flex items-center gap-3 rounded-lg border bg-background/50 px-3 py-2.5 transition-colors hover:border-foreground/20 hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
             />
           }
@@ -95,12 +96,12 @@ export function AlsoCoveredBy({ items, clusterId }: { items: RelatedArticle[]; c
           <Row key={item.id} item={item} index={i} />
         ))}
         {clusterId != null && (
-          <a
-            href={`#/story/${clusterId}`}
+          <Link
+            to={`/story/${clusterId}`}
             className="inline-flex items-center gap-1 rounded-md px-1 py-1 text-sm font-medium text-link hover:underline focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
           >
             See the full story: brief and outlet comparison <ArrowRight className="size-3.5" aria-hidden />
-          </a>
+          </Link>
         )}
       </CardContent>
     </Card>

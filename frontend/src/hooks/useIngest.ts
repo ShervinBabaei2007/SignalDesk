@@ -3,6 +3,7 @@ import { useCallback, useState } from 'react'
 import { toast } from 'sonner'
 import { useSettings } from '@/hooks/useSettings'
 import { api, sessionMode, type ApiError } from '@/lib/api'
+import { completeStep, navigateTo } from '@/lib/nav'
 
 /** The "Ingest feeds" action: progress text, toasts (including watchlist alerts), then a refresh. */
 export function useIngest(refreshAll: () => Promise<void>) {
@@ -16,6 +17,7 @@ export function useIngest(refreshAll: () => Promise<void>) {
     setIngestResult('Fetching feeds, removing duplicates and analyzing…')
     try {
       const r = await api.ingest()
+      completeStep('ingest')
       setIngestResult(`${r.added} new · ${r.fetched} fetched · ${r.skipped} duplicates skipped · ${r.duration_seconds}s`)
       // A workspace ingests only its own feeds, so nothing fetched at all means it has none yet.
       if (sessionMode(token) === 'workspace' && r.fetched === 0 && r.skipped === 0) {
@@ -35,7 +37,7 @@ export function useIngest(refreshAll: () => Promise<void>) {
             label: 'Open',
             // Open the first match as a story when it is grouped, otherwise as a single article.
             onClick: () => {
-              location.hash = first.cluster_id ? `#/story/${first.cluster_id}` : `#/article/${first.article_id}`
+              navigateTo(first.cluster_id ? `/story/${first.cluster_id}` : `/article/${first.article_id}`)
             },
           },
         })

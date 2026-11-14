@@ -7,6 +7,7 @@ import { BlurFade } from '@/components/ui/blur-fade'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
+import { AppLink as Link } from '@/components/app/AppLink'
 import { OutletComparison } from '@/components/app/OutletComparison'
 import { ReportRow } from '@/components/app/StoryReports'
 import { SentimentBadge } from '@/components/app/Sentiment'
@@ -153,7 +154,7 @@ export function StoryPage({ id }: { id: number }) {
 
   return (
     <div className="mx-auto max-w-4xl space-y-4">
-      <Button variant="ghost" className="-ml-2" render={<a href="#/" />}>
+      <Button variant="ghost" className="-ml-2" render={<Link to="/" />}>
         <ArrowLeft data-icon="inline-start" /> Back to feed
       </Button>
 

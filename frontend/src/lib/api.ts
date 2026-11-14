@@ -276,6 +276,10 @@ export interface TrendingStory {
 
 /** The daily brief. */
 export interface Digest {
+  generated_at: string
+  articles_last_24h: number
+  avg_sentiment: number
+  topic_breakdown: Record<string, number>
   headline: string
   top_positive: DigestItem[]
   top_negative: DigestItem[]

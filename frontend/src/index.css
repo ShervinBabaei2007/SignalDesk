@@ -166,6 +166,30 @@
   html {
     @apply font-sans;
     }
+  /* Tailwind resets buttons to the arrow cursor, so show a pointer on everything clickable. */
+  button:not(:disabled),
+  a[href],
+  summary,
+  select,
+  label[for],
+  input[type="checkbox"],
+  input[type="radio"],
+  input[type="range"],
+  [role="button"]:not([aria-disabled="true"]),
+  [role="tab"],
+  [role="switch"],
+  [role="checkbox"],
+  [role="radio"],
+  [role="option"],
+  [role="menuitem"],
+  [role="combobox"] {
+    cursor: pointer;
+    }
+  button:disabled,
+  [aria-disabled="true"],
+  [data-disabled] {
+    cursor: not-allowed;
+    }
 }
 
 /* Compact mode: a calmer dashboard (set from Settings) */

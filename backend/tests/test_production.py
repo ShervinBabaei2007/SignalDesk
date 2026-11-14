@@ -69,3 +69,25 @@ def test_add_default_feeds_requires_token_when_configured(monkeypatch):
     assert client.post("/api/feeds/defaults").status_code == 401
     ok = client.post("/api/feeds/defaults", headers={"X-API-Key": "s3cret"})
     assert ok.status_code == 200
+
+
+def test_client_routes_fall_back_to_index_html(tmp_path, monkeypatch):
+    """A refresh on /article/5 serves the app, files in dist are served as-is, and backend paths still 404."""
+    from app import main
+
+    (tmp_path / "secret.txt").write_text("outside")
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "index.html").write_text("<div id=root></div>")
+    (dist / "favicon.svg").write_text("<svg/>")
+    monkeypatch.setattr(main, "DIST_DIR", dist)
+
+    assert "id=root" in client.get("/article/5").text
+    assert "id=root" in client.get("/").text
+    assert client.get("/favicon.svg").text == "<svg/>"
+    assert client.get("/api/nope").status_code == 404
+    assert client.get("/api/nope").json() == {"detail": "Not Found"}
+    assert client.get("/docs").status_code == 200
+    # Climbing out of dist must fall back to index.html rather than leak a neighbouring file.
+    assert "outside" not in client.get("/..%2fsecret.txt").text
+    assert "outside" not in client.get("/../secret.txt").text

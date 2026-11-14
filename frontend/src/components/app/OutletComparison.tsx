@@ -3,6 +3,7 @@ import { BlurFade } from '@/components/ui/blur-fade'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { AppLink as Link } from '@/components/app/AppLink'
 import { SourceAvatar } from '@/components/app/AlsoCoveredBy'
 import { InfoScore } from '@/components/app/InfoScore'
 import { SentimentBadge, toneBg, toneText } from '@/components/app/Sentiment'
@@ -65,8 +66,8 @@ function Row({ row, index }: { row: OutletStat; index: number }) {
   const reliability = reliabilityTone(row.reliability)
   return (
     <BlurFade delay={0.04 * index} duration={0.3} offset={6}>
-      <a
-        href={`#/article/${row.report_id}`}
+      <Link
+        to={`/article/${row.report_id}`}
         className="group flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border bg-background/50 px-3 py-2.5 transition-colors hover:border-foreground/20 hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
       >
         <span className="flex min-w-0 flex-1 basis-48 items-center gap-2.5">
@@ -110,7 +111,7 @@ function Row({ row, index }: { row: OutletStat; index: number }) {
           {row.numbers} figure{row.numbers === 1 ? '' : 's'} · {row.quotes} quote{row.quotes === 1 ? '' : 's'}
         </span>
         <SentimentBadge score={row.sentiment} />
-      </a>
+      </Link>
     </BlurFade>
   )
 }

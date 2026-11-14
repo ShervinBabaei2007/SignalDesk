@@ -234,24 +234,9 @@ def require_api_token(request: Request) -> None:
 DIST_DIR = FRONTEND_DIR / "dist"   # production build of the React app (npm run build)
 _NO_CACHE = {"Cache-Control": "no-cache"}
 
-# Serve the built React app when it exists, otherwise a page explaining how to build it.
-if (DIST_DIR / "index.html").exists():
+# The built app's hashed bundles; the page itself is served by the catch-all at the end of this file.
+if (DIST_DIR / "assets").is_dir():
     app.mount("/assets", StaticFiles(directory=DIST_DIR / "assets"), name="assets")
-
-    @app.get("/", include_in_schema=False)
-    def index():
-        """Serve the built dashboard's index.html."""
-        return FileResponse(DIST_DIR / "index.html", headers=_NO_CACHE)
-else:
-    @app.get("/", include_in_schema=False)
-    def index_missing():
-        """Explain how to build the dashboard when no frontend build exists."""
-        return HTMLResponse(
-            "<h1>SignalDesk API is running</h1>"
-            "<p>The dashboard hasn't been built yet. Run <code>cd frontend &amp;&amp; npm install "
-            "&amp;&amp; npm run build</code>, or <code>npm run dev</code> for development. "
-            "API docs: <a href='/docs'>/docs</a></p>"
-        )
 
 
 # --------------------------------------------------------------------------- #
@@ -657,3 +642,32 @@ def ingest(db: Session = Depends(scoped_db), background_tasks: BackgroundTasks =
         duration_seconds=cycle.duration_seconds,
         enrich_queued=cycle.enrich_pending,
     )
+
+
+# --------------------------------------------------------------------------- #
+# Single-page-app fallback (must stay last so it never shadows an API route)
+# --------------------------------------------------------------------------- #
+
+# URL prefixes that belong to the backend: an unknown path under one is a real 404, not a client route.
+_BACKEND_PREFIXES = ("api", "docs", "redoc", "openapi.json", "assets")
+
+
+@app.get("/", include_in_schema=False)
+@app.get("/{path:path}", include_in_schema=False)
+def spa(path: str = ""):
+    """Serve a built file when one matches, else index.html so client-side routes survive a refresh."""
+    index = DIST_DIR / "index.html"
+    if not index.exists():
+        return HTMLResponse(
+            "<h1>SignalDesk API is running</h1>"
+            "<p>The dashboard hasn't been built yet. Run <code>cd frontend &amp;&amp; npm install "
+            "&amp;&amp; npm run build</code>, or <code>npm run dev</code> for development. "
+            "API docs: <a href='/docs'>/docs</a></p>"
+        )
+    if path.split("/", 1)[0] in _BACKEND_PREFIXES:
+        raise HTTPException(404, "Not Found")
+    # Public files such as favicon.svg live at the root of dist; refuse anything that resolves outside it.
+    candidate = (DIST_DIR / path).resolve()
+    if path and candidate.is_file() and candidate.is_relative_to(DIST_DIR.resolve()):
+        return FileResponse(candidate)
+    return FileResponse(index, headers=_NO_CACHE)

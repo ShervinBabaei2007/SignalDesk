@@ -14,6 +14,7 @@ import { useDashboard } from '@/hooks/useDashboard'
 import { useSettings } from '@/hooks/useSettings'
 import { api, ApiError, authMessage, type Watch } from '@/lib/api'
 import { TOPIC_EMOJI } from '@/lib/format'
+import { completeStep } from '@/lib/nav'
 import { cn } from '@/lib/utils'
 
 /** Select value meaning any topic. */
@@ -103,6 +104,7 @@ export function WatchlistDialog({ open, onOpenChange }: { open: boolean; onOpenC
     e.preventDefault()
     void run(async () => {
       await api.addWatch(term, topic === ANY ? null : topic, Number(minOutlets))
+      completeStep('watch')
       setTerm('')
       toast.success(`Watching “${term.trim()}”`)
     })

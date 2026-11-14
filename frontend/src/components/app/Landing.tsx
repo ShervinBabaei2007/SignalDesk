@@ -1,14 +1,11 @@
 // Landing page: explains SignalDesk and lets visitors open their own private workspace or take the demo tour.
 import { useEffect, useState } from 'react'
-import { ArrowRight, Compass, Eye, Flame, Gauge, Layers, Loader2, LockKeyhole, Mail, Play, RefreshCw, Zap, type LucideIcon } from 'lucide-react'
-import { toast } from 'sonner'
+import { ArrowRight, Compass, Eye, Flame, Gauge, Layers, LockKeyhole, Mail, Play, RefreshCw, Zap, type LucideIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { ShimmerButton } from '@/components/ui/shimmer-button'
-import { useDashboard } from '@/hooks/useDashboard'
-import { enterDashboard } from '@/hooks/useRoute'
-import { useSettings } from '@/hooks/useSettings'
-import { getAuthStatus, getToken, startDemo, startWorkspace, type AuthStatus } from '@/lib/api'
+import { getAuthStatus, type AuthStatus } from '@/lib/api'
+import { enterDashboard, navigateAbsolute } from '@/lib/nav'
 
 /** A capability shown in the feature grid. */
 interface Feature {
@@ -23,18 +20,12 @@ const FEATURES: Feature[] = [
   { icon: Gauge, title: 'Information score', text: 'Every article is scored on how much concrete detail it carries, not just clicks.' },
   { icon: Flame, title: 'Hot topics & sentiment', text: 'See what is trending and how each outlet frames it, from negative to positive.' },
   { icon: Eye, title: 'Watchlist alerts', text: 'Follow the terms, topics and outlets you care about and get one alert per story.' },
-  { icon: Mail, title: 'Daily brief', text: 'A short digest of the day, ready to send to Slack or email.' },
+  { icon: Mail, title: 'Daily brief', text: 'A short digest of the day, ready to copy and share.' },
   { icon: RefreshCw, title: 'Runs itself', text: 'Feeds are re-checked every hour, so the latest news is always in.' },
 ]
 
-/** Which entry button is starting. */
-type Starting = 'workspace' | 'demo' | null
-
-/** Public landing page that explains the app and starts a workspace or demo session. */
+/** Public landing page that explains the app and sends visitors to /workspace or /demo. */
 export function Landing() {
-  const { saveToken } = useSettings()
-  const { refreshAll } = useDashboard()
-  const [starting, setStarting] = useState<Starting>(null)
   const [status, setStatus] = useState<AuthStatus | null>(null)
 
   // Ask the server once whether private workspaces are enabled, which decides the entry buttons.
@@ -44,33 +35,8 @@ export function Landing() {
 
   const workspaces = status?.workspaces ?? false
   // The highlighted button opens a workspace when the server allows it, and the demo otherwise.
-  const primaryBusy = starting === (workspaces ? 'workspace' : 'demo')
-  let primaryIcon = <Play className="mr-2 size-4 fill-current" aria-hidden />
-  if (primaryBusy) primaryIcon = <Loader2 className="mr-2 size-4 animate-spin" aria-hidden />
-  else if (workspaces) primaryIcon = <LockKeyhole className="mr-2 size-4" aria-hidden />
-  let primaryLabel = workspaces ? 'Open my workspace' : 'Try as a demo'
-  if (primaryBusy) primaryLabel = workspaces ? 'Opening…' : 'Starting demo…'
-
-  /** Switches to the chosen mode, reloads the data for it, then opens the dashboard. */
-  const enter = async (kind: 'workspace' | 'demo') => {
-    setStarting(kind)
-    if (kind === 'workspace') {
-      const r = await startWorkspace()
-      if (!r.ok) {
-        toast.error(r.message ?? 'Could not start a workspace')
-        setStarting(null)
-        return
-      }
-      toast.success('Your workspace is ready: add feeds, watch terms and run ingests')
-    } else {
-      const live = await startDemo()
-      toast.success(live ? 'Demo started: you can run live ingests' : 'Welcome! This deployment is read-only')
-    }
-    saveToken(getToken()) // sync the settings state with the token the start call stored
-    void refreshAll() // the data on screen belongs to whichever mode the visitor was in before
-    setStarting(null)
-    enterDashboard()
-  }
+  const primaryIcon = workspaces ? <LockKeyhole className="mr-2 size-4" aria-hidden /> : <Play className="mr-2 size-4 fill-current" aria-hidden />
+  const primaryLabel = workspaces ? 'Open my workspace' : 'Try as a demo'
 
   return (
     <div className="min-h-dvh">
@@ -98,19 +64,18 @@ export function Landing() {
           </p>
           <div className="mx-auto mt-9 flex w-full max-w-xs flex-col items-center justify-center gap-3 sm:max-w-none sm:flex-row">
             <ShimmerButton
-              onClick={() => void enter(workspaces ? 'workspace' : 'demo')}
-              disabled={starting !== null}
+              onClick={() => navigateAbsolute(workspaces ? '/workspace' : '/demo')}
               background="var(--primary)"
               shimmerColor="#ffffff"
               borderRadius="0.625rem"
-              className="h-11 w-full px-6 text-base font-medium disabled:opacity-70 sm:w-auto"
+              className="h-11 w-full px-6 text-base font-medium sm:w-auto"
             >
               {primaryIcon}
               {primaryLabel}
             </ShimmerButton>
             {workspaces ? (
-              <Button variant="outline" size="lg" className="h-11 w-full px-5 sm:w-auto" onClick={() => void enter('demo')} disabled={starting !== null}>
-                {starting === 'demo' ? <Loader2 className="animate-spin" data-icon="inline-start" /> : <Compass data-icon="inline-start" />}
+              <Button variant="outline" size="lg" className="h-11 w-full px-5 sm:w-auto" onClick={() => navigateAbsolute('/demo')}>
+                <Compass data-icon="inline-start" />
                 Take the demo tour
               </Button>
             ) : (

@@ -7,6 +7,7 @@ import { BlurFade } from '@/components/ui/blur-fade'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
+import { AppLink as Link } from '@/components/app/AppLink'
 import { AlsoCoveredBy } from '@/components/app/AlsoCoveredBy'
 import { BookmarkButton } from '@/components/app/BookmarkButton'
 import { SentimentBadge, SentimentInfo, SentimentScale, toneBg, toneText } from '@/components/app/Sentiment'
@@ -112,7 +113,7 @@ export function Reader({ id }: { id: number }) {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <Button variant="ghost" className="mb-3 -ml-2" render={<a href="#/" />}>
+      <Button variant="ghost" className="mb-3 -ml-2" render={<Link to="/" />}>
         <ArrowLeft data-icon="inline-start" /> Back to feed
       </Button>
 

@@ -2,12 +2,13 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { ThemeProvider } from 'next-themes'
-import App from '@/App'
+import { RouterProvider } from 'react-router'
 import { Toaster } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { DashboardProvider } from '@/hooks/useDashboard'
 import { LibraryProvider } from '@/hooks/useLibrary'
 import { SettingsProvider } from '@/hooks/useSettings'
+import { router } from '@/router'
 import './index.css'
 
 createRoot(document.getElementById('root')!).render(
@@ -17,7 +18,7 @@ createRoot(document.getElementById('root')!).render(
         <TooltipProvider delay={150}>
           <LibraryProvider>
             <DashboardProvider>
-              <App />
+              <RouterProvider router={router} />
             </DashboardProvider>
           </LibraryProvider>
           <Toaster position="bottom-center" />

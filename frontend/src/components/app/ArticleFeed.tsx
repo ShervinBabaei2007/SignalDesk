@@ -11,6 +11,7 @@ import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem } fro
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { AppLink as Link } from '@/components/app/AppLink'
 import { BookmarkButton } from '@/components/app/BookmarkButton'
 import { HotStories } from '@/components/app/HotStories'
 import { InfoScore } from '@/components/app/InfoScore'
@@ -21,6 +22,7 @@ import { useLibrary } from '@/hooks/useLibrary'
 import { useSettings } from '@/hooks/useSettings'
 import type { Article, Story } from '@/lib/api'
 import { domainOf, keywordList, timeAgo, TOPIC_EMOJI } from '@/lib/format'
+import { navigateTo } from '@/lib/nav'
 import { pageWindow } from '@/lib/pagination'
 import { cleanSummary } from '@/lib/text'
 import { cn } from '@/lib/utils'
@@ -99,7 +101,7 @@ function ArticleCard({
   const domain = a.is_seed ? '' : domainOf(a.url)
   /** Navigates to this article's reader page. */
   const open = () => {
-    location.hash = `#/article/${a.id}`
+    navigateTo(`/article/${a.id}`)
   }
   // Stagger the entrance of the first few cards only, so later ones do not lag behind.
   return (
@@ -145,9 +147,9 @@ function ArticleCard({
           <div className="flex items-start gap-3.5 sm:gap-4">
             <div className="min-w-0 flex-1 space-y-2">
               <h3 className="text-[15.5px] leading-snug font-semibold tracking-tight sm:text-base">
-                <a href={`#/article/${a.id}`} onClick={(e) => e.stopPropagation()} className={cn('hover:text-link', read && 'text-muted-foreground')}>
+                <Link to={`/article/${a.id}`} onClick={(e) => e.stopPropagation()} className={cn('hover:text-link', read && 'text-muted-foreground')}>
                   {a.title}
-                </a>
+                </Link>
               </h3>
               {summary && <p className="line-clamp-2 text-[13px] leading-relaxed text-muted-foreground sm:line-clamp-3 sm:text-sm">{summary}</p>}
             </div>

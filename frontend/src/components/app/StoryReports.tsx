@@ -1,6 +1,7 @@
 // Collapsible list of a story's ranked reports.
 import { ArrowRight, ChevronDown, Layers } from 'lucide-react'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { AppLink as Link } from '@/components/app/AppLink'
 import { InfoScore } from '@/components/app/InfoScore'
 import { SentimentBadge } from '@/components/app/Sentiment'
 import { SourceAvatar } from '@/components/app/AlsoCoveredBy'
@@ -10,8 +11,8 @@ import { timeAgo } from '@/lib/format'
 /** One report: outlet, headline, how much information it carries, and its wording. */
 export function ReportRow({ report: r, rank, best }: { report: ReportBrief; rank?: number; best?: boolean }) {
   return (
-    <a
-      href={`#/article/${r.id}`}
+    <Link
+      to={`/article/${r.id}`}
       className="group/row flex items-center gap-3 rounded-lg border bg-background/50 px-3 py-2 transition-colors hover:border-foreground/20 hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
     >
       {rank !== undefined && (
@@ -33,7 +34,7 @@ export function ReportRow({ report: r, rank, best }: { report: ReportBrief; rank
       <span className="hidden w-28 justify-end md:flex">
         <SentimentBadge score={r.sentiment} />
       </span>
-    </a>
+    </Link>
   )
 }
 
@@ -66,12 +67,12 @@ export function StoryReports({
           ))}
         </ol>
         {clusterId != null && (
-          <a
-            href={`#/story/${clusterId}`}
+          <Link
+            to={`/story/${clusterId}`}
             className="mt-2 inline-flex items-center gap-1 rounded-md px-1 py-1 text-sm font-medium text-link hover:underline focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
           >
             Open the full story: brief and outlet comparison <ArrowRight className="size-3.5" aria-hidden />
-          </a>
+          </Link>
         )}
       </CollapsibleContent>
     </Collapsible>

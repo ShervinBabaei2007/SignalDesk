@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useLibrary } from '@/hooks/useLibrary'
+import { completeStep } from '@/lib/nav'
 import { cn } from '@/lib/utils'
 
 /** Toggles an article in this browser's read-later library (listed under Topics → Saved). */
@@ -24,6 +25,7 @@ export function BookmarkButton({ id, withLabel = false }: { id: number; withLabe
             onClick={(e) => {
               e.stopPropagation() // cards are clickable; saving must not open the article
               toggleSaved(id)
+              if (!saved) completeStep('save')
               toast(saved ? 'Removed from saved' : 'Saved for later')
             }}
           />
