@@ -1,0 +1,269 @@
+"""Source reliability: page transparency signals and explainable outlet profiles."""
+
+import json
+import os
+import sys
+import tempfile
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+_test_dir = tempfile.mkdtemp()
+os.environ.setdefault("DATABASE_URL", f"sqlite:///{_test_dir}/test.db")
+os.environ["INGEST_INTERVAL_MINUTES"] = "0"
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+import pytest  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
+from sqlalchemy import create_engine, select  # noqa: E402
+from sqlalchemy.orm import sessionmaker  # noqa: E402
+from sqlalchemy.pool import StaticPool  # noqa: E402
+
+from app import briefs, claims, enrichment, reliability, signals, story_index  # noqa: E402
+from app.database import Base, SessionLocal, engine as app_engine  # noqa: E402
+from app.main import app  # noqa: E402
+from app.models import Article, Event, EventArticle, FeedRun, StoryBrief  # noqa: E402
+
+NOW = datetime.now(timezone.utc)
+
+GOOD_PAGE = """
+<html><head>
+<meta name="author" content="Jane Reporter">
+<meta property="article:published_time" content="2026-01-05T09:00:00Z">
+<meta property="article:modified_time" content="2026-01-05T15:30:00Z">
+</head><body>
+<nav><a href="/corrections">Corrections</a></nav>
+<article><p>Officials cited a <a href="https://www.reuters.com/world/report">Reuters report</a> and
+<a href="https://data.gov/stats">government data</a>, plus <a href="https://twitter.com/x/status/1">a tweet</a>
+and <a href="https://news.example.com/other">our own earlier story</a>.</p>
+<p>Correction: an earlier headline misstated the figure.</p></article>
+</body></html>
+"""
+
+
+# --------------------------------------------------------------------------- #
+# Page signals
+# --------------------------------------------------------------------------- #
+
+def test_a_transparent_page_shows_every_signal():
+    s = signals.extract_signals(GOOD_PAGE, "https://news.example.com/a", "Body\nCorrection: an earlier headline misstated it.")
+    assert s == {"byline": True, "published": True, "updated": True, "sources": 2, "policy": True, "correction": True}
+
+
+def test_a_bare_page_shows_none():
+    s = signals.extract_signals("<html><body><p>Just text.</p></body></html>", "https://x.test/a", "Just text.")
+    assert s == {"byline": False, "published": False, "updated": False, "sources": 0, "policy": False, "correction": False}
+
+
+def test_own_domain_and_social_links_do_not_count_as_sourcing():
+    html = ('<p><a href="https://www.news.example.com/x">us</a> <a href="https://facebook.com/s">fb</a> '
+            '<a href="https://t.co/abc">t</a></p>')
+    assert signals.extract_signals(html, "https://news.example.com/a")["sources"] == 0
+    assert signals.extract_signals('<p><a href="https://bbc.co.uk/x">bbc</a></p>', "https://news.example.com/a")["sources"] == 1
+
+
+def test_bylines_and_dates_are_found_in_json_ld_and_markup():
+    ld = '<script type="application/ld+json">{"author": {"name": "A"}, "datePublished": "2026-01-01", "dateModified": "2026-01-01"}</script>'
+    s = signals.extract_signals(f"<html><head>{ld}</head><body></body></html>")
+    assert s["byline"] and s["published"] and not s["updated"]  # modified equals published: not an update
+    s = signals.extract_signals('<div class="article-byline">By Sam</div><time datetime="2026-01-01">Jan 1</time>')
+    assert s["byline"] and s["published"]
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("Correction: the minister's name was misspelt.", True),
+    ("Clarification - this story was updated.", True),
+    ("An earlier version of this article said 5%.", True),
+    ("The company said the correction in prices was overdue.", False),
+    ("", False),
+])
+def test_correction_notices_are_told_from_the_word_correction(text, expected):
+    assert signals.has_correction_notice(text) is expected
+
+
+def test_enrichment_stores_the_signals_it_finds(monkeypatch):
+    class Resp:
+        status_code, headers, url = 200, {"content-type": "text/html"}, "https://news.example.com/a"
+        text = GOOD_PAGE.replace("<article>", "<article>" + "<p>" + "A long sentence about the economy. " * 12 + "</p>")
+    monkeypatch.setattr(enrichment.httpx, "get", lambda *a, **k: Resp())
+    text, image, found = enrichment.fetch_page_signals("https://news.example.com/a")
+    assert text and found["byline"] and found["sources"] == 2
+    assert enrichment.fetch_page("https://news.example.com/a")[0] == text  # the two-value wrapper still works
+
+
+# --------------------------------------------------------------------------- #
+# Profiles
+# --------------------------------------------------------------------------- #
+
+@pytest.fixture()
+def db():
+    """In-memory database; the profile cache is cleared around each test."""
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    Base.metadata.create_all(bind=engine)
+    reliability.reset_cache()
+    with sessionmaker(bind=engine)() as session:
+        yield session
+    reliability.reset_cache()
+
+
+FULL = {"byline": True, "published": True, "updated": False, "sources": 2, "policy": True, "correction": False}
+NONE = {"byline": False, "published": False, "updated": False, "sources": 0, "policy": False, "correction": False}
+
+
+def seed(db, source, n, *, signals_=FULL, info=80.0, start=1, workspace="", event_for=lambda i: None):
+    """Add `n` reports for `source` (ids from `start`)."""
+    for i in range(start, start + n):
+        db.add(Article(id=i, title=f"{source} story {i}", url=f"https://{source}.test/{i}", source=source, topic="World",
+                       sentiment=0.0, is_seed=False, info_score=info, workspace_id=workspace,
+                       signals=json.dumps(signals_) if signals_ is not None else None,
+                       published_at=NOW - timedelta(days=1), ingested_at=NOW - timedelta(days=1)))
+        if event_for(i) is not None:
+            db.add(EventArticle(article_id=i, event_id=event_for(i)))
+    db.commit()
+
+
+def corroborate(db, source_ids, other_ids, event_id):
+    """Put articles of two outlets into one event."""
+    db.add(Event(id=event_id, title="t", first_seen=NOW - timedelta(days=1), last_seen=NOW, peak_reports=2))
+    db.add_all([EventArticle(article_id=i, event_id=event_id) for i in (*source_ids, *other_ids)])
+    db.commit()
+
+
+def test_a_well_evidenced_outlet_gets_an_explained_score_rescaled_over_what_is_known(db):
+    seed(db, "Alpha", 12)
+    seed(db, "Beta", 12, start=100)
+    for k, (a, b) in enumerate(zip(range(1, 7), range(100, 106))):  # half of Alpha's reports are on shared events
+        corroborate(db, [a], [b], k + 1)
+    db.add_all([FeedRun(run_id=1, feed="Alpha", at=NOW - timedelta(hours=h), ok=True) for h in range(12)])
+    db.commit()
+    p = reliability.compute(db, NOW)["Alpha"]
+    parts = {c["key"]: c for c in p["breakdown"]}
+    assert parts["transparency"]["points"] == 30 and parts["corrections"]["points"] == 10
+    assert parts["information"]["points"] == 16.0 and parts["corroboration"]["points"] == 20.0
+    assert parts["availability"]["points"] == 10 and parts["agreement"]["points"] is None
+    assert p["score"] == round(100 * 86 / 90) and p["label"] == "Strong signals"  # agreement is left out, not counted as zero
+    assert "Only 0 compared claims" in parts["agreement"]["detail"]
+    assert p["corroboration_rate"] == 0.5 and p["first_report_rate"] is not None
+
+
+def test_an_opaque_low_information_outlet_scores_weak(db):
+    seed(db, "Opaque", 12, signals_=NONE, info=20.0)
+    p = reliability.compute(db, NOW)["Opaque"]
+    assert p["score"] is not None and p["score"] < 55 and p["label"] == "Weak signals"
+    assert next(c for c in p["breakdown"] if c["key"] == "corrections")["points"] == 0  # no corrections practice
+
+
+def test_too_little_evidence_withholds_the_score_instead_of_guessing(db):
+    seed(db, "Thin", 3)
+    p = reliability.compute(db, NOW)["Thin"]
+    assert p["score"] is None and p["label"] == "Not enough data" and p["articles"] == 3
+    assert all(c["points"] is None for c in p["breakdown"])
+
+
+def test_many_correction_notices_count_against_an_outlet(db):
+    noisy = dict(FULL, correction=True)
+    seed(db, "Noisy", 12, signals_=noisy)
+    seed(db, "Careful", 12, start=100)
+    profiles = reliability.compute(db, NOW)
+    pts = lambda name: next(c for c in profiles[name]["breakdown"] if c["key"] == "corrections")["points"]  # noqa: E731
+    assert pts("Noisy") < pts("Careful") == 10
+    assert profiles["Noisy"]["corrections"] == {"notices": 12, "rate": 1.0, "policy": True}
+
+
+def test_agreement_uses_cached_claims_of_shared_stories_only(db):
+    seed(db, "Alpha", 12)
+    seed(db, "Visitor stuff", 12, start=500, workspace="visitor")
+    items = [{"status": "agreed", "outlets": ["Alpha", "Beta"]}] * 4 + [{"status": "disputed", "outlets": ["Alpha", "Beta"]}] * 2
+    db.add(StoryBrief(cluster_id=1, member_hash="h", payload="{}", claims=json.dumps({"kind": "auto", "items": items})))
+    db.add(StoryBrief(cluster_id=500, member_hash="h", payload="{}", claims=json.dumps({"kind": "auto", "items": items})))
+    db.commit()
+    profiles = reliability.compute(db, NOW)
+    agreement = next(c for c in profiles["Alpha"]["breakdown"] if c["key"] == "agreement")
+    assert agreement["points"] == round(10 * 4 / 6, 1) and "4 of 6" in agreement["detail"]
+    assert "Visitor stuff" not in profiles  # a visitor's articles and stories never feed a public profile
+
+
+def test_a_visitor_session_cannot_change_a_public_profile(db):
+    seed(db, "Alpha", 12)
+    before = reliability.compute(db, NOW)["Alpha"]
+    seed(db, "Alpha", 20, start=700, workspace="visitor", signals_=NONE, info=1.0)
+    db.info["workspace"] = "visitor"
+    assert reliability.compute(db, NOW)["Alpha"] == before
+
+
+def test_profiles_are_cached_briefly(db, monkeypatch):
+    seed(db, "Alpha", 12)
+    first = reliability.profiles(db)
+    seed(db, "Gamma", 12, start=900)
+    assert reliability.profiles(db) is first  # served from the cache
+    reliability.reset_cache()
+    assert "Gamma" in reliability.profiles(db)
+
+
+def test_listing_orders_best_first_with_the_disclaimer(db):
+    seed(db, "Alpha", 12)
+    seed(db, "Opaque", 12, start=100, signals_=NONE, info=20.0)
+    seed(db, "Thin", 2, start=200)
+    out = reliability.listing(db)
+    assert [p["source"] for p in out["items"]] == ["Alpha", "Opaque", "Thin"]
+    assert "not an editorial rating" in out["note"] and out["window_days"] == 30
+
+
+# --------------------------------------------------------------------------- #
+# Cache isolation: a visitor's article must not leak through a shared cache
+# --------------------------------------------------------------------------- #
+
+def members(db, workspace_for_second=""):
+    """Two reports, the second optionally a visitor's own."""
+    seed(db, "Alpha", 1, start=1)
+    seed(db, "Beta", 1, start=2, workspace=workspace_for_second)
+    db.info["workspace"] = workspace_for_second
+    return db.execute(select(Article).order_by(Article.id)).scalars().all()
+
+
+def test_a_story_with_a_visitors_article_is_never_cached_for_others(db):
+    story = members(db, "visitor")
+    briefs.get_brief(db, 1, "t", story)
+    claims.get_claims(db, 1, "t", story)
+    assert db.execute(select(StoryBrief)).first() is None
+
+
+def test_a_fully_shared_story_is_cached(db):
+    story = members(db, "")
+    briefs.get_brief(db, 1, "t", story)
+    claims.get_claims(db, 1, "t", story)
+    row = db.execute(select(StoryBrief)).scalar_one()
+    assert row.claims is not None
+
+
+# --------------------------------------------------------------------------- #
+# API
+# --------------------------------------------------------------------------- #
+
+def test_the_sources_endpoint_and_story_comparison_expose_reliability():
+    Base.metadata.create_all(bind=app_engine)
+    reliability.reset_cache()
+    recent = NOW - timedelta(hours=1)
+    with SessionLocal() as session:
+        seed(session, "ApiAlpha", 12, start=9200)
+        for i, source in ((9301, "ApiAlpha"), (9302, "ApiBeta")):
+            session.add(Article(id=i, title="Dam collapse floods valley as thousands flee", url=f"https://x.test/{i}",
+                                source=source, topic="World", sentiment=0.0, is_seed=False, published_at=recent))
+        session.commit()
+    story_index.reset_cache()
+    try:
+        client = TestClient(app)
+        body = client.get("/api/sources").json()
+        alpha = next(p for p in body["items"] if p["source"] == "ApiAlpha")
+        assert alpha["score"] is not None and len(alpha["breakdown"]) == 6 and "editorial rating" in body["note"]
+        comparison = client.get("/api/stories/9301").json()["comparison"]
+        by_source = {c["source"]: c for c in comparison}
+        assert by_source["ApiAlpha"]["reliability"] == alpha["score"]
+        assert by_source["ApiBeta"]["reliability"] is None and by_source["ApiBeta"]["reliability_label"] == "Not enough data"
+    finally:
+        with SessionLocal() as session:
+            session.query(StoryBrief).filter(StoryBrief.cluster_id == 9301).delete()
+            session.query(Article).filter(Article.id.in_([*range(9200, 9212), 9301, 9302])).delete(synchronize_session=False)
+            session.commit()
+        story_index.reset_cache()
+        reliability.reset_cache()

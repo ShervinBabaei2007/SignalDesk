@@ -172,6 +172,8 @@ def build_brief(title: str, members: list[Article]) -> dict[str, Any]:
 def get_brief(db: Session, cluster_id: int, title: str, members: list[Article], force: bool = False) -> dict[str, Any]:
     """Cached brief for a story; rewritten when its reports change or on request."""
     digest = member_hash(m.id for m in members)
+    if any(getattr(m, "workspace_id", "") for m in members):
+        return {**build_brief(title, members), "generated_at": datetime.now(timezone.utc)}  # a visitor's story is never cached
     row = db.get(StoryBrief, cluster_id)
     if row and row.member_hash == digest and not force:
         data = json.loads(row.payload)

@@ -25,7 +25,8 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from . import config, demo, events, netguard, notifications, observability, pipeline, reporting, story_index, watches, workspace
+from . import (config, demo, events, netguard, notifications, observability, pipeline, reliability, reporting,
+               story_index, watches, workspace)
 from . import stories as story_logic
 from .database import SessionLocal, ensure_columns, engine, get_db
 from .enrichment import enrich_article
@@ -33,7 +34,7 @@ from .ingestion import add_missing_default_feeds
 from .models import NO_WORKSPACE, Article, Base, Feed
 from .quality import backfill_info_scores
 from .schemas import (ArticleDetail, ArticlePage, Digest, FeedCreate, FeedIngestResult, FeedOut,
-                      IngestResult, Stats, StoryDetail, StoryPage, StoryTimeline, TrendingStory, WatchAlertOut,
+                      IngestResult, SourceList, Stats, StoryDetail, StoryPage, StoryTimeline, TrendingStory, WatchAlertOut,
                       WatchIn, WatchOut, WatchPatch)
 from .seed_data import backfill_keywords, seed_if_empty
 
@@ -311,6 +312,12 @@ def pipeline_observability(hours: int = Query(24, ge=1, le=720), db: Session = D
     """Pipeline health for the shared data: run success and latency, throughput, failing feeds, extraction rate."""
     db.info["workspace"] = NO_WORKSPACE  # always the shared pipeline, whoever is asking
     return observability.summary(db, hours)
+
+
+@app.get("/api/sources", response_model=SourceList, tags=["Intelligence"])
+def source_profiles(db: Session = Depends(scoped_db)):
+    """Evidence-based profile of each outlet: transparency, corrections, information, corroboration, availability."""
+    return reliability.listing(db)
 
 
 @app.get("/api/stats", response_model=Stats, tags=["System"])

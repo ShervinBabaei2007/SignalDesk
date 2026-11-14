@@ -7,6 +7,7 @@ If a page can't be fetched (paywall, JS-only site, offline), we fall back to
 a summary built from the stored feed text — the user always gets a summary.
 """
 
+import json
 import threading
 from datetime import datetime, timezone
 
@@ -17,6 +18,7 @@ from sqlalchemy.orm import Session
 from . import config, llm, netguard
 from .analysis import extract_keywords, strip_boilerplate, structured_summary, summarize
 from .extractor import extract_image_url, extract_main_text
+from .signals import extract_signals
 from .ingestion import strip_feed_metadata
 from .models import Article
 from .quality import information_score
@@ -34,8 +36,9 @@ _HEADERS = {
 }
 
 
-def fetch_page(url: str, timeout: float = 12.0, guarded: bool = False) -> tuple[str | None, str | None]:
-    """Download a page once; return (readable text, lead image URL). Either may be None.
+def fetch_page_signals(url: str, timeout: float = 12.0,
+                       guarded: bool = False) -> tuple[str | None, str | None, dict | None]:
+    """Download a page once; return (readable text, lead image URL, transparency signals). Any may be None.
 
     `guarded` is for URLs a visitor controls: only public addresses are fetched (see :mod:`app.netguard`).
     """
@@ -45,12 +48,12 @@ def fetch_page(url: str, timeout: float = 12.0, guarded: bool = False) -> tuple[
         else:
             resp = httpx.get(url, headers=_HEADERS, timeout=timeout, follow_redirects=True)
     except Exception:  # noqa: BLE001  (network errors are expected sometimes)
-        return None, None
+        return None, None, None
     if resp.status_code != 200:
-        return None, None
+        return None, None, None
     content_type = resp.headers.get("content-type", "")
     if "html" not in content_type and "text" not in content_type:
-        return None, None
+        return None, None, None
     try:
         image = extract_image_url(resp.text, str(resp.url))
     except Exception:  # noqa: BLE001
@@ -58,9 +61,18 @@ def fetch_page(url: str, timeout: float = 12.0, guarded: bool = False) -> tuple[
     try:
         text = extract_main_text(resp.text)
     except Exception:  # noqa: BLE001
-        return None, image
+        return None, image, None
+    try:
+        signals = extract_signals(resp.text, str(resp.url), text)
+    except Exception:  # noqa: BLE001
+        signals = None
     # Require a meaningful amount of text to call it a success
-    return (text if len(text) > 200 else None), image
+    return (text if len(text) > 200 else None), image, signals
+
+
+def fetch_page(url: str, timeout: float = 12.0, guarded: bool = False) -> tuple[str | None, str | None]:
+    """Download a page once; return (readable text, lead image URL). Either may be None."""
+    return fetch_page_signals(url, timeout, guarded)[:2]
 
 
 def fetch_full_text(url: str, timeout: float = 12.0) -> str | None:
@@ -81,8 +93,10 @@ def enrich_article(db: Session, article: Article) -> bool:
 
     fetched = None
     if not article.is_seed:
-        fetched, image = fetch_page(article.url, guarded=bool(article.workspace_id))
+        fetched, image, signals = fetch_page_signals(article.url, guarded=bool(article.workspace_id))
         article.extraction = "page" if fetched else "fallback"  # observability: did the page itself yield text?
+        if signals:
+            article.signals = json.dumps(signals)  # transparency signals feed the source profile (reliability.py)
         if image:
             article.image_url = image  # the page's own lead image beats the feed's thumbnail
 

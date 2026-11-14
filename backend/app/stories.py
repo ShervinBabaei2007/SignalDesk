@@ -18,7 +18,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import Select
 
-from . import briefs, claims, story_index, watches
+from . import briefs, claims, reliability, story_index, watches
 from . import sentiment as sentiment_scale
 from .clustering import Cluster
 from .models import Article
@@ -213,6 +213,12 @@ def story_detail(db: Session, cluster: Cluster, force_brief: bool = False) -> di
     members = ranked(list(db.execute(select(Article).where(Article.id.in_(cluster.article_ids))).scalars()))
     sentiments = [m.sentiment for m in members]
     avg = sum(sentiments) / len(sentiments) if sentiments else 0.0
+    comparison = outlet_stats(members)
+    profiles = reliability.profiles(db)
+    for row in comparison:  # how each outlet publishes, shown next to how it covered this story
+        profile = profiles.get(row["source"])
+        row["reliability"] = profile["score"] if profile else None
+        row["reliability_label"] = profile["label"] if profile else None
     return {
         "cluster_id": cluster.id,
         "title": cluster.title,
@@ -221,7 +227,7 @@ def story_detail(db: Session, cluster: Cluster, force_brief: bool = False) -> di
         "avg_sentiment": round(avg, 3),
         "sentiment_spread": round(max(sentiments) - min(sentiments), 3) if sentiments else 0.0,
         "reports": [brief(m) for m in members],
-        "comparison": outlet_stats(members),
+        "comparison": comparison,
         "brief": briefs.get_brief(db, cluster.id, cluster.title, members, force=force_brief),
         "claims": claims.get_claims(db, cluster.id, cluster.title, members, force=force_brief),
     }

@@ -107,6 +107,8 @@ class OutletStat(BaseModel):
     quotes: int
     published_at: datetime | None
     badges: list[str] = []
+    reliability: int | None = None  # the outlet's source-signals score, when there is enough data
+    reliability_label: str | None = None
 
 
 class StoryBriefOut(BaseModel):
@@ -131,6 +133,41 @@ class ClaimsOut(BaseModel):
     """The claim-level comparison of a story."""
     kind: str = "auto"  # "ai" (model) or "auto" (extractive fallback)
     items: list[ClaimOut] = []
+
+
+class ScoreComponent(BaseModel):
+    """One part of a source's signals score, with its working."""
+    key: str
+    label: str
+    points: float | None  # None when there is not enough evidence yet
+    max: int
+    detail: str
+
+
+class CorrectionsOut(BaseModel):
+    """How often an outlet's pages carry correction notices."""
+    notices: int = 0
+    rate: float = 0.0
+    policy: bool = False
+
+
+class SourceProfile(BaseModel):
+    """An evidence-based profile of one outlet (not an editorial rating)."""
+    source: str
+    articles: int
+    score: int | None
+    label: str
+    breakdown: list[ScoreComponent]
+    corroboration_rate: float
+    first_report_rate: float | None = None
+    corrections: CorrectionsOut = CorrectionsOut()
+
+
+class SourceList(BaseModel):
+    """All outlet profiles with the standing disclaimer."""
+    note: str
+    window_days: int
+    items: list[SourceProfile]
 
 
 class StoryDetail(BaseModel):

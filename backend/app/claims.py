@@ -172,6 +172,8 @@ def get_claims(db: Session, cluster_id: int, title: str, members: list[Article],
     """Cached claims for a story; rewritten when its reports change or on request.
 
     Stored on the story's brief row (so it is invalidated by the same fingerprint)."""
+    if any(getattr(m, "workspace_id", "") for m in members):
+        return build_claims(title, members)  # a visitor's story is never cached where others could read it
     row = db.get(StoryBrief, cluster_id)
     digest = member_hash(m.id for m in members)
     if row and row.claims and row.member_hash == digest and not force:
