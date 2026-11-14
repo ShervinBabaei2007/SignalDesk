@@ -79,14 +79,8 @@ async def _scheduled_digest():
             logger.exception("[digest] scheduled delivery failed")
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Application lifespan: create and migrate the database, seed it, and run the background schedulers."""
-    logging.basicConfig(
-        level=getattr(logging, config.LOG_LEVEL, logging.INFO),
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-    )
-    logger.info("[boot] SignalDesk v%s (%s)", config.VERSION, config.APP_ENV)
+def init_database() -> None:
+    """Create and migrate the schema, seed an empty database, and backfill derived columns (safe to repeat)."""
     Base.metadata.create_all(bind=engine)
     ensure_columns()
     with SessionLocal() as db:
@@ -99,6 +93,17 @@ async def lifespan(app: FastAPI):
         scores = backfill_info_scores(db)
         if scores["scored"]:
             logger.info("[migrate] Scored %s articles for information quality", scores["scored"])
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan: prepare the database and run the background schedulers."""
+    logging.basicConfig(
+        level=getattr(logging, config.LOG_LEVEL, logging.INFO),
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+    logger.info("[boot] SignalDesk v%s (%s)", config.VERSION, config.APP_ENV)
+    init_database()
     scheduler_task = None
     if INGEST_INTERVAL_MINUTES > 0 and not config.SCHEDULER_DISABLED:
         scheduler_task = asyncio.create_task(_scheduled_ingestion())
@@ -489,6 +494,17 @@ def delete_feed(feed_id: int, db: Session = Depends(get_db)):
         raise HTTPException(404, "Feed not found")
     db.delete(feed)
     db.commit()
+
+
+@app.get("/api/cron/ingest", include_in_schema=False)
+def cron_ingest(request: Request):
+    """Run one auto-pilot round when Vercel Cron calls (it sends CRON_SECRET as a Bearer token)."""
+    supplied = request.headers.get("authorization", "")
+    expected = f"Bearer {config.CRON_SECRET}"
+    if not config.CRON_SECRET or not hmac.compare_digest(supplied, expected):
+        raise HTTPException(401, "Invalid cron secret")
+    cycle = pipeline.scheduled_cycle()
+    return {"ran": cycle is not None, "added": sum(r["added"] for r in cycle.results) if cycle else 0}
 
 
 @app.post("/api/ingest", response_model=IngestResult, tags=["Ingestion"],

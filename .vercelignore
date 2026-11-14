@@ -1,0 +1,11 @@
+_archive
+.venv
+.git
+.github
+.pytest_cache
+docs
+tools
+*.db
+*.log
+frontend/node_modules
+backend/tests

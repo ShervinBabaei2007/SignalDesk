@@ -161,3 +161,28 @@ def test_article_detail_has_keywords():
     detail = client.get(f"/api/articles/{article['id']}").json()
     assert "is_seed" in detail
     assert "keywords" in detail
+
+
+def test_cron_ingest_rejects_missing_or_wrong_secret(monkeypatch):
+    """The cron endpoint is closed when no secret is configured or the bearer token is wrong."""
+    monkeypatch.setattr("app.main.config.CRON_SECRET", "")
+    assert client.get("/api/cron/ingest").status_code == 401
+    monkeypatch.setattr("app.main.config.CRON_SECRET", "s3cret")
+    assert client.get("/api/cron/ingest", headers={"Authorization": "Bearer nope"}).status_code == 401
+
+
+def test_cron_ingest_runs_a_cycle_with_the_right_secret(monkeypatch):
+    """A correct bearer token runs one scheduled cycle and reports the result."""
+    monkeypatch.setattr("app.main.config.CRON_SECRET", "s3cret")
+    monkeypatch.setattr("app.main.pipeline.scheduled_cycle", lambda: None)
+    res = client.get("/api/cron/ingest", headers={"Authorization": "Bearer s3cret"})
+    assert res.status_code == 200
+    assert res.json() == {"ran": False, "added": 0}
+
+
+def test_postgres_urls_use_the_psycopg_driver():
+    """Plain postgres:// and postgresql:// URLs are rewritten for the psycopg 3 driver."""
+    from app.database import _normalize_url
+    assert _normalize_url("postgres://u:p@h/db") == "postgresql+psycopg://u:p@h/db"
+    assert _normalize_url("postgresql://u:p@h/db") == "postgresql+psycopg://u:p@h/db"
+    assert _normalize_url("sqlite:///x.db") == "sqlite:///x.db"

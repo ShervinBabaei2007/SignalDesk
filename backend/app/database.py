@@ -12,7 +12,17 @@ from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 BASE_DIR = Path(__file__).resolve().parent.parent  # backend/
 
-DATABASE_URL = os.getenv("DATABASE_URL", "").strip() or f"sqlite:///{BASE_DIR / 'signaldesk.db'}"
+
+
+def _normalize_url(url: str) -> str:
+    """Point bare postgres:// and postgresql:// URLs (as Neon and Vercel give them) at the psycopg 3 driver."""
+    for prefix in ("postgres://", "postgresql://"):
+        if url.startswith(prefix):
+            return "postgresql+psycopg://" + url[len(prefix):]
+    return url
+
+
+DATABASE_URL = _normalize_url(os.getenv("DATABASE_URL", "").strip()) or f"sqlite:///{BASE_DIR / 'signaldesk.db'}"
 connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
 
 engine = create_engine(DATABASE_URL, connect_args=connect_args)

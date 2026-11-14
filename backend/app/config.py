@@ -100,3 +100,6 @@ DIGEST_HOUR = _int("DIGEST_HOUR", -1)
 # --------------------------------------------------------------------------- #
 
 API_TOKEN = os.getenv("API_TOKEN", "").strip()
+
+# Shared secret that Vercel Cron sends as a Bearer token to /api/cron/ingest.
+CRON_SECRET = os.getenv("CRON_SECRET", "").strip()
