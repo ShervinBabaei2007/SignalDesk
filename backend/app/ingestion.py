@@ -2,9 +2,9 @@
 
 import logging
 import re
-from html import unescape
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
+from html import unescape
 from time import mktime
 
 import feedparser
@@ -64,6 +64,7 @@ def add_missing_default_feeds(db: Session) -> list[Feed]:
 
 
 def _parse_published(entry) -> datetime | None:
+    """Parse a feed entry's published date into an aware UTC datetime, or None."""
     for attr in ("published_parsed", "updated_parsed"):
         value = getattr(entry, attr, None)
         if value:
@@ -90,6 +91,7 @@ def strip_feed_metadata(text: str) -> str:
 
 
 def _entry_text(entry) -> str:
+    """Best available text of a feed entry (content, summary or description) with tags stripped."""
     title = getattr(entry, "title", "") or ""
     body = ""
     if getattr(entry, "content", None):
@@ -138,6 +140,7 @@ def ingest_feed(
     stats = {"feed": feed_name, "fetched": 0, "added": 0, "skipped": 0}
 
     def _finish(status: str) -> None:
+        """Record the feed's last fetch time and status when a Feed row was given."""
         if feed is not None:
             feed.last_fetched_at = datetime.now(timezone.utc)
             feed.last_status = status[:300]
@@ -161,8 +164,7 @@ def ingest_feed(
             stats["skipped"] += 1
             continue
 
-        exists = db.scalar(select(Article.id).where(Article.url == url))
-        if exists:
+        if db.scalar(select(Article.id).where(Article.url == url)):
             stats["skipped"] += 1
             continue
 
@@ -209,4 +211,5 @@ def ingest_all(db: Session, feeds: list[dict], feed_rows: dict[str, Feed] | None
 
 
 def utcnow():
+    """Current time as a timezone-aware UTC datetime."""
     return datetime.now(timezone.utc)

@@ -38,6 +38,7 @@ _YEAR = re.compile(r"^(?:19|20)\d{2}$")
 
 
 def member_hash(article_ids) -> str:
+    """Order-independent fingerprint of a story's reports, used to detect when its brief is stale."""
     return hashlib.sha1(",".join(str(i) for i in sorted(article_ids)).encode()).hexdigest()
 
 
@@ -56,6 +57,7 @@ def figures(text: str) -> dict[str, str]:
 
 
 def _text(a: Article) -> str:
+    """Best available body text for an article, richest source first."""
     return a.full_text or a.summary_deep or a.summary or ""
 
 
@@ -68,6 +70,7 @@ def _strip_title(text: str, title: str) -> str:
 
 
 def _sentences(a: Article) -> list[str]:
+    """Clean sentences of an article with the headline stripped off."""
     return _clean_sentences(_strip_title(_text(a), a.title))
 
 
@@ -92,6 +95,7 @@ def extractive_brief(title: str, members: list[Article]) -> dict[str, Any]:
     agree: list[str] = []
 
     def add(line: str, store: list[str]) -> None:
+        """Append a stripped line to `store` unless it is empty or already present."""
         line = line.strip()
         # skip fragments cut mid-sentence (they start in lowercase) and near-duplicates
         if not line or not (line[0].isupper() or line[0].isdigit() or line[0] in "\"\u201c'$"):
@@ -115,14 +119,14 @@ def extractive_brief(title: str, members: list[Article]) -> dict[str, Any]:
                 break
 
     # 2. key points of the best report that another outlet's report also supports
-    lead = outlets[0] if outlets else None
-    if lead is not None:
+    if outlets:
+        lead = outlets[0]
         key_points = _sections(lead.summary_structured).get("Key points") or sentences[lead.id][:8]
         others = [s for m in outlets[1:] for s in sentences[m.id]]
         for point in key_points:
-            point = _strip_title(point.lstrip("- ").strip(), lead.title)
             if len(agree) >= 4:
                 break
+            point = _strip_title(point.lstrip("- ").strip(), lead.title)
             if any(_overlap(point, o) >= 0.45 for o in others):
                 add(point, agree)
         if not agree:

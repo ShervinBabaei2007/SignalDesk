@@ -108,12 +108,14 @@ def _extract_json(text: str) -> dict[str, Any] | None:
 
 
 def _clean_str(value: Any, max_len: int) -> str:
+    """Collapse whitespace, trim and cap a model-supplied string; non-strings become empty."""
     if not isinstance(value, str):
         return ""
     return re.sub(r"\s+", " ", value).strip()[:max_len]
 
 
 def _clean_list(value: Any, max_items: int, max_len: int = 300) -> list[str]:
+    """Clean a model-supplied list of strings, dropping blanks and capping count and length."""
     if not isinstance(value, list):
         return []
     out: list[str] = []
@@ -127,6 +129,7 @@ def _clean_list(value: Any, max_items: int, max_len: int = 300) -> list[str]:
 
 
 def _clamp(value: Any, low: float, high: float, default: float = 0.0) -> float:
+    """Coerce a value to a float within [low, high], or the default when it is not numeric."""
     try:
         number = float(value)
     except (TypeError, ValueError):
@@ -197,6 +200,7 @@ class LLMProvider:
 
     def analyze_article(self, *, title: str, source: str, text: str,
                         published_at: str | None = None) -> dict[str, Any] | None:
+        """Analyse one article and return normalised fields, or None when unavailable."""
         raise NotImplementedError
 
 
@@ -234,60 +238,25 @@ class OpenAICompatibleProvider(LLMProvider):
 
     def __init__(self, base_url: str | None = None, api_key: str | None = None,
                  model: str | None = None, timeout: float | None = None):
+        """Configure the endpoint, key, model and timeout, defaulting to the app config."""
         self.base_url = (base_url or config.LLM_BASE_URL).rstrip("/")
         self.api_key = api_key if api_key is not None else config.LLM_API_KEY
         self.model = model or config.LLM_MODEL
         self.timeout = timeout or config.LLM_TIMEOUT
 
-    def _payload(self, *, title: str, source: str, text: str,
-                 published_at: str | None, json_mode: bool) -> dict[str, Any]:
+    def analyze_article(self, *, title: str, source: str, text: str,
+                        published_at: str | None = None) -> dict[str, Any] | None:
+        """Ask the model for a structured analysis of the article; None when the text is too short or the reply is unusable."""
+        if not text or len(text) < 120:
+            return None
         article = (
             f"Title: {title}\nPublisher: {source}\n"
             f"Publication date: {published_at or 'unknown'}\n\n"
             f"Article text:\n{text[: config.LLM_MAX_INPUT_CHARS]}"
         )
-        payload: dict[str, Any] = {
-            "model": self.model,
-            "temperature": 0.2,
-            "messages": [
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": article},
-            ],
-        }
-        if json_mode:
-            payload["response_format"] = {"type": "json_object"}
-        return payload
-
-    def analyze_article(self, *, title: str, source: str, text: str,
-                        published_at: str | None = None) -> dict[str, Any] | None:
-        if not text or len(text) < 120:
+        content = _complete_json(self, SYSTEM_PROMPT, article, purpose="analysis")
+        if content is None:
             return None
-
-        headers = {"Content-Type": "application/json"}
-        if self.api_key:
-            headers["Authorization"] = f"Bearer {self.api_key}"
-
-        def _post(json_mode: bool) -> httpx.Response:
-            return httpx.post(
-                f"{self.base_url}/chat/completions",
-                headers=headers,
-                json=self._payload(title=title, source=source, text=text,
-                                   published_at=published_at, json_mode=json_mode),
-                timeout=self.timeout,
-            )
-
-        try:
-            resp = _post(True)
-            if resp.status_code == 400:
-                # Some local servers reject response_format; retry plain.
-                resp = _post(False)
-            resp.raise_for_status()
-            body = resp.json()
-            content = body["choices"][0]["message"]["content"]
-        except Exception as exc:  # noqa: BLE001 - never let the LLM break enrichment
-            logger.warning("[llm] analysis failed: %s", exc)
-            return None
-
         raw = _extract_json(content)
         analysis = normalize_analysis(raw) if raw else None
         if analysis is None:
@@ -295,13 +264,18 @@ class OpenAICompatibleProvider(LLMProvider):
         return analysis
 
 
-def _complete_json(provider: "OpenAICompatibleProvider", system: str, user: str) -> str | None:
-    """One chat completion that is asked for JSON; returns the message text or None."""
+def _complete_json(provider: OpenAICompatibleProvider, system: str, user: str,
+                   purpose: str = "story brief") -> str | None:
+    """One chat completion that is asked for JSON; returns the message text or None.
+
+    Never raises: a failed call must not break enrichment or the story page.
+    """
     headers = {"Content-Type": "application/json"}
     if provider.api_key:
         headers["Authorization"] = f"Bearer {provider.api_key}"
 
     def _post(json_mode: bool) -> httpx.Response:
+        """POST one chat-completion request, optionally in JSON mode."""
         payload: dict[str, Any] = {
             "model": provider.model, "temperature": 0.2,
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
@@ -314,11 +288,12 @@ def _complete_json(provider: "OpenAICompatibleProvider", system: str, user: str)
     try:
         resp = _post(True)
         if resp.status_code == 400:
+            # Some local servers reject response_format; retry plain.
             resp = _post(False)
         resp.raise_for_status()
         return resp.json()["choices"][0]["message"]["content"]
-    except Exception as exc:  # noqa: BLE001 - a failed brief must never break the page
-        logger.warning("[llm] story brief failed: %s", exc)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[llm] %s failed: %s", purpose, exc)
         return None
 
 

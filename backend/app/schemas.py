@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 
 
 class ArticleOut(BaseModel):
+    """An article as listed in the feed."""
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -34,6 +35,7 @@ class ArticleOut(BaseModel):
 
 
 class RelatedArticle(BaseModel):
+    """A compact article shown as another report of the same story."""
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -48,6 +50,7 @@ class RelatedArticle(BaseModel):
 
 
 class ArticleDetail(ArticleOut):
+    """An article with its full analysis and related reports."""
     related: list[RelatedArticle] = []  # other coverage of the same story
     full_text: str | None = None  # extracted page text for the reader view
     summary_structured: str | None = None  # skimmable sections (## heading / - bullet)
@@ -84,6 +87,7 @@ class Story(BaseModel):
 
 
 class StoryPage(BaseModel):
+    """A page of stories."""
     total: int  # stories
     article_total: int  # individual reports behind them
     items: list[Story]
@@ -92,6 +96,7 @@ class StoryPage(BaseModel):
 
 
 class OutletStat(BaseModel):
+    """One outlet's standing within a story."""
     source: str
     report_id: int
     title: str
@@ -105,6 +110,7 @@ class OutletStat(BaseModel):
 
 
 class StoryBriefOut(BaseModel):
+    """A story brief: what the outlets agree on and where they differ."""
     kind: str  # "ai" (written by the configured model) or "auto" (extractive fallback)
     headline: str
     agree: list[str]
@@ -114,6 +120,7 @@ class StoryBriefOut(BaseModel):
 
 
 class StoryDetail(BaseModel):
+    """A story with its ranked reports, outlet comparison and brief."""
     cluster_id: int
     title: str
     report_count: int
@@ -126,6 +133,7 @@ class StoryDetail(BaseModel):
 
 
 class ArticlePage(BaseModel):
+    """A page of articles with the total count."""
     total: int
     items: list[ArticleOut]
     offset: int
@@ -133,6 +141,7 @@ class ArticlePage(BaseModel):
 
 
 class FeedOut(BaseModel):
+    """A feed as returned by the API."""
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -144,11 +153,13 @@ class FeedOut(BaseModel):
 
 
 class FeedCreate(BaseModel):
+    """Request body for adding a feed."""
     name: str = Field(min_length=1, max_length=200)
     url: HttpUrl
 
 
 class FeedIngestResult(BaseModel):
+    """Per-feed result of an ingest run."""
     feed: str
     fetched: int
     added: int
@@ -157,16 +168,19 @@ class FeedIngestResult(BaseModel):
 
 
 class WatchIn(BaseModel):
+    """Request body for creating a watch."""
     term: str = Field(min_length=1, max_length=100)
     topic: str | None = Field(default=None, max_length=50)
     min_outlets: int = Field(default=2, ge=1, le=10)
 
 
 class WatchPatch(BaseModel):
+    """Request body for pausing or resuming a watch."""
     is_active: bool
 
 
 class WatchOut(BaseModel):
+    """A watch as returned by the API, with its current match count."""
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -179,6 +193,7 @@ class WatchOut(BaseModel):
 
 
 class WatchAlertOut(BaseModel):
+    """An alert raised when a story matched a watch."""
     watch_id: int
     term: str
     story_key: str
@@ -190,6 +205,7 @@ class WatchAlertOut(BaseModel):
 
 
 class IngestResult(BaseModel):
+    """Result of an ingest run across all feeds."""
     added: int
     fetched: int
     skipped: int
@@ -200,6 +216,7 @@ class IngestResult(BaseModel):
 
 
 class TrendingStory(BaseModel):
+    """A story covered by several outlets right now."""
     cluster_id: int
     article_id: int  # the representative report, for "open this story"
     title: str
@@ -212,6 +229,7 @@ class TrendingStory(BaseModel):
 
 
 class Stats(BaseModel):
+    """Dashboard statistics."""
     total_articles: int
     total_sources: int
     avg_sentiment: float
@@ -224,6 +242,7 @@ class Stats(BaseModel):
 
 
 class DigestItem(BaseModel):
+    """One article listed in the daily brief."""
     id: int
     title: str
     source: str
@@ -233,6 +252,7 @@ class DigestItem(BaseModel):
 
 
 class Digest(BaseModel):
+    """The daily brief."""
     generated_at: datetime
     window_label: str
     total_articles: int

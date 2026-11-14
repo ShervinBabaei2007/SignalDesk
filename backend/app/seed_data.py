@@ -4,6 +4,8 @@ Runs automatically on first startup when the database is empty, so the
 dashboard always has something interesting to show — no network required.
 """
 
+from datetime import datetime, timedelta, timezone
+
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -174,14 +176,11 @@ def backfill_keywords(db: Session) -> int:
     rows = db.execute(
         select(Article).where((Article.keywords.is_(None)) | (Article.keywords == ""))
     ).scalars().all()
-    updated = 0
     for article in rows:
-        text = f"{article.title}. {article.summary or ''}"
-        article.keywords = ", ".join(extract_keywords(text))
-        updated += 1
-    if updated:
+        article.keywords = ", ".join(extract_keywords(f"{article.title}. {article.summary or ''}"))
+    if rows:
         db.commit()
-    return updated
+    return len(rows)
 
 
 def seed_if_empty(db: Session, live: bool = True) -> int:
@@ -191,11 +190,10 @@ def seed_if_empty(db: Session, live: bool = True) -> int:
     ingestion so every article has a genuine external URL. Falls back to
     built-in sample articles only when the network is unavailable.
     """
-    existing = db.scalar(select(func.count()).select_from(Article))
-    if existing and existing > 0:
+    if db.scalar(select(func.count()).select_from(Article)):
         return 0
 
-    if db.scalar(select(func.count()).select_from(Feed)) in (0, None):
+    if not db.scalar(select(func.count()).select_from(Feed)):
         add_missing_default_feeds(db)
 
     if live:
@@ -209,40 +207,24 @@ def seed_if_empty(db: Session, live: bool = True) -> int:
         except Exception:  # noqa: BLE001 — offline first boot is expected sometimes
             pass
 
-    added = 0
-    for row in SEED_ARTICLES:
-        if row == "SKIP":
-            continue
-        title, source, topic, sentiment, age, summary = row
-        text = f"{title}. {summary}"
-        published = _relative_published(age)
-        article = Article(
+    for number, (title, source, topic, sentiment, age, summary) in enumerate(SEED_ARTICLES, start=1):
+        db.add(Article(
             title=title,
-            url=f"https://demo.signaldesk.local/{added + 1}",
+            url=f"https://demo.signaldesk.local/{number}",
             source=source,
             summary=summary,
-            keywords=", ".join(extract_keywords(text)),
+            keywords=", ".join(extract_keywords(f"{title}. {summary}")),
             topic=topic,
             sentiment=sentiment,
-            published_at=published,
+            published_at=_relative_published(age),
             is_seed=True,
-        )
-        db.add(article)
-        added += 1
-
-    # Default feeds (marked so seeding only happens once)
-    if db.scalar(select(func.count()).select_from(Feed)) in (0, None):
-        for feed in DEFAULT_FEEDS:
-            db.add(Feed(name=feed["name"], url=feed["url"]))
-
+        ))
     db.commit()
-    return added
+    return len(SEED_ARTICLES)
 
 
-def _relative_published(age: str):
+def _relative_published(age: str) -> datetime:
     """Convert '-2d' / '-5h' style markers into real UTC timestamps."""
-    from datetime import datetime, timedelta, timezone
-
     if not age.startswith("-"):
         return datetime.now(timezone.utc)
     unit, amount = age[-1], int(age[:-1])

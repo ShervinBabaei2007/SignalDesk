@@ -21,8 +21,8 @@ from sqlalchemy.sql import Select
 from . import briefs, story_index, watches
 from . import sentiment as sentiment_scale
 from .clustering import Cluster
-from .quality import _sections
 from .models import Article
+from .quality import _sections
 
 SENTIMENTS = sentiment_scale.LABELS
 ORDERS = ("newest", "oldest", "sentiment_high", "sentiment_low", "info")
@@ -46,6 +46,7 @@ def clean(value: str | None) -> str | None:
 
 
 def validate(sentiment: str | None, order: str) -> str:
+    """Check the sentiment and order parameters (422 on bad values) and return the normalised order."""
     if sentiment and sentiment not in SENTIMENTS:
         raise HTTPException(422, "sentiment must be positive, neutral, or negative")
     order = (order or "newest").strip().lower()
@@ -66,6 +67,7 @@ def apply_filters(
     hot: bool,
     ids: list[int] | None,
 ) -> Select:
+    """Apply the shared feed filters (search, topic, sentiment, source, etc.) to a query."""
     if search:
         like = f"%{search}%"
         q = q.where(Article.title.ilike(like) | Article.summary.ilike(like))
@@ -87,6 +89,7 @@ def apply_filters(
 
 
 def ordering(order: str) -> tuple:
+    """SQL ordering clauses for a named sort order."""
     return {
         "newest": (Article.published_at.desc().nullslast(), Article.id.desc()),
         "oldest": (Article.published_at.asc().nullslast(), Article.id.asc()),
@@ -97,6 +100,7 @@ def ordering(order: str) -> tuple:
 
 
 def _ts(dt: datetime | None) -> float:
+    """Timestamp of a datetime as epoch seconds, treating naive values as UTC."""
     if dt is None:
         return 0.0
     return (dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)).timestamp()
@@ -109,10 +113,12 @@ def report_rank(a: Article) -> tuple[float, int, float]:
 
 
 def ranked(members: list[Article]) -> list[Article]:
+    """Reports sorted best first."""
     return sorted(members, key=report_rank, reverse=True)
 
 
 def snippet(a: Article, limit: int = 220) -> str | None:
+    """A short teaser from an article's summary."""
     text = (a.summary_deep or a.summary or "").strip()
     if not text:
         return None
@@ -171,6 +177,7 @@ def build_page(db: Session, ordered_ids: list[int], offset: int, limit: int) -> 
 
 
 def count_matching(db: Session, q: Select) -> int:
+    """Count the rows a query matches."""
     return db.scalar(select(func.count()).select_from(q.subquery())) or 0
 
 
@@ -194,22 +201,18 @@ def outlet_stats(members: list[Article]) -> list[dict]:
         dated = [r for r in rows if r["published_at"]]
         if dated:
             min(dated, key=lambda r: _ts(r["published_at"]))["badges"].append("First to report")
-        deepest = max(rows, key=lambda r: r["chars"])
-        if deepest["chars"]:
-            deepest["badges"].append("Most detailed")
-        figures_row = max(rows, key=lambda r: r["numbers"])
-        if figures_row["numbers"]:
-            figures_row["badges"].append("Most figures")
-        quotes_row = max(rows, key=lambda r: r["quotes"])
-        if quotes_row["quotes"]:
-            quotes_row["badges"].append("Most quotes")
+        for metric, badge in (("chars", "Most detailed"), ("numbers", "Most figures"), ("quotes", "Most quotes")):
+            top = max(rows, key=lambda r: r[metric])
+            if top[metric]:
+                top["badges"].append(badge)
     return sorted(rows, key=lambda r: (r["info_score"] or 0.0), reverse=True)
 
 
 def story_detail(db: Session, cluster: Cluster, force_brief: bool = False) -> dict:
+    """Build the detail view of one story from its member articles."""
     members = ranked(list(db.execute(select(Article).where(Article.id.in_(cluster.article_ids))).scalars()))
-    avg = sum(m.sentiment for m in members) / len(members) if members else 0.0
     sentiments = [m.sentiment for m in members]
+    avg = sum(sentiments) / len(sentiments) if sentiments else 0.0
     return {
         "cluster_id": cluster.id,
         "title": cluster.title,

@@ -39,19 +39,23 @@ class WatchError(Exception):
     status_code = 400
 
     def __init__(self, message: str):
+        """Store the message shown to the user."""
         super().__init__(message)
         self.message = message
 
 
 class InvalidWatch(WatchError):
+    """The watch was rejected as invalid (HTTP 422)."""
     status_code = 422
 
 
 class WatchConflict(WatchError):
+    """The watch conflicts with existing ones (HTTP 409)."""
     status_code = 409
 
 
 class WatchNotFound(WatchError):
+    """The watch does not exist (HTTP 404)."""
     status_code = 404
 
 
@@ -61,16 +65,19 @@ def term_matches(term: str, text: str) -> bool:
 
 
 def story_text(members: list[Article]) -> str:
+    """Title and summary text of a story's reports, used for term matching."""
     return " ".join(f"{m.title} {m.summary or ''}" for m in members)
 
 
 def matches(watch: Watch, members: list[Article]) -> bool:
+    """True when the watch's term and topic match the story's text."""
     if watch.topic and not any(m.topic == watch.topic for m in members):
         return False
     return term_matches(watch.term, story_text(members))
 
 
 def outlet_count(members: list[Article]) -> int:
+    """Number of distinct outlets covering the story."""
     return len({m.source for m in members})
 
 
@@ -85,6 +92,7 @@ def matching_terms(watches: list[Watch], members: list[Article]) -> list[str]:
 
 
 def active(db: Session) -> list[Watch]:
+    """Active watches, oldest first."""
     return list(db.execute(select(Watch).where(Watch.is_active.is_(True)).order_by(Watch.id)).scalars())
 
 
@@ -98,13 +106,19 @@ def _headline(key: str, members: list[Article], by_id: dict) -> tuple[str, int |
     return members[0].title, None, members[0].id
 
 
+def _seen_keys(db: Session, watch_id: int) -> set[str]:
+    """Story keys this watch has already alerted on (or baselined)."""
+    return set(db.execute(select(WatchAlert.story_key).where(WatchAlert.watch_id == watch_id)).scalars())
+
+
 def matching_stories(db: Session, watch: Watch) -> list[tuple[str, list[Article]]]:
+    """Recent stories that currently match the watch."""
     return [(key, members) for key, members in story_index.recent_stories(db) if story_matches(watch, members)]
 
 
 def baseline(db: Session, watch: Watch) -> int:
     """Mark the stories that already match as seen, so only new ones alert."""
-    keys = {k for (k,) in db.execute(select(WatchAlert.story_key).where(WatchAlert.watch_id == watch.id))}
+    keys = _seen_keys(db, watch.id)
     added = 0
     for key, _ in matching_stories(db, watch):
         if key not in keys:
@@ -151,7 +165,7 @@ def check_watches(db: Session, deliver: bool = True,
     stories = story_index.recent_stories(db)
     alerts: list[dict] = []
     for watch in watches:
-        seen = {k for (k,) in db.execute(select(WatchAlert.story_key).where(WatchAlert.watch_id == watch.id))}
+        seen = _seen_keys(db, watch.id)
         for key, members in stories:
             if key in seen or not story_matches(watch, members):
                 continue
@@ -179,12 +193,14 @@ def check_watches(db: Session, deliver: bool = True,
 
 
 def alert_subject(alerts: list[dict]) -> str:
+    """Email/notification subject for a batch of alerts."""
     first = alerts[0]
     more = f" (+{len(alerts) - 1} more)" if len(alerts) > 1 else ""
     return f"SignalDesk alert: \"{first['term']}\" — {first['title'][:80]}{more}"
 
 
 def alert_text(alerts: list[dict]) -> str:
+    """Plain-text body for a batch of alerts."""
     lines = ["Stories matching your watchlist:", ""]
     for a in alerts:
         lines.append(f"• [{a['term']}] {a['title']} — {a['reports']} reports from {a['outlets']} outlets")
@@ -196,6 +212,7 @@ def alert_text(alerts: list[dict]) -> str:
 # --------------------------------------------------------------------------- #
 
 def all_watches(db: Session) -> list[Watch]:
+    """All watches, oldest first."""
     return list(db.execute(select(Watch).order_by(Watch.id)).scalars())
 
 
@@ -208,6 +225,7 @@ def with_counts(db: Session, rows: list[Watch]) -> list[Watch]:
 
 
 def create(db: Session, term: str, topic: str | None, min_outlets: int) -> Watch:
+    """Validate and create a watch, baselining today's matches so only later stories alert."""
     term = " ".join(term.split())
     topic = (topic or "").strip() or None
     if not term:
@@ -228,6 +246,7 @@ def create(db: Session, term: str, topic: str | None, min_outlets: int) -> Watch
 
 
 def _get(db: Session, watch_id: int) -> Watch:
+    """Fetch a watch or raise WatchNotFound."""
     watch = db.get(Watch, watch_id)
     if not watch:
         raise WatchNotFound("Watch not found")
@@ -235,6 +254,7 @@ def _get(db: Session, watch_id: int) -> Watch:
 
 
 def set_active(db: Session, watch_id: int, is_active: bool) -> Watch:
+    """Pause or resume a watch; resuming baselines so paused-time stories do not alert."""
     watch = _get(db, watch_id)
     if is_active and not watch.is_active:
         baseline(db, watch)  # resuming should not replay what happened while paused
@@ -245,6 +265,7 @@ def set_active(db: Session, watch_id: int, is_active: bool) -> Watch:
 
 
 def remove(db: Session, watch_id: int) -> None:
+    """Delete a watch and its alert history."""
     watch = _get(db, watch_id)
     for row in db.execute(select(WatchAlert).where(WatchAlert.watch_id == watch_id)).scalars():
         db.delete(row)

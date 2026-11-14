@@ -6,6 +6,7 @@ the same (see `llm.py` for the optional OpenAI-compatible implementation).
 """
 
 import re
+from collections import Counter
 
 # --- Sentiment lexicons ------------------------------------------------------
 
@@ -70,6 +71,7 @@ STOPWORDS = set(
 
 
 def _tokenize(text: str) -> list[str]:
+    """Lowercase text into word tokens."""
     return WORD_RE.findall(text.lower())
 
 
@@ -88,12 +90,11 @@ def score_sentiment(text: str) -> float:
         if len(window) > 3:
             window.pop(0)
 
-        polarity = 0
         if token in POSITIVE_WORDS:
             polarity = 1.0
         elif token in NEGATIVE_WORDS:
             polarity = -1.0
-        if polarity == 0:
+        else:
             continue
 
         hits += 1
@@ -107,7 +108,7 @@ def score_sentiment(text: str) -> float:
 
     if hits == 0:
         return 0.0
-    return max(-1.0, min(1.0, score / max(hits, 1)))
+    return max(-1.0, min(1.0, score / hits))
 
 
 def classify_topic(text: str) -> str:
@@ -135,6 +136,7 @@ _BOILERPLATE = [re.compile(p, re.IGNORECASE) for p in (
 
 
 def has_boilerplate(text: str) -> bool:
+    """True when the text contains scraped navigation, paywall or credit furniture."""
     return any(p.search(text) for p in _BOILERPLATE)
 
 
@@ -189,16 +191,19 @@ def _overlap(a: str, b: str) -> float:
 
 
 def _clean_sentences(text: str) -> list[str]:
+    """Split article text into clean, informative sentences with boilerplate and junk removed."""
     text = re.sub(r"\s+", " ", strip_boilerplate(text)).strip()
     out = []
     for sentence in re.split(r"(?<=[.!?])\s+", text):
         sentence = sentence.strip()
-        if len(sentence) < 40 or len(sentence) > 420:
-            continue
-        if _JUNK_SENTENCE.search(sentence):
-            continue
-        out.append(sentence)
+        if 40 <= len(sentence) <= 420 and not _JUNK_SENTENCE.search(sentence):
+            out.append(sentence)
     return out
+
+
+def _has_quote(sentence: str) -> bool:
+    """True when the sentence contains a quotation mark."""
+    return any(c in sentence for c in _QUOTE_CHARS)
 
 
 def _score_sentence(sentence: str, position: float) -> float:
@@ -206,7 +211,7 @@ def _score_sentence(sentence: str, position: float) -> float:
     score = 1.0
     if _NUMBER_HINT.search(sentence):
         score += 1.5
-    if any(c in sentence for c in _QUOTE_CHARS):
+    if _has_quote(sentence):
         score += 1.0
     # prefer sentences in the informative first half of the body
     score += max(0.0, 0.8 - position) * 1.2
@@ -235,6 +240,7 @@ def structured_summary(text: str, title: str = "", max_points: int = 6) -> str:
     sections: list[tuple[str, list[str], bool]] = []  # (heading, items, is_bullets)
 
     def is_used(sentence: str) -> bool:
+        """True when a sentence largely repeats one already chosen."""
         return any(_overlap(sentence, u) > 0.55 for u in used)
 
     # TL;DR — lead the reader with the first sentences that aren't just the
@@ -262,6 +268,7 @@ def structured_summary(text: str, title: str = "", max_points: int = 6) -> str:
     remaining = [(s, i) for i, s, _ in ranked if not is_used(s)]
 
     def take(pred, count):
+        """Pick up to `count` unused sentences that satisfy `pred`."""
         picked = []
         for s, i in remaining:
             if not pred(s) or is_used(s):
@@ -272,27 +279,23 @@ def structured_summary(text: str, title: str = "", max_points: int = 6) -> str:
                 break
         return picked
 
-    if len(lead) < 1:
+    if not lead:
         points = take(lambda s: True, max_points)
         sections.append(("Key points", [s for s, _ in points], True))
     else:
         # Key points — top general-information sentences (numbers/quotes go
         # to their own sections so they don't dominate)
-        points = take(
-            lambda s: not _NUMBER_HINT.search(s) and not any(c in s for c in _QUOTE_CHARS),
-            max_points)
+        points = take(lambda s: not _NUMBER_HINT.search(s) and not _has_quote(s), max_points)
         if len(points) < 2:  # short articles: allow anything
             points = take(lambda s: True, max_points - len(points))
         if points:
             sections.append(("Key points", [s for s, _ in points], True))
 
-        numbers = take(
-            lambda s: bool(_NUMBER_HINT.search(s)) and not any(c in s for c in _QUOTE_CHARS),
-            3)
+        numbers = take(lambda s: bool(_NUMBER_HINT.search(s)) and not _has_quote(s), 3)
         if numbers:
             sections.append(("By the numbers", [s for s, _ in numbers], True))
 
-        quotes = take(lambda s: any(c in s for c in _QUOTE_CHARS), 2)
+        quotes = take(_has_quote, 2)
         if quotes:
             sections.append(("Notable quotes", [s for s, _ in quotes], True))
 
@@ -315,12 +318,9 @@ def structured_summary(text: str, title: str = "", max_points: int = 6) -> str:
 
 def extract_keywords(text: str, top_n: int = 5) -> list[str]:
     """Simple frequency-based keyword extraction (stopwords removed)."""
-    counts: dict[str, int] = {}
-    for token in _tokenize(strip_boilerplate(text)):
-        if token in STOPWORDS or len(token) < 4:
-            continue
-        counts[token] = counts.get(token, 0) + 1
-    return [w for w, _ in sorted(counts.items(), key=lambda x: -x[1])[:top_n]]
+    counts = Counter(t for t in _tokenize(strip_boilerplate(text))
+                     if t not in STOPWORDS and len(t) >= 4)
+    return [w for w, _ in counts.most_common(top_n)]
 
 
 def analyze(text: str) -> dict:

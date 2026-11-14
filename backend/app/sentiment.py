@@ -19,6 +19,7 @@ LABELS = ("positive", "neutral", "negative")
 
 
 def label(score: float) -> str:
+    """Classify a score as positive, neutral or negative using the shared thresholds."""
     if score > POSITIVE_ABOVE:
         return "positive"
     if score < NEGATIVE_BELOW:

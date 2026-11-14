@@ -43,6 +43,7 @@ class Busy(Exception):
 
 @dataclass
 class CycleResult:
+    """Outcome of one ingest cycle: per-feed results, new alerts and what is still waiting for enrichment."""
     results: list[dict]
     duration_seconds: float
     alerts: list[dict] = field(default_factory=list)

@@ -7,12 +7,15 @@ Run locally:
 """
 
 import asyncio
+import csv
 import hmac
+import io
 import logging
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlparse
 
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -22,16 +25,16 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from . import config, notifications, pipeline, reporting
+from . import config, notifications, pipeline, reporting, story_index, watches
+from . import stories as story_logic
 from .database import SessionLocal, ensure_columns, engine, get_db
-from . import stories as story_logic, story_index, watches
 from .enrichment import enrich_article
 from .ingestion import add_missing_default_feeds
 from .models import Article, Base, Feed
-from .schemas import (ArticleDetail, ArticlePage, StoryDetail, StoryPage, WatchAlertOut, WatchIn, WatchOut, WatchPatch, Digest,
-                      FeedCreate, FeedOut, FeedIngestResult, IngestResult,
-                      Stats, TrendingStory)
 from .quality import backfill_info_scores
+from .schemas import (ArticleDetail, ArticlePage, Digest, FeedCreate, FeedIngestResult, FeedOut,
+                      IngestResult, Stats, StoryDetail, StoryPage, TrendingStory, WatchAlertOut,
+                      WatchIn, WatchOut, WatchPatch)
 from .seed_data import backfill_keywords, seed_if_empty
 
 logger = logging.getLogger("signaldesk")
@@ -45,11 +48,10 @@ _started_at = time.time()
 
 async def _scheduled_ingestion():
     """Auto-pilot: periodically run the ingestion pipeline in the background."""
-    first_run = True
+    wait = 30  # first run shortly after boot, then on the regular interval
     while True:
-        wait = 30 if first_run else INGEST_INTERVAL_MINUTES * 60
-        first_run = False
         await asyncio.sleep(wait)
+        wait = INGEST_INTERVAL_MINUTES * 60
         try:
             await asyncio.to_thread(pipeline.scheduled_cycle)
         except Exception:  # noqa: BLE001
@@ -79,6 +81,7 @@ async def _scheduled_digest():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """Application lifespan: create and migrate the database, seed it, and run the background schedulers."""
     logging.basicConfig(
         level=getattr(logging, config.LOG_LEVEL, logging.INFO),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
@@ -132,6 +135,7 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
+    """Add standard security headers to every response."""
     response = await call_next(request)
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("X-Frame-Options", "DENY")
@@ -179,16 +183,17 @@ if (DIST_DIR / "index.html").exists():
 
     @app.get("/", include_in_schema=False)
     def index():
+        """Serve the built dashboard's index.html."""
         return FileResponse(DIST_DIR / "index.html", headers=_NO_CACHE)
 else:
     @app.get("/", include_in_schema=False)
     def index_missing():
+        """Explain how to build the dashboard when no frontend build exists."""
         return HTMLResponse(
             "<h1>SignalDesk API is running</h1>"
             "<p>The dashboard hasn't been built yet. Run <code>cd frontend &amp;&amp; npm install "
             "&amp;&amp; npm run build</code>, or <code>npm run dev</code> for development. "
-            "API docs: <a href='/docs'>/docs</a></p>",
-            status_code=200,
+            "API docs: <a href='/docs'>/docs</a></p>"
         )
 
 
@@ -198,6 +203,7 @@ else:
 
 @app.get("/api/health", tags=["System"])
 def health(db: Session = Depends(get_db)):
+    """Liveness probe reporting status, version, environment and uptime."""
     return {
         "status": "healthy",
         "version": config.VERSION,
@@ -221,6 +227,7 @@ def auth_status():
 
 @app.get("/api/stats", response_model=Stats, tags=["System"])
 def stats(db: Session = Depends(get_db)):
+    """Dashboard totals, sentiment counts, topic breakdown and 7-day trend."""
     return reporting.stats(db)
 
 
@@ -292,6 +299,7 @@ def list_stories(
 
 
 def _cluster_or_404(db: Session, cluster_id: int):
+    """Return the cluster with this id, or raise 404 when the story no longer exists."""
     _, by_id = story_index.get_clusters(db)
     cluster = by_id.get(cluster_id)
     if cluster is None:
@@ -318,17 +326,20 @@ def refresh_story_brief(cluster_id: int, db: Session = Depends(get_db)):
 
 @app.exception_handler(watches.WatchError)
 async def watch_error_handler(request: Request, exc: watches.WatchError):
+    """Turn a watchlist rule violation into a JSON error with its HTTP status."""
     return JSONResponse(status_code=exc.status_code, content={"detail": exc.message})
 
 
 @app.get("/api/watches", response_model=list[WatchOut], tags=["Watchlist"])
 def list_watches(db: Session = Depends(get_db)):
+    """List all watches with how many recent stories each currently matches."""
     return watches.with_counts(db, watches.all_watches(db))
 
 
 @app.post("/api/watches", response_model=WatchOut, status_code=201, tags=["Watchlist"],
           dependencies=[Depends(require_api_token)])
 def create_watch(body: WatchIn, db: Session = Depends(get_db)):
+    """Create a watch (token-protected when an API token is configured)."""
     watch = watches.create(db, body.term, body.topic, body.min_outlets)
     return watches.with_counts(db, [watch])[0]
 
@@ -336,6 +347,7 @@ def create_watch(body: WatchIn, db: Session = Depends(get_db)):
 @app.patch("/api/watches/{watch_id}", response_model=WatchOut, tags=["Watchlist"],
            dependencies=[Depends(require_api_token)])
 def update_watch(watch_id: int, body: WatchPatch, db: Session = Depends(get_db)):
+    """Pause or resume a watch."""
     watch = watches.set_active(db, watch_id, body.is_active)
     return watches.with_counts(db, [watch])[0]
 
@@ -343,17 +355,13 @@ def update_watch(watch_id: int, body: WatchPatch, db: Session = Depends(get_db))
 @app.delete("/api/watches/{watch_id}", status_code=204, tags=["Watchlist"],
             dependencies=[Depends(require_api_token)])
 def delete_watch(watch_id: int, db: Session = Depends(get_db)):
+    """Delete a watch and its alert history."""
     watches.remove(db, watch_id)
 
 
 @app.get("/api/articles/export.csv", tags=["Articles"])
-def export_articles_csv(
-    db: Session = Depends(get_db),
-):
-    """Export all articles as CSV (respecting the same filters as /api/articles)."""
-    import csv
-    import io
-
+def export_articles_csv(db: Session = Depends(get_db)):
+    """Export every article as CSV, newest first."""
     items = db.execute(select(Article).order_by(Article.published_at.desc().nullslast())).scalars().all()
     buffer = io.StringIO()
     writer = csv.writer(buffer)
@@ -373,6 +381,7 @@ def export_articles_csv(
 
 @app.get("/api/articles/{article_id}", response_model=ArticleDetail, tags=["Articles"])
 def get_article(article_id: int, db: Session = Depends(get_db)):
+    """Full detail for one article, including related reports of the same story."""
     article = db.get(Article, article_id)
     if not article:
         raise HTTPException(404, "Article not found")
@@ -442,14 +451,14 @@ def send_digest(db: Session = Depends(get_db)):
 
 @app.get("/api/feeds", response_model=list[FeedOut], tags=["Feeds"])
 def list_feeds(db: Session = Depends(get_db)):
+    """List the configured RSS feeds."""
     return db.execute(select(Feed).order_by(Feed.name)).scalars().all()
 
 
 @app.post("/api/feeds", response_model=FeedOut, status_code=201, tags=["Feeds"],
           dependencies=[Depends(require_api_token)])
 def create_feed(body: FeedCreate, db: Session = Depends(get_db)):
-    from urllib.parse import urlparse
-
+    """Add a new RSS feed."""
     parsed = urlparse(str(body.url))
     if parsed.scheme not in ("http", "https") or not parsed.netloc:
         raise HTTPException(422, "Feed URL must be an http(s) URL")
@@ -474,6 +483,7 @@ def add_default_feeds(db: Session = Depends(get_db)):
 @app.delete("/api/feeds/{feed_id}", status_code=204, tags=["Feeds"],
             dependencies=[Depends(require_api_token)])
 def delete_feed(feed_id: int, db: Session = Depends(get_db)):
+    """Remove an RSS feed."""
     feed = db.get(Feed, feed_id)
     if not feed:
         raise HTTPException(404, "Feed not found")

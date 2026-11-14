@@ -14,7 +14,7 @@ import httpx
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from . import llm
+from . import config, llm
 from .analysis import extract_keywords, strip_boilerplate, structured_summary, summarize
 from .extractor import extract_image_url, extract_main_text
 from .ingestion import strip_feed_metadata
@@ -140,9 +140,7 @@ def missing_image_clauses() -> tuple:
 
 def enrich_pending_articles(db: Session, limit: int | None = None) -> dict:
     """Enrich up to `limit` articles that don't have a deep summary yet."""
-    from . import config as _config
-
-    limit = limit or _config.ENRICH_BATCH_SIZE
+    limit = limit or config.ENRICH_BATCH_SIZE
     with _lock:
         pending = db.execute(
             select(Article)
@@ -151,10 +149,7 @@ def enrich_pending_articles(db: Session, limit: int | None = None) -> dict:
             .limit(limit)
         ).scalars().all()
 
-        enriched = 0
-        for article in pending:
-            if enrich_article(db, article):
-                enriched += 1
+        enriched = sum(1 for article in pending if enrich_article(db, article))
 
         # Articles enriched before image support: fetch their lead image once.
         # An empty string records "looked, found none" so we never retry.

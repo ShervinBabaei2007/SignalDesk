@@ -7,16 +7,12 @@ at PostgreSQL via the DATABASE_URL environment variable for production.
 import os
 from pathlib import Path
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 BASE_DIR = Path(__file__).resolve().parent.parent  # backend/
 
-_database_url = os.getenv("DATABASE_URL", "").strip()
-if _database_url:
-    DATABASE_URL = _database_url
-else:
-    DATABASE_URL = f"sqlite:///{BASE_DIR / 'signaldesk.db'}"
+DATABASE_URL = os.getenv("DATABASE_URL", "").strip() or f"sqlite:///{BASE_DIR / 'signaldesk.db'}"
 connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
 
 engine = create_engine(DATABASE_URL, connect_args=connect_args)
@@ -24,6 +20,7 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
 class Base(DeclarativeBase):
+    """Declarative base class shared by all ORM models."""
     pass
 
 
@@ -42,8 +39,6 @@ def ensure_columns():
     create_all() only creates missing *tables*, so columns added later need
     explicit ALTER TABLE statements. Idempotent: inspects before altering.
     """
-    from sqlalchemy import inspect, text
-
     inspector = inspect(engine)
     migrations = {
         "articles": {

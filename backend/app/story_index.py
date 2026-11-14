@@ -31,22 +31,27 @@ HOT_STORIES = 8                # how many top stories count as "hot topics" (lis
 
 
 class StoryKey(NamedTuple):
+    """Identifier of a story: a cluster ('c') or a lone report ('a')."""
     kind: str   # 'c' = clustered story, 'a' = lone report
     id: int
 
     @property
     def is_cluster(self) -> bool:
+        """True when the key refers to a clustered story."""
         return self.kind == "c"
 
     def __str__(self) -> str:
+        """Render the key as the string used by the API."""
         return f"{self.kind}{self.id}"
 
     @classmethod
     def parse(cls, key: str) -> "StoryKey":
+        """Parse a key string such as 'c12' or 'a7'."""
         return cls(key[0], int(key[1:]))
 
     @classmethod
     def of(cls, cluster: Cluster | None, article_id: int) -> "StoryKey":
+        """Key for a cluster, or for a lone article when it has none."""
         return cls("c", cluster.id) if cluster else cls("a", article_id)
 
 
@@ -56,6 +61,7 @@ def story_key(cluster: Cluster | None, article_id: int) -> str:
 
 
 def parse_story_key(key: str) -> StoryKey:
+    """Parse a story key string."""
     return StoryKey.parse(key)
 
 
@@ -82,6 +88,7 @@ def get_clusters(db: Session) -> tuple[dict[int, Cluster], dict[int, Cluster]]:
 
 
 def _load(db: Session) -> tuple[dict[int, Cluster], dict[int, Cluster], list[int]]:
+    """Compute or fetch the cached clusters for the recent window."""
     now = datetime.now(timezone.utc)
     count, max_id = db.execute(
         select(func.count(Article.id), func.max(Article.id)).where(Article.is_seed.is_(False))
@@ -96,9 +103,7 @@ def _load(db: Session) -> tuple[dict[int, Cluster], dict[int, Cluster], list[int
             .order_by(Article.id.desc())
             .limit(MAX_ARTICLES)
         ).all()
-        norm = [(i, t, s, (p.replace(tzinfo=timezone.utc) if p and p.tzinfo is None else p))
-                for i, t, s, p in rows]
-        clusters = cluster_rows(norm)
+        clusters = cluster_rows([(i, t, s, _as_utc(p)) for i, t, s, p in rows])
         by_article = {aid: c for c in clusters for aid in c.article_ids}
         by_id = {c.id: c for c in clusters}
         window_ids = [r[0] for r in rows]
@@ -133,12 +138,18 @@ def annotate(db: Session, articles) -> None:
         a.cluster_sources = list(c.sources) if c else []
 
 
+def _as_utc(dt: datetime | None) -> datetime | None:
+    """Treat naive timestamps (as SQLite returns them) as UTC."""
+    if dt is not None and dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
 def to_hrs(dt: datetime | None, now: datetime) -> float:
+    """Hours between a datetime and now, never negative."""
     if dt is None:
         return 0.0
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return max((now - dt).total_seconds() / 3600, 0.0)
+    return max((now - _as_utc(dt)).total_seconds() / 3600, 0.0)
 
 
 def rank_hot(clusters, info: dict, now: datetime) -> list[tuple[Cluster, dict]]:
@@ -156,8 +167,8 @@ def rank_hot(clusters, info: dict, now: datetime) -> list[tuple[Cluster, dict]]:
         members = [info[i] for i in c.article_ids if i in info]
         if not members:
             continue
-        stamps = [m.published_at or m.ingested_at for m in members]
-        latest = max(stamps, key=lambda d: d if d.tzinfo else d.replace(tzinfo=timezone.utc))
+        stamps = [_as_utc(m.published_at or m.ingested_at) for m in members]
+        latest = max(stamps)
         age = min(to_hrs(d, now) for d in stamps)
         score = (len(c.sources) * 2 + c.size) * 0.5 ** (age / 24)
         ranked.append((score, c, {
@@ -169,13 +180,14 @@ def rank_hot(clusters, info: dict, now: datetime) -> list[tuple[Cluster, dict]]:
             "sources": list(c.sources),
             "topic": Counter(m.topic for m in members).most_common(1)[0][0],
             "avg_sentiment": round(sum(m.sentiment for m in members) / len(members), 3),
-            "latest_at": latest if latest.tzinfo else latest.replace(tzinfo=timezone.utc),
+            "latest_at": latest,
         }))
     ranked.sort(key=lambda t: t[0], reverse=True)
     return [(c, story) for _, c, story in ranked]
 
 
 def _ranked(db: Session) -> list[tuple[Cluster, dict]]:
+    """Cached list of hot clusters with their story data."""
     _, by_id = get_clusters(db)
     if not by_id:
         return []

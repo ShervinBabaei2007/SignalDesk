@@ -10,10 +10,12 @@ from .database import Base
 
 
 def utcnow() -> datetime:
+    """Current time as a timezone-aware UTC datetime."""
     return datetime.now(timezone.utc)
 
 
 class Article(Base):
+    """A news article with its analysis (sentiment, topic, summaries, information score)."""
     __tablename__ = "articles"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -42,14 +44,17 @@ class Article(Base):
 
     @property
     def sentiment_label(self) -> str:
+        """Sentiment as 'positive', 'neutral' or 'negative'."""
         return sentiment_scale.label(self.sentiment)
 
     @property
     def keyword_list(self) -> list[str]:
+        """Comma-separated keywords as a list."""
         return [k.strip() for k in (self.keywords or "").split(",") if k.strip()]
 
 
 class Feed(Base):
+    """An RSS feed source with its health status."""
     __tablename__ = "feeds"
 
     id: Mapped[int] = mapped_column(primary_key=True)

@@ -12,10 +12,9 @@ window, the cache and the story keys live in :mod:`app.story_index`.
 from __future__ import annotations
 
 import re
-from html import unescape
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-
+from html import unescape
 
 from .analysis import STOPWORDS
 
@@ -30,6 +29,7 @@ _EXTRA_STOP = {"news", "live", "update", "updates", "breaking", "how", "why", "w
 
 
 def _stem(word: str) -> str:
+    """Reduce a word to a crude stem so plurals and simple inflections compare equal."""
     word = word.replace("’", "'")
     if word.endswith("'s"):
         word = word[:-2]
@@ -45,6 +45,7 @@ def _stem(word: str) -> str:
 
 
 def title_terms(title: str) -> frozenset[str]:
+    """Distinctive stemmed words of a headline, used to compare headlines for similarity."""
     terms = set()
     for w in _WORD.findall(unescape(title).lower()):
         s = _stem(w)
@@ -54,6 +55,7 @@ def title_terms(title: str) -> frozenset[str]:
 
 
 def similar(a: frozenset[str], b: frozenset[str]) -> bool:
+    """True when two headline term sets are close enough to be the same event."""
     shared = len(a & b)
     if not shared:
         return False
@@ -64,6 +66,7 @@ def similar(a: frozenset[str], b: frozenset[str]) -> bool:
 
 @dataclass(frozen=True)
 class Cluster:
+    """One story: a group of article ids covering the same event, with its lead headline and outlets."""
     id: int                      # smallest article id in the story (stable as it grows)
     article_ids: tuple[int, ...]
     sources: tuple[str, ...]     # distinct source names, first-seen order
@@ -72,12 +75,14 @@ class Cluster:
 
     @property
     def size(self) -> int:
+        """Number of reports in the story."""
         return len(self.article_ids)
 
 
 def _lead(members: list[int], items: list) -> int:
     """Index of the headline most like all the others in the story (the medoid)."""
     def jaccard(a: frozenset[str], b: frozenset[str]) -> float:
+        """Jaccard similarity of two term sets."""
         return len(a & b) / len(a | b) if a | b else 0.0
 
     return max(members, key=lambda m: (sum(jaccard(items[m][1], items[o][1]) for o in members if o != m), -items[m][0]))
@@ -89,6 +94,7 @@ def cluster_rows(rows: list[tuple[int, str, str, datetime | None]]) -> list[Clus
     parent = list(range(len(items)))
 
     def find(x: int) -> int:
+        """Union-find root lookup with path compression."""
         while parent[x] != x:
             parent[x] = parent[parent[x]]
             x = parent[x]
@@ -111,12 +117,9 @@ def cluster_rows(rows: list[tuple[int, str, str, datetime | None]]) -> list[Clus
         if len(members) < 2:
             continue
         members.sort(key=lambda m: items[m][0])
-        sources: list[str] = []
-        for m in members:
-            if items[m][2] not in sources:
-                sources.append(items[m][2])
+        sources = tuple(dict.fromkeys(items[m][2] for m in members))  # distinct, first-seen order
         ids = tuple(items[m][0] for m in members)
         lead = _lead(members, items)
-        clusters.append(Cluster(id=ids[0], article_ids=ids, sources=tuple(sources),
+        clusters.append(Cluster(id=ids[0], article_ids=ids, sources=sources,
                                 title=rows[lead][1], lead_id=rows[lead][0]))
     return clusters

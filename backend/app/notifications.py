@@ -34,6 +34,7 @@ logger = logging.getLogger("signaldesk.notifications")
 
 
 def _fmt_item(item) -> str:
+    """One plain-text line for a digest item."""
     sign = "+" if item.sentiment >= 0 else ""
     return f"{sign}{item.sentiment:.2f} · {item.title} ({item.source}) — {item.url}"
 
@@ -72,9 +73,11 @@ def digest_html(digest) -> str:
     """Render a digest as a simple, email-client-friendly HTML document."""
 
     def esc(value) -> str:
+        """HTML-escape a value."""
         return html.escape(str(value))
 
     def item_rows(items, color: str) -> str:
+        """HTML list items for digest entries."""
         return "".join(
             f'<li style="margin:6px 0"><a href="{esc(item.url)}" '
             f'style="color:{color};text-decoration:none;font-weight:600">{esc(item.title)}</a>'
@@ -139,6 +142,7 @@ def send_email(subject: str, text: str, html_body: str | None = None,
 
 
 def configured_channels() -> list[str]:
+    """Names of the delivery channels (Slack, email) that are configured."""
     channels = []
     if config.SLACK_WEBHOOK_URL:
         channels.append("slack")
@@ -147,24 +151,27 @@ def configured_channels() -> list[str]:
     return channels
 
 
+def _deliver(log_tag: str, subject: str, text: str, html_body: str | None = None) -> dict:
+    """Send to every configured channel, collecting per-channel failures instead of raising."""
+    result: dict = {"channels": configured_channels(), "sent": [], "errors": []}
+    senders = []
+    if config.SLACK_WEBHOOK_URL:
+        senders.append(("slack", "Slack", lambda: send_slack(text)))
+    if config.DIGEST_EMAILS:
+        senders.append(("email", "email", lambda: send_email(subject, text, html_body)))
+    for channel, name, send in senders:
+        try:
+            send()
+            result["sent"].append(channel)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[%s] %s delivery failed: %s", log_tag, name, exc)
+            result["errors"].append({"channel": channel, "error": str(exc)})
+    return result
+
+
 def deliver_alert(subject: str, text: str) -> dict:
     """Send a watchlist alert to every configured channel (same shape as deliver_digest)."""
-    result: dict = {"channels": configured_channels(), "sent": [], "errors": []}
-    if config.SLACK_WEBHOOK_URL:
-        try:
-            send_slack(text)
-            result["sent"].append("slack")
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("[alert] Slack delivery failed: %s", exc)
-            result["errors"].append({"channel": "slack", "error": str(exc)})
-    if config.DIGEST_EMAILS:
-        try:
-            send_email(subject, text)
-            result["sent"].append("email")
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("[alert] email delivery failed: %s", exc)
-            result["errors"].append({"channel": "email", "error": str(exc)})
-    return result
+    return _deliver("alert", subject, text)
 
 
 def deliver_digest(digest) -> dict:
@@ -173,24 +180,5 @@ def deliver_digest(digest) -> dict:
     Returns {"channels", "sent", "errors"} so callers can report exactly what
     happened without raising for per-channel failures.
     """
-    text = digest_text(digest)
     subject = f"SignalDesk Daily Brief — {digest.generated_at:%b %d, %Y}"
-    result: dict = {"channels": configured_channels(), "sent": [], "errors": []}
-
-    if config.SLACK_WEBHOOK_URL:
-        try:
-            send_slack(text)
-            result["sent"].append("slack")
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("[digest] Slack delivery failed: %s", exc)
-            result["errors"].append({"channel": "slack", "error": str(exc)})
-
-    if config.DIGEST_EMAILS:
-        try:
-            send_email(subject, text, digest_html(digest))
-            result["sent"].append("email")
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("[digest] email delivery failed: %s", exc)
-            result["errors"].append({"channel": "email", "error": str(exc)})
-
-    return result
+    return _deliver("digest", subject, digest_text(digest), digest_html(digest))

@@ -20,10 +20,12 @@ except Exception:  # noqa: BLE001
 
 
 def _bool(name: str, default: str = "false") -> bool:
+    """Read a boolean environment variable."""
     return os.getenv(name, default).strip().lower() in ("1", "true", "yes", "on")
 
 
 def _int(name: str, default: int) -> int:
+    """Read an integer environment variable, falling back to the default when unset or invalid."""
     try:
         return int(os.getenv(name, str(default)))
     except ValueError:
@@ -31,14 +33,16 @@ def _int(name: str, default: int) -> int:
 
 
 def _float(name: str, default: float) -> float:
+    """Read a float environment variable, falling back to the default when unset or invalid."""
     try:
         return float(os.getenv(name, str(default)))
     except ValueError:
         return default
 
 
-def _csv(name: str) -> list[str]:
-    return [v.strip() for v in os.getenv(name, "").split(",") if v.strip()]
+def _csv(name: str, default: str = "") -> list[str]:
+    """Read a comma-separated environment variable as a list of trimmed values."""
+    return [v.strip() for v in os.getenv(name, default).split(",") if v.strip()]
 
 
 APP_ENV = os.getenv("APP_ENV", "development").strip().lower()  # development | production
@@ -46,7 +50,7 @@ VERSION = "2.2.0"
 
 # Comma-separated list. "*" opens the API to any origin (fine for local dev;
 # set explicit origins in production, e.g. "https://dash.example.com").
-CORS_ORIGINS = [o.strip() for o in os.getenv("CORS_ORIGINS", "*").split(",") if o.strip()]
+CORS_ORIGINS = _csv("CORS_ORIGINS", "*")
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").strip().upper()
 

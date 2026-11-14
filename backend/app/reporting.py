@@ -17,11 +17,11 @@ from . import sentiment as sentiment_scale
 from .models import Article
 from .schemas import Digest, DigestItem, Stats
 
-
 DAY = timedelta(hours=24)
 
 
 def stats(db: Session) -> Stats:
+    """Dashboard numbers: totals, sentiment counts, topic breakdown and the 7-day trend."""
     total = db.scalar(select(func.count()).select_from(Article)) or 0
     if total == 0:
         return Stats(total_articles=0, total_sources=0, avg_sentiment=0.0,
@@ -99,6 +99,7 @@ def digest(db: Session) -> Digest:
     )
 
     def to_item(a: Article) -> DigestItem:
+        """Convert an article into a compact digest item."""
         return DigestItem(id=a.id, title=a.title, source=a.source,
                           sentiment=a.sentiment, topic=a.topic, url=a.url)
 

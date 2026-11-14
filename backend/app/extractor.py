@@ -52,7 +52,7 @@ def extract_main_text(html: str, max_chars: int = 10000) -> str:
     ):
         inner = match.group(2)
         # crude content score: real articles have lots of text
-        text_len = len(re.sub(r"<[^>]+>", " ", inner).strip())
+        text_len = len(_ANY_TAG.sub(" ", inner).strip())
         if text_len > best_len:
             best_block, best_len = inner, text_len
 
@@ -90,6 +90,7 @@ _IMAGE_META_KEYS = ("og:image:secure_url", "og:image", "twitter:image", "twitter
 
 
 def _attrs(tag: str) -> dict[str, str]:
+    """Parse an HTML tag's attributes into a lowercase-keyed dict."""
     return {m.group(1).lower(): unescape(m.group(2) if m.group(2) is not None else m.group(3))
             for m in _ATTR.finditer(tag)}
 
