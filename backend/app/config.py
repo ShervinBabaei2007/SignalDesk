@@ -46,7 +46,7 @@ def _csv(name: str, default: str = "") -> list[str]:
 
 
 APP_ENV = os.getenv("APP_ENV", "development").strip().lower()  # development | production
-VERSION = "2.2.0"
+VERSION = "2.3.0"
 
 # Comma-separated list. "*" opens the API to any origin (fine for local dev;
 # set explicit origins in production, e.g. "https://dash.example.com").

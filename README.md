@@ -1,260 +1,148 @@
 # ⚡ SignalDesk
 
-> **AI-powered news intelligence, on autopilot.**
-> SignalDesk pulls news from RSS feeds around the web, deduplicates it, scores sentiment, classifies topics, and surfaces it all in a real-time intelligence dashboard.
+> **News intelligence, on autopilot.** SignalDesk reads dozens of news feeds, groups the reports that cover the same event, shows what outlets agree and disagree on, and tells you how healthy its own pipeline is.
 
-![Status](https://img.shields.io/badge/status-production--grade-brightgreen) ![Python](https://img.shields.io/badge/python-3.12%2B-blue) ![FastAPI](https://img.shields.io/badge/FastAPI-latest-teal) ![React](https://img.shields.io/badge/React-19-61dafb) ![Tests](https://img.shields.io/badge/tests-122%20passing-brightgreen) ![License](https://img.shields.io/badge/license-MIT-lightgrey)
-
----
+[![CI](https://github.com/ShervinBabaei2007/SignalDesk/actions/workflows/ci.yml/badge.svg)](https://github.com/ShervinBabaei2007/SignalDesk/actions/workflows/ci.yml) ![Python](https://img.shields.io/badge/python-3.12%2B-blue) ![FastAPI](https://img.shields.io/badge/FastAPI-teal) ![React](https://img.shields.io/badge/React-19-61dafb) ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
 ![SignalDesk dashboard](docs/screenshots/dashboard.png)
 
-![SignalDesk mobile](docs/screenshots/mobile-dashboard.png)
-
 ![A story: AI brief, outlet comparison and reports ranked by information](docs/screenshots/story.png)
 
----
-
-## What it does
+## How it works
 
 ```mermaid
 graph LR
-    A["📡 RSS Feeds<br/>(BBC, Guardian, NPR, Al Jazeera, Ars Technica…)"] --> B["📥 Ingestion Pipeline<br/>fetch → dedupe (unique URL)"]
-    B --> C["🧠 Analysis Engine<br/>sentiment · topic · summary · keywords"]
-    C --> D[("🗄️ Database<br/>SQLite / PostgreSQL")]
-    D --> E["📊 Dashboard<br/>KPIs · trend chart · filters"]
-    E --> F["🔍 Signal Feed<br/>search · filter · explore"]
+    A["RSS feeds"] --> B["Ingest<br/>fetch, dedupe, analyze"]
+    B --> C["Enrich<br/>read the page: text, image,<br/>transparency signals"]
+    C --> D["Embed (optional)<br/>meaning vectors"]
+    D --> E["Cluster into stories<br/>words + meaning"]
+    E --> F["Events<br/>history across days"]
+    E --> G["Claims, briefs,<br/>outlet comparison"]
+    C --> H["Source profiles"]
+    B -.-> I["Observability<br/>runs, feeds, latency"]
+    F & G & H & I --> J["Dashboard + API"]
 ```
 
-Every article that enters the system is automatically:
+Everything works **offline with no API keys**. A language model and an embeddings endpoint are optional upgrades, and every one of them falls back cleanly when missing or failing.
 
-- **Scored for sentiment** in `[-1.0, +1.0]` with negation and intensifier handling
-- **Classified** into one of 6 topics (Technology, Business, Science, Politics, Health, World)
-- **Summarized** with an extractive summary
-- **Tagged** with extracted keywords
-- **Deduplicated** by URL, so re-running ingestion never creates duplicates
+## Features
 
-And the platform runs itself: a built-in scheduler re-ingests every feed every 15 minutes — no cron, no external workers.
-
-## Highlights
-
-| | |
-|---|---|
-| 📡 **Live RSS ingestion** | Pull from any RSS feed with one click — 110 real articles in under 2 seconds |
-| 🤖 **Auto-pilot scheduler** | Background task re-fetches every feed on a configurable interval; feeds report health status ("ok: 5 added · 2h ago") |
-| 📄 **Full-text summaries** | Each article's external link is fetched and parsed into a skimmable brief — TL;DR, key points, key numbers, quotes, and bottom line — so you get 90% of the story without opening the site |
-| 🖼️ **Real lead images** | Each article's reader page shows the lead image (`og:image`) from its real page, and every card shows the story's true domain with a "verify at the source" link in the reader — a quick legitimacy check. Images are hotlinked and vanish cleanly if a site blocks them |
-| 📰 **Stories, best-informed first** | Reports of the same event from different outlets are grouped into one card (word-overlap similarity within a time window). The lead report is the one that carries the most real information, and the other reports sit under "N more reports" in the same order. A switch turns grouping off for a flat list |
-| 📖 **Article reader page** | Clicking an article opens a dedicated reader at `/#/article/{id}`: the straightforward summary up top, then skimmable sections (key points, numbers, quotes, bottom line) with chip navigation |
-| 🌗 **Light & dark themes** | Accessible triadic color system (blue/green/violet) with a settings menu — both themes verified WCAG AA programmatically |
-| 🌡️ **Plain-language sentiment** | Scores read as "Very negative … Very positive" (number on hover), the reader has a labelled −1 / 0 / +1 gauge, and an ⓘ explainer says what sentiment does and does not mean |
-| 🧩 **shadcn/ui · Magic UI · Motion** | The dashboard is a React + Vite + TypeScript + Tailwind app built from real shadcn/ui components (card, dialog, sheet, popover, tooltip, hover-card, select…), Magic UI effects (number ticker, blur-fade, border beam, shimmer button) and Motion page transitions, with `prefers-reduced-motion` respected |
-| 🧘 **Compact mode** | A one-switch "calm" mode: hides side panels, charts, and chips, and shows fewer articles — for when the dashboard feels overwhelming |
-| 📱 **Mobile-first UI** | Designed for phones first: bottom-sheet menu, touch-sized targets, responsive 2-up → 5-column stats, then desktop |
-| 🧠 **Zero-dependency NLP** | Deterministic lexicon-based analysis that works offline, with an optional LLM upgrade |
-| ☀️ **Daily Brief** | Auto-generated intelligence headline + most positive/negative signals, refreshed with the stats |
-| 📊 **Intelligence dashboard** | KPI cards, 7-day sentiment trend, topic breakdown, keyword chips, article reader with sentiment gauge |
-| 🔍 **Search, filter & sort** | Live search, source/topic/sentiment filters, newest/oldest/most-polarized sorting, and "load more" pagination |
-| 📤 **CSV export** | One click exports the full article dataset |
-| 🔒 **Production hardening** | Security headers, env-driven CORS, ingest cooldown + lock, global error handler, feed URL scheme validation, structured health endpoint with version/uptime |
-| 🗄️ **Zero-config persistence** | SQLite by default, PostgreSQL with one environment variable; automatic column migrations on startup |
-| 🌱 **Real-article seeding** | First boot ingests the real default feeds so every article has a genuine URL; built-in sample articles are only used when the network is unreachable |
-| 🤖 **Optional LLM analysis** | Set `LLM_ENABLED=true` with any OpenAI-compatible endpoint (OpenAI, Ollama, LM Studio…) for written TL;DRs and "why it matters"; falls back to the offline analyzer on any failure |
-| ✉️ **Brief delivery** | Send the daily brief to Slack and/or email from the dashboard, or on a schedule (`DIGEST_HOUR`) |
-| 🔒 **Private workspaces** | Each visitor can open their own workspace: their own feeds, watchlist, ingests and articles, invisible to everyone else, on top of the shared news. No sign-up; data is deleted after `WORKSPACE_TTL_DAYS`. A one-click demo tour of the shared data sits beside it |
-| 🔑 **Optional API token** | Set `API_TOKEN` to require `X-API-Key` on all write endpoints; the UI has a field for it |
-| 📡 **15 curated feeds** | BBC (World, Technology, Business, Science, Health), The Guardian, NPR, Al Jazeera, Politico, STAT News, CNBC, Ars Technica, ScienceDaily, The Verge and TechCrunch: free-to-read sources chosen for topic and viewpoint spread. One click adds any that are missing to an existing install |
-| 🎯 **Information score** | Every report gets an explainable 0–100 score: depth of the extracted article, figures, quotes and a conclusion, analysis, and completeness. It ignores which outlet wrote it, so it ranks fairly. Page furniture (navigation, paywall and credit lines) is stripped first, and a "Most informative" sort uses it |
-| 🧠 **Story page** | `#/story/:id` shows an AI **brief** (what everyone agrees on, where outlets differ; uses your LLM if configured, otherwise a deterministic offline writer), a side-by-side **outlet comparison** (info score, wording spread, first to report, most detailed) and every report ranked |
-| 🔖 **Saved & read** | Bookmark any article (Topics → Saved); read articles dim. Stored in your browser, no account |
-| 🔔 **Watchlist & alerts** | Follow a word or phrase (optionally a topic and a minimum number of outlets). Matching stories get a badge, you are told after an ingest, and alerts go to Slack/email if configured. Each story alerts once |
-| 🔥 **Hot topics** | A category in the Topics list (and the topic filter). It shows the articles from the stories the most outlets are covering right now, ranked by outlets × recency, with the stories listed above the feed so you can open any one of them |
-| 📄 **Numbered pages** | Page 1, 2, 3… navigation with a windowed page list instead of an endless "load more" |
-| ✅ **Tested** | 88 pytest tests, 34 Vitest tests, and GitHub Actions CI for both the backend and the frontend build |
-| 🐳 **One-container deploy** | `docker compose up --build` and you're done |
+| Area | What you get |
+|------|--------------|
+| **Semantic story clustering** | Reports of one event are grouped by headline wording *and*, when embeddings are configured, by meaning, so paraphrases with no shared words still land in one story. A guard splits chained mega-stories. |
+| **Claim-level comparison** | For each story: which factual claims several outlets **agree** on, which are **disputed** (two outlets give different figures, shown side by side) and which only one outlet makes. |
+| **Historical event tracking** | A durable event identity follows a story across days and shows how coverage developed: reports per day, which outlets joined when, who was first, and how the tone shifted. |
+| **Source reliability analysis** | An explainable per-outlet profile: transparency (bylines, dates, linked sources, corrections link), corrections practice, information quality, corroboration, claim agreement and feed availability. It shows its working and withholds a score when evidence is thin. It describes how an outlet publishes, **not whether it is right**. |
+| **Pipeline observability** | Every ingest cycle and every feed is recorded: failures, p50/p95 latency, throughput, page-read success rate and backlog. A dead feed is a failure, not "0 new articles". |
+| **Reading experience** | Information score per report, AI or offline story briefs, article reader with key points and quotes, hot topics, watchlist alerts, saved articles, light and dark themes, mobile-first UI. |
+| **Private workspaces** | Each visitor can open their own feeds and watchlist, invisible to everyone else, next to a one-click demo tour of the shared data. |
+| **Platform** | SQLite by default, PostgreSQL with one variable, automatic migrations, scheduler, Slack/email digest, CSV export, Docker, GitHub Actions CI. |
 
 ## Quick start
 
-You need **Python 3.12+** and **Node 20+**.
+Requires **Python 3.12+** and **Node 20+**.
 
 ```bash
-git clone https://github.com/<you>/SignalDesk.git
-cd SignalDesk
-
-# 1. Backend dependencies
+git clone https://github.com/ShervinBabaei2007/SignalDesk.git && cd SignalDesk
 python -m venv .venv
-.venv\Scripts\pip install -r backend/requirements.txt   # Windows
-# source .venv/bin/activate && pip install -r backend/requirements.txt  # macOS/Linux
-
-# 2. Build the dashboard (once)
-cd frontend && npm install && npm run build && cd ..
-
-# 3. Run the server
-cd backend
-..\.venv\Scripts\python -m uvicorn app.main:app --reload
-
-# 4. Open the dashboard
-start http://localhost:8000
+.venv\Scripts\pip install -r backend/requirements.txt        # macOS/Linux: source .venv/bin/activate && pip install -r backend/requirements.txt
+cd frontend && npm install && npm run build && cd ..          # build the dashboard once
+cd backend && ..\.venv\Scripts\python -m uvicorn app.main:app --reload
 ```
 
-That's it: the database creates and seeds itself on first boot. No config files, no API keys, no external services.
+Open <http://localhost:8000>. The database creates and seeds itself on first boot; API docs are at `/docs`. For UI work run `npm run dev` in `frontend/` (http://localhost:5173, proxies `/api`).
 
-**Developing the UI?** Run the API as above, then `cd frontend && npm run dev` and open http://localhost:5173. It hot-reloads and proxies `/api` to the backend.
-
-### Docker
-
-```bash
-docker compose up --build
-# → http://localhost:8000   (data persists in the `signaldesk-data` volume;
-#   copy .env.example to .env to configure LLM, Slack, email, API token)
-```
-
-The image builds the dashboard in a Node stage, so you don't need Node installed for this route.
-
-## The dashboard
-
-Open **http://localhost:8000** to get:
-
-- **KPI row** — total articles, sources, last-24h volume, average sentiment, sentiment split
-- **7-day sentiment trend** — SVG sparkline of daily average sentiment
-- **Topic breakdown** — clickable topic distribution bars
-- **Signal Feed** — every article with sentiment badge, score, topic chip, clean full-text summary, and 📄 Summary / ↗ Visit actions
-- **Article reader** — clicking any article opens a distraction-free reader page with the summary and the full article text
-- **Filters** — live search, source, topic, and sentiment filters
-- **📡 Feeds manager** — add/remove RSS feeds from the UI
-- **⬇ Ingest Feeds** — one-click pipeline run with a live results report
-
-Interactive API docs live at **http://localhost:8000/docs** (Swagger UI).
-
-## API
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/auth/status` | Whether write endpoints require an API token |
-| `POST` | `/api/digest/send` | Deliver the daily brief to Slack / email |
-| `GET` | `/api/health` | Service health + row counts |
-| `GET` | `/api/stats` | KPIs, sentiment split, topic breakdown, 7-day trend |
-| `GET` | `/api/trending` | Hot topics: the stories the most outlets cover right now |
-| `GET` | `/api/digest` | Generated daily brief: headline, extremes, topic counts |
-| `GET` | `/api/stories` | Grouped feed: one card per event, best-informed report first (same filters as articles, plus `ids=` and `order=info`) |
-| `GET` | `/api/stories/{id}` | One story in depth: brief, outlet comparison, ranked reports |
-| `POST` | `/api/stories/{id}/brief` | Rewrite the story brief now |
-| `GET` `POST` `PATCH` `DELETE` | `/api/watches` | The watchlist (writes need the API token when one is set) |
-| `GET` | `/api/articles` | Search/filter/sort/paginate articles (`cluster=<id>` shows one story, `hot=1` the hot stories) |
-| `GET` | `/api/articles/{id}` | Article detail (incl. keywords and `related` coverage of the same story) |
-| `POST` | `/api/articles/{id}/summarize` | Fetch the linked page and generate a clean full-text summary on demand |
-| `GET` | `/api/articles/export.csv` | Download all articles as CSV |
-| `GET` | `/api/feeds` | List feeds with last-fetch health |
-| `POST` | `/api/feeds` | Add a feed (`{"name", "url"}`) |
-| `DELETE` | `/api/feeds/{id}` | Remove a feed |
-| `POST` | `/api/ingest` | Fetch all active feeds → dedupe → analyze → store |
+**Docker:** `docker compose up --build` serves everything on port 8000 and keeps data in a volume. Copy `.env.example` to `.env` to configure it.
 
 ## Configuration
 
+Everything is an environment variable (see [`.env.example`](.env.example)); nothing below is required to run.
+
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `DATABASE_URL` | SQLite (`backend/signaldesk.db`) | Point at PostgreSQL for production |
-| `APP_ENV` | `development` | `production` for deployments (shown in `/api/health`) |
-| `CORS_ORIGINS` | `*` | Comma-separated allowed origins; set explicit origins in production |
-| `LOG_LEVEL` | `INFO` | Python log level |
-| `INGEST_INTERVAL_MINUTES` | `15` | Auto-pilot re-ingest interval; `0` disables the scheduler |
-| `INGEST_COOLDOWN_SECONDS` | `20` | Minimum seconds between manual ingests (429 within the window) |
-| `ENRICH_BATCH_SIZE` | `30` | Articles enriched per background wave |
-| `SCHEDULER_DISABLED` | `false` | Set `true` in tests/CI to prevent boot-time network calls |
-| `MAX_ARTICLE_AGE_DAYS` | `7` | Skip stories older than this (`0` disables) |
-| `LLM_ENABLED` / `LLM_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL` | off | Optional LLM analysis via any OpenAI-compatible API |
-| `SLACK_WEBHOOK_URL`, `DIGEST_EMAILS`, `SMTP_*` | unset | Brief delivery channels |
-| `DIGEST_HOUR` | `-1` | UTC hour for automatic brief delivery (`-1` disables) |
-| `API_TOKEN` | unset | Require `X-API-Key` on POST/DELETE endpoints |
-| `SESSION_SECRET` | `API_TOKEN` | Signs workspace tokens. Workspaces are off when neither is set |
-| `WORKSPACE_TTL_DAYS` | `7` | A workspace's data is deleted after this many days |
-| `WORKSPACE_MAX_FEEDS` / `WORKSPACE_MAX_WATCHES` / `WORKSPACE_MAX_ARTICLES` | `8` / `10` / `600` | Per-workspace limits |
-| `WORKSPACE_CREATES_PER_HOUR` | `20` | Workspaces one client IP may create per hour |
+| `DATABASE_URL` | SQLite file | Use `postgresql://…` in production |
+| `APP_ENV`, `CORS_ORIGINS`, `LOG_LEVEL` | `development`, `*`, `INFO` | Set explicit origins in production |
+| `INGEST_INTERVAL_MINUTES` / `INGEST_COOLDOWN_SECONDS` | `15` / `20` | Scheduler interval (`0` disables) and the manual-ingest cooldown |
+| `MAX_ARTICLE_AGE_DAYS`, `ENRICH_BATCH_SIZE`, `SCHEDULER_DISABLED` | `7`, `30`, `false` | Ingest window, enrichment wave size, off switch for tests/serverless |
+| `API_TOKEN` | unset | Required as `X-API-Key` on owner-only writes |
+| `LLM_ENABLED`, `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL` | off | Written briefs and claim extraction via any OpenAI-compatible API (OpenAI, Ollama, LM Studio…) |
+| `EMBEDDINGS_ENABLED`, `EMBEDDING_MODEL` | off, `text-embedding-3-small` | Semantic clustering. Base URL and key default to the `LLM_*` ones (`EMBEDDING_BASE_URL`, `EMBEDDING_API_KEY` override) |
+| `EMBEDDING_DIMENSIONS`, `EMBED_SIM_MIN` | `256`, `0.78` | Vector size (smaller is cheaper) and the cosine threshold for "same event". Tune per model |
+| `SESSION_SECRET`, `WORKSPACE_TTL_DAYS`, `WORKSPACE_MAX_*`, `WORKSPACE_CREATES_PER_HOUR` | `API_TOKEN`, `7`, `8/10/600`, `20` | Private workspaces: signing key, expiry and per-visitor limits. Off when no secret is set |
+| `DEMO_MODE`, `DEMO_TTL_SECONDS` | off, `7200` | The read-and-ingest demo tour |
+| `SLACK_WEBHOOK_URL`, `DIGEST_EMAILS`, `SMTP_*`, `DIGEST_HOUR` | unset | Daily brief and alert delivery |
+| `CRON_SECRET` | unset | Bearer secret for `/api/cron/ingest` |
 
-See [.env.example](.env.example) for a annotated template.
+## API
 
-## Project structure
+Interactive docs at `/docs`. The main endpoints:
 
-```
-SignalDesk/
-├── backend/
-│   ├── app/
-│   │   ├── main.py          # FastAPI app, routes, static serving
-│   │   ├── config.py        # Env-driven settings
-│   │   ├── llm.py           # Optional OpenAI-compatible analysis
-│   │   ├── notifications.py # Slack / SMTP brief delivery
-│   │   ├── clustering.py    # Groups duplicate coverage into stories
-│   │   ├── quality.py       # Information score (0-100) per report
-│   │   ├── stories.py       # Grouped feed, ranking inside a story, outlet comparison
-│   │   ├── briefs.py        # Story briefs: LLM writer + offline fallback
-│   │   ├── watches.py       # Watchlist matching and alerts
-│   │   ├── enrichment.py    # Full-text fetch + structured summaries
-│   │   ├── database.py      # Engine + sessions (SQLite → Postgres switchable)
-│   │   ├── models.py        # SQLAlchemy models (Article, Feed)
-│   │   ├── schemas.py       # Pydantic request/response schemas
-│   │   ├── analysis.py      # Sentiment · topics · summary · keywords
-│   │   ├── ingestion.py     # RSS fetch → dedupe → analyze → store
-│   │   └── seed_data.py     # Demo data auto-seeded on first boot
-│   └── tests/               # pytest: analysis unit tests + API integration
-├── frontend/                # React + Vite + TypeScript dashboard
-│   └── src/
-│       ├── components/ui/   # shadcn/ui + Magic UI components
-│       ├── components/app/  # Header, feed, sidebar, reader, dialogs
-│       ├── hooks/           # Dashboard state, settings, hash routing
-│       └── lib/             # API client, sentiment wording, formatters
-├── tools/devshots.py        # Screenshot helper (desktop + mobile)
-├── .github/workflows/ci.yml # pytest + frontend typecheck/test/build
-├── Dockerfile
-├── docker-compose.yml
-└── pytest.ini
-```
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/stories`, `/api/stories/{id}` | Grouped feed; one story with brief, **claims**, outlet comparison (with source scores) and ranked reports |
+| `GET /api/stories/{id}/timeline` | Day-by-day coverage of the story's event |
+| `GET /api/sources` | Evidence-based outlet profiles with the score breakdown |
+| `GET /api/observability?hours=24` | Pipeline health: runs, latency, throughput, failing feeds, extraction rate, backlog |
+| `GET /api/articles`, `/api/articles/{id}` | Search, filter, sort, paginate; article detail with related coverage |
+| `GET /api/trending`, `/api/digest`, `/api/stats` | Hot stories (with days active), daily brief, KPIs and 7-day trend |
+| `GET/POST/DELETE /api/feeds`, `GET/POST/PATCH/DELETE /api/watches` | Feeds and watchlist (scoped to the caller's workspace) |
+| `POST /api/ingest` | Fetch feeds, analyze, store, check watches |
+| `POST /api/workspace`, `DELETE /api/workspace` | Open or reset a private workspace |
+| `GET /api/health`, `/api/articles/export.csv` | Liveness; full CSV export |
 
-## Design decisions
+## Deploy on Vercel
 
-- **Deterministic NLP first, LLM as an upgrade.** The lexicon-based analyzer runs offline and behaves identically on every run, so anyone can clone and try it with no keys. When `LLM_ENABLED` is set, `llm.py` layers richer summaries on top and silently falls back on any malformed or failed response.
-- **Deduplication at the storage layer.** URLs are unique-indexed; ingestion is idempotent, so the pipeline can run on a schedule without supervision.
-- **Forward-safe migrations.** New columns are detected at startup (`ensure_columns`) and added via `ALTER TABLE`, and existing rows are backfilled (e.g. keyword computation) — upgrading a running deployment never breaks it.
-- **A real component stack for the UI.** shadcn/ui gives accessible primitives (Radix/Base UI under the hood), Magic UI and Motion add restrained polish, and the API stays a plain REST contract so the frontend is replaceable. FastAPI serves the built files, so production is still one container.
-- **Plain-English sentiment.** All labels, thresholds and explanations live in `frontend/src/lib/sentiment.ts` (unit-tested), so the wording can't drift between the feed, the reader and the explainer.
-- **SQLite-first.** The default needs zero infrastructure; `DATABASE_URL=postgresql://…` is the only change required for Postgres.
+1. Add a Postgres database (Vercel Storage, Marketplace, Neon). It sets `DATABASE_URL`.
+2. Set `APP_ENV=production`, `SCHEDULER_DISABLED=true`, `API_TOKEN`, `CRON_SECRET` (random strings) and `CORS_ORIGINS` (your URL). Optionally `DEMO_MODE=true`, plus `LLM_*` and `EMBEDDINGS_ENABLED=true` for the AI upgrades.
+3. `vercel --prod`. `vercel.json` deploys the FastAPI `backend` and Vite `frontend` as two services on one domain.
+4. Hobby plans allow only a daily cron, so `.github/workflows/ingest.yml` calls `/api/cron/ingest` every 15 minutes. Add the repository secrets `APP_URL` and `CRON_SECRET`.
+
+**Upgrading an existing database.** Schema changes are additive columns and tables, applied automatically on boot. The one exception: feed names/URLs and article URLs become unique **per workspace** instead of globally. SQLite tables are rebuilt in place (rows kept); on PostgreSQL the old unique constraints are dropped and composite unique indexes created. It is idempotent, but **back up a production database before the first deploy**.
+
+## Security and privacy model
+
+- **Shared vs. private.** Cron-ingested news is shared; a visitor's feeds, watches and articles carry a signed workspace id and are invisible to others. A story that includes a visitor's article is never cached for anyone else.
+- **Strangers can add feed URLs**, so fetches go through an SSRF guard (public http(s) only, every redirect checked, responses size-capped), each workspace has caps, and workspace creation is rate-limited per IP.
+- **Owner-only:** Slack/email delivery, recommended-feed reset and refreshing briefs. A visitor's articles never reach an LLM or embeddings API, so visitors cannot spend your quota.
+- **Source profiles** use only shared data, so a visitor cannot influence a public score.
+- The real `API_TOKEN` is never handed out; workspace and demo tokens are signed with a derived key and cannot act as it.
+
+## Operating it
+
+Open **Pipeline** in the header (or `GET /api/observability`). Healthy looks like: a last good run under ~15 minutes ago, near-100% of cycles succeeding, no failing feeds and a page-read rate that stays steady. Investigate when the last good run is older than an hour (the scheduler or cron stopped), a feed's failure rate climbs (dead URL or blocking), or the page-read rate drops (a site changed its markup or started blocking). Each cycle also logs one line: `[pipeline] kind=scheduled duration_ms=… feeds_failed=… added=…`. Run history is kept 30 days.
 
 ## Testing
 
 ```bash
-.venv\Scripts\python -m pytest -q      # backend
-cd frontend && npm test               # frontend (Vitest)
+.venv\Scripts\python -m pytest -q          # backend
+cd frontend && npm run typecheck && npm test && npm run build
 ```
 
-## Roadmap
+CI runs both on every push. Tests use fakes for the network, the LLM and the embeddings provider, so they are hermetic.
 
-- [x] Live RSS ingestion with URL deduplication
-- [x] Sentiment, topic, summary & keyword analysis
-- [x] Scheduled background ingestion
-- [x] Daily intelligence brief
-- [x] CSV export
-- [x] LLM-backed analysis backend (optional, OpenAI-compatible)
-- [ ] Keyword/entity highlighting in article summaries
-- [x] Email/Slack digest of daily signals
-- [ ] Auth + multi-user workspaces
+## Project structure
+
+```
+backend/app/
+  main.py            routes, auth, workspace scoping     ingestion.py, pipeline.py   fetch, cycle, enrichment backlog
+  clustering.py      words + meaning clustering          embeddings.py               optional vectors
+  claims.py          claim comparison                    briefs.py, llm.py           story briefs, optional model
+  events.py          event history and timelines         reliability.py, signals.py  source profiles, page signals
+  observability.py   run history and health summary      workspace.py, netguard.py   private workspaces, SSRF guard
+frontend/src/        React + Vite + TypeScript + Tailwind + shadcn/ui
+  components/app/    dashboard, story page, claims/timeline cards, sources and pipeline dialogs
+backend/tests/       pytest suites per module
+```
+
+## Limitations and roadmap
+
+- **Claim matching is lexical** (sentence word overlap plus figure comparison). It catches conflicting numbers well and paraphrased prose less well; the LLM path is better. Embeddings are per headline, not per sentence.
+- **Source profiles need data.** Transparency signals are read from article pages, so a profile appears after a few readable pages per outlet. Scores describe observable publishing practice, are a heuristic, and say nothing about correctness. Corroboration looks at the last few days only.
+- **Events follow a story while consecutive windows overlap**; a silence longer than 48 hours between reports starts a new event.
+- **Embedding thresholds** (`EMBED_SIM_MIN`) are model-specific and should be tuned on your own feeds.
+- In-memory rate limits and cooldowns are per instance, so best-effort on serverless.
+- Next: sentence-level embeddings for claims, per-topic source profiles, and alert routing per workspace.
 
 ## License
 
-MIT — see [MIT-LICENSE.txt](MIT-LICENSE.txt).
-
-## Deploying on Vercel
-
-1. Add a Postgres database (Vercel dashboard, Storage, Marketplace, Neon). It sets `DATABASE_URL` for you.
-2. In Settings, Environment Variables, add `APP_ENV=production`, `SCHEDULER_DISABLED=true`, `API_TOKEN`, `CRON_SECRET` (random strings) and `CORS_ORIGINS` (your Vercel URL).
-3. Deploy with `vercel --prod`. `vercel.json` deploys the `backend` (FastAPI) and `frontend` (Vite) as two services on one domain, routes `/api/*` to the backend, and `/api/cron/ingest` runs the scheduled ingest.
-
-### Workspaces and the demo
-
-With `API_TOKEN` (or `SESSION_SECRET`) set, the landing page offers **Open my workspace**: a private copy of the app's write features. A visitor's feeds, watchlist, alerts and articles are stamped with a signed workspace id and are invisible to every other visitor; the shared, cron-ingested news stays visible alongside. Workspaces are deleted after `WORKSPACE_TTL_DAYS` by the same cron that ingests the shared feeds.
-
-Because strangers can add feed URLs, the server fetches them through an SSRF guard (public http(s) addresses only, every redirect checked, responses size-capped), caps each workspace, rate-limits workspace creation per IP, and keeps these owner-only: Slack/email delivery, the recommended-feeds reset and LLM-backed actions. Visitor alerts are shown in their dashboard and never sent to your channels.
-
-Set `DEMO_MODE=true` for the **demo tour** next to it: a 2-hour token that can run ingests on the shared data but cannot edit anything. The real `API_TOKEN` is never shared.
-
-**Upgrading an existing database:** the first boot of this version makes feed names/URLs and article URLs unique per workspace instead of globally. SQLite tables are rebuilt automatically (rows are kept). On PostgreSQL the old unique constraints are dropped and composite unique indexes created. It is idempotent, but back up a production database before the first deploy.
-
-Vercel Hobby only allows daily cron jobs, so `vercel.json` runs one ingest a day as a safety net and `.github/workflows/ingest.yml` calls the app every 15 minutes. Add the repository secrets `APP_URL` (your Vercel URL, no trailing slash) and `CRON_SECRET` (same value as in Vercel). On Pro you can drop the workflow and set the cron to `*/15 * * * *`.
+MIT. See [MIT-LICENSE.txt](MIT-LICENSE.txt).
