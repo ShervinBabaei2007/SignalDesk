@@ -20,7 +20,7 @@ const THEMES = [
   { value: 'system', label: 'System', icon: Monitor },
 ] as const
 
-/** The settings sheet. */
+/** Side sheet for theme, calm mode, workspace reset and the API token. */
 export function SettingsSheet({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const { theme, setTheme } = useTheme()
   const { compact, setCompact, token, saveToken } = useSettings()
@@ -29,7 +29,7 @@ export function SettingsSheet({ open, onOpenChange }: { open: boolean; onOpenCha
   const [confirmReset, setConfirmReset] = useState(false)
   const inWorkspace = sessionMode(token) === 'workspace'
 
-  /** Delete this workspace's feeds, watchlist and articles (asks twice, since it cannot be undone). */
+  /** Deletes this workspace's feeds, watchlist and articles, needing a second click to confirm. */
   const resetWorkspace = async () => {
     if (!confirmReset) {
       setConfirmReset(true)

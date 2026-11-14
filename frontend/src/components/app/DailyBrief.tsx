@@ -25,6 +25,7 @@ function DigestGroup({ title, items, tone }: { title: string; items: DigestItem[
       </div>
       {items.map((item, i) => {
         const level = describeSentiment(item.sentiment)
+        // On small screens only the first story is shown to keep the card short.
         return (
           <a
             key={item.id}
@@ -55,6 +56,7 @@ export function DailyBrief() {
   const { token } = useSettings()
   const [sending, setSending] = useState(false)
 
+  /** Delivers the brief through the configured channels and reports the outcome in a toast. */
   const send = async () => {
     setSending(true)
     try {

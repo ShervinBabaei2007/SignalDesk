@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
-from sqlalchemy import create_engine, select  # noqa: E402
+from sqlalchemy import create_engine  # noqa: E402
 from sqlalchemy.orm import sessionmaker  # noqa: E402
 from sqlalchemy.pool import StaticPool  # noqa: E402
 
@@ -32,6 +32,8 @@ client = TestClient(app)
 # --------------------------------------------------------------------------- #
 
 def test_sample_articles_are_dated_in_the_past():
+    """Relative markers like "-2d" resolve to times before now, not after."""
+    # Day, hour and minute offsets must all land in the past.
     for marker in ("-2d", "-5h", "-30m"):
         assert seed_data._relative_published(marker) < datetime.now(timezone.utc)
     assert abs(seed_data._relative_published("-2d") - (datetime.now(timezone.utc) - timedelta(days=2))) < timedelta(seconds=5)
@@ -55,6 +57,7 @@ def article(i, *, seed, published, created=None, **kw):
 
 
 def test_future_dated_sample_articles_are_moved_back_and_real_ones_are_left_alone(db):
+    """The repair flips future-dated samples into the past, once, and never touches real articles."""
     created = NOW - timedelta(hours=3)
     db.add_all([
         article(1, seed=True, published=created + timedelta(days=2), created=created),   # "-2d" turned into +2 days
@@ -80,7 +83,7 @@ def marked(monkeypatch):
     monkeypatch.setattr(config, "API_TOKEN", "owner-secret")
     monkeypatch.setattr(config, "SESSION_SECRET", "owner-secret")
     monkeypatch.setattr(config, "DEMO_MODE", True)
-    monkeypatch.setattr(workspace, "creations", workspace.RateLimiter(1000))
+    monkeypatch.setattr(workspace, "creations", workspace.RateLimiter(1000))  # generous limit so tests can mint many workspaces
     Base.metadata.create_all(bind=app_engine)
     recent = NOW - timedelta(hours=1)
     with SessionLocal() as session:
@@ -110,25 +113,30 @@ SAMPLE, REAL = "Zzmarker placeholder sample story", "Zzmarker genuine reported s
 
 
 def test_plain_browsing_and_the_demo_tour_still_show_the_sample_articles(marked):
+    """Anonymous visitors and demo-token holders see both sample and real articles."""
     assert titles() == {SAMPLE, REAL}
     demo = client.post("/api/demo/session").json()["token"]
     assert titles({"X-API-Key": demo}) == {SAMPLE, REAL}
 
 
 def test_a_workspace_shows_real_articles_only(marked):
+    """A workspace token hides the sample articles."""
     token = client.post("/api/workspace").json()["token"]
     assert titles({"X-API-Key": token}) == {REAL}
 
 
 def test_the_owner_sees_real_articles_only(marked):
+    """The owner's API token hides the sample articles."""
     assert titles({"X-API-Key": "owner-secret"}) == {REAL}
 
 
 def test_a_wrong_token_is_not_the_owner_and_still_sees_the_demo_content(marked):
+    """An invalid token is treated as anonymous and still sees the sample articles."""
     assert titles({"X-API-Key": "not-the-owner-token"}) == {SAMPLE, REAL}
 
 
 def test_the_grouped_feed_and_the_counts_follow_the_same_rule(marked):
+    """Stats totals and grouped stories for a workspace also exclude every sample article."""
     token = {"X-API-Key": client.post("/api/workspace").json()["token"]}
     anon_total = client.get("/api/stats").json()["total_articles"]
     with SessionLocal() as session:  # other test modules seed the shared test database too, so count the samples
@@ -141,6 +149,7 @@ def test_the_grouped_feed_and_the_counts_follow_the_same_rule(marked):
 
 
 def test_a_workspace_can_still_open_a_real_article_but_not_a_sample_one_by_id(marked):
+    """A workspace gets 404 for a sample article by id, while anonymous visitors can still open it."""
     token = {"X-API-Key": client.post("/api/workspace").json()["token"]}
     assert client.get("/api/articles/88002", headers=token).status_code == 200
     assert client.get("/api/articles/88001", headers=token).status_code == 404

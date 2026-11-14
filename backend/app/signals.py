@@ -16,34 +16,40 @@ from html import unescape
 from urllib.parse import urlparse
 
 _META_TAG = re.compile(r"<meta\b[^>]*>", re.IGNORECASE)
-_ATTR = re.compile(r"""([a-zA-Z:_.-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')""")
+_ATTR = re.compile(r"""([a-zA-Z:_.-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')""")  # name="value" or name='value'
 _PARAGRAPH = re.compile(r"<p\b[^>]*>(.*?)</p\s*>", re.IGNORECASE | re.DOTALL)
-_ANCHOR = re.compile(r"<a\b([^>]*)>(.*?)</a\s*>", re.IGNORECASE | re.DOTALL)
-_HREF = re.compile(r"""href\s*=\s*["'](https?://[^"']+)["']""", re.IGNORECASE)
+_ANCHOR = re.compile(r"<a\b([^>]*)>(.*?)</a\s*>", re.IGNORECASE | re.DOTALL)  # (attributes, inner HTML)
+_HREF = re.compile(r"""href\s*=\s*["'](https?://[^"']+)["']""", re.IGNORECASE)  # absolute outbound links only
 _DROP = re.compile(r"<(script|style|noscript|svg)\b.*?</\1\s*>", re.IGNORECASE | re.DOTALL)
 _TAGS = re.compile(r"<[^>]+>")
 
+# Meta names (lowercased) that carry the author, publish date and last-update date
 _AUTHOR_META = {"author", "article:author", "og:article:author", "parsely-author", "dc.creator", "byl", "sailthru.author"}
 _PUBLISHED_META = {"article:published_time", "og:article:published_time", "datepublished", "pubdate",
                    "dc.date.issued", "parsely-pub-date", "publish-date", "date"}
 _MODIFIED_META = {"article:modified_time", "og:updated_time", "datemodified", "last-modified", "dc.date.modified"}
+# Byline fallbacks: a byline/author CSS class, or author microdata / JSON-LD
 _BYLINE_CLASS = re.compile(r"""class\s*=\s*["'][^"']*\b(byline|author|writer)\b[^"']*["']""", re.IGNORECASE)
 _AUTHOR_MARKUP = re.compile(r"""(itemprop|rel)\s*=\s*["']author["']|"author"\s*:\s*[\[{"]""", re.IGNORECASE)
+# Date fallbacks when no meta tag has one: JSON-LD, itemprop microdata, or a <time datetime> tag
 _JSON_PUBLISHED = re.compile(r'"datePublished"\s*:\s*"([^"]+)"')
 _JSON_MODIFIED = re.compile(r'"dateModified"\s*:\s*"([^"]+)"')
 _ITEMPROP_PUBLISHED = re.compile(r"""itemprop\s*=\s*["']datePublished["'][^>]*?(?:content|datetime)\s*=\s*["']([^"']+)["']""", re.IGNORECASE)
 _TIME_TAG = re.compile(r"""<time\b[^>]*datetime\s*=\s*["']([^"']+)["']""", re.IGNORECASE)
+# Link text or URL that points to a corrections, standards or ethics policy
 _POLICY = re.compile(
     r"corrections?\b|editorial[\s-]+(standards|policy|guidelines)|ethics[\s-]+(policy|code)|"
     r"standards[\s-]+(and|&)[\s-]+ethics|fact[\s-]?check(ing)?[\s-]+policy", re.IGNORECASE)
+# A "Correction:" style label or "an earlier version of this story..." wording in the article text
 _CORRECTION_NOTICE = re.compile(
     r"(?:^|\n)\s*(?:correction|clarification|editor'?s note)\s*[:–—-]|"
     r"this (?:article|story) (?:has been|was) corrected|an earlier version of this (?:article|story)|"
     r"(?:a|the) (?:previous|earlier) version of this (?:article|story)|has been (?:corrected|updated to correct)",
     re.IGNORECASE)
+# Share and social hosts, which are not sources the story relies on
 _SOCIAL = ("facebook.", "twitter.", "x.com", "t.co", "instagram.", "linkedin.", "pinterest.", "whatsapp.",
            "youtube.", "youtu.be", "tiktok.", "reddit.", "telegram.", "flipboard.", "mailto")
-MAX_SOURCES = 10
+MAX_SOURCES = 10  # cap on distinct outbound source domains reported
 MAX_SCAN = 3_000_000  # large news pages put megabytes of inline script before their meta tags (CNBC: ~600 KB)
 
 
@@ -67,6 +73,7 @@ def extract_signals(html: str, base_url: str = "", text: str = "") -> dict:
     """Transparency signals of a page: byline, dates, sourcing links, a corrections policy, a correction notice."""
     head = html[:MAX_SCAN]
     metas: dict[str, str] = {}
+    # Index every non-empty meta tag by its property/name/itemprop, keeping the first value.
     for tag in _META_TAG.findall(head):
         a = _attrs(tag)
         key = (a.get("property") or a.get("name") or a.get("itemprop") or "").lower()
@@ -86,11 +93,13 @@ def extract_signals(html: str, base_url: str = "", text: str = "") -> dict:
     body = _DROP.sub(" ", head)
     own = _host(base_url)
     domains: set[str] = set()
+    # Collect outside domains linked from body paragraphs, ignoring the outlet itself and social sites.
     for paragraph in _PARAGRAPH.findall(body):
         for href in _HREF.findall(paragraph):
             host = _host(href)
             if host and host != own and not host.endswith("." + own) and not any(s in host for s in _SOCIAL):
                 domains.add(host)
+    # Any link whose text or href mentions a corrections/standards policy.
     policy = any(_POLICY.search(_TAGS.sub(" ", inner)) or _POLICY.search(_attrs(attrs).get("href", ""))
                  for attrs, inner in _ANCHOR.findall(body))
 

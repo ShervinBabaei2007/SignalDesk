@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 from . import config
 from .models import NO_WORKSPACE, Article, Feed, Watch, WatchAlert
 
-_PREFIX = "ws"
+_PREFIX = "ws"  # first segment of every workspace token, telling it apart from other tokens
 
 
 def enabled() -> bool:
@@ -36,7 +36,7 @@ def _sign(payload: str) -> str:
 
 def issue() -> tuple[str, str]:
     """Create a new workspace; returns (workspace id, signed token)."""
-    workspace_id = secrets.token_urlsafe(9)
+    workspace_id = secrets.token_urlsafe(9)  # 9 random bytes: 12 URL-safe characters, unguessable
     payload = f"{_PREFIX}.{workspace_id}"
     return workspace_id, f"{payload}.{_sign(payload)}"
 
@@ -44,6 +44,7 @@ def issue() -> tuple[str, str]:
 def verify(token: str) -> str | None:
     """The workspace id a token was signed for, or None when it is not a valid workspace token."""
     parts = token.split(".")
+    # A workspace token is exactly "ws.<id>.<signature>" with a non-empty id.
     if not enabled() or len(parts) != 3 or parts[0] != _PREFIX or not parts[1]:
         return None
     return parts[1] if hmac.compare_digest(parts[2], _sign(f"{parts[0]}.{parts[1]}")) else None
@@ -54,6 +55,7 @@ class RateLimiter:
     has to blunt a loop that mints workspaces, not be an exact quota."""
 
     def __init__(self, limit: int, window_seconds: float = 3600.0):
+        """Set the allowance per key and the window length (one hour by default)."""
         self.limit, self.window = limit, window_seconds
         self._hits: dict[str, list[float]] = {}
         self._lock = threading.Lock()
@@ -62,12 +64,13 @@ class RateLimiter:
         """Record a hit for `key`; False when it already used up its allowance."""
         now = time.time() if now is None else now
         with self._lock:
+            # Forget this key's hits that have slid out of the window.
             recent = [t for t in self._hits.get(key, []) if now - t < self.window]
             allowed = len(recent) < self.limit
             if allowed:
                 recent.append(now)
             self._hits[key] = recent
-            if len(self._hits) > 5000:  # keep memory bounded
+            if len(self._hits) > 5000:  # keep memory bounded: drop keys whose last hit is outside the window
                 self._hits = {k: v for k, v in self._hits.items() if v and now - v[-1] < self.window}
             return allowed
 
@@ -88,6 +91,7 @@ def reset(db: Session, workspace_id: str) -> None:
     watch_ids = [w for (w,) in db.execute(select(watches.c.id).where(watches.c.workspace_id == workspace_id)).all()]
     if watch_ids:
         db.execute(delete(WatchAlert).where(WatchAlert.watch_id.in_(watch_ids)))
+    # Remove the workspace's own rows from every scoped table.
     for model in (Watch, Feed, Article):
         db.execute(delete(model).where(model.workspace_id == workspace_id))
     db.commit()
@@ -105,6 +109,7 @@ def purge_expired(db: Session, now: datetime | None = None) -> int:
     if stale_watches:
         db.execute(delete(WatchAlert).where(WatchAlert.watch_id.in_(stale_watches)))
         removed += db.execute(delete(Watch).where(Watch.id.in_(stale_watches))).rowcount or 0
+    # Feeds age by creation time and articles by ingest time; shared rows are never purged.
     for model, column in ((Feed, Feed.created_at), (Article, Article.ingested_at)):
         removed += db.execute(delete(model).where(model.workspace_id != NO_WORKSPACE, column < cutoff)).rowcount or 0
     db.commit()

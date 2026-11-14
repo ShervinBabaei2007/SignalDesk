@@ -24,6 +24,7 @@ function ClaimRow({ claim }: { claim: Claim }) {
       </div>
       <div className="flex flex-wrap items-center gap-1.5 pl-6">
         <span className={cn('text-[11px] font-semibold tracking-wide uppercase', s.text)}>{s.label}</span>
+        {/* Disputed claims show each outlet's own figure; others just list the outlets */}
         {claim.status === 'disputed' && claim.values
           ? Object.entries(claim.values).map(([outlet, value]) => (
               <Badge key={outlet} variant="outline" className="h-5 gap-1 px-1.5 text-[11px] font-normal">

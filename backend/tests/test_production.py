@@ -39,6 +39,7 @@ def test_ingest_answers_429_when_the_pipeline_is_busy(monkeypatch):
     from app import pipeline
 
     def busy(db, *, manual, ingest=None):
+        """Stand-in ingest cycle that always refuses as busy."""
         raise pipeline.Busy("An ingestion just ran — give the feeds a moment before refreshing again.")
 
     monkeypatch.setattr(pipeline, "ingest_cycle", busy)
@@ -51,7 +52,7 @@ def test_add_default_feeds_is_idempotent():
     """Adding the default feeds is idempotent."""
     from app.ingestion import DEFAULT_FEEDS
 
-    assert len(DEFAULT_FEEDS) == 15
+    assert len(DEFAULT_FEEDS) == 15  # the curated default list size
     assert not any("hnrss" in f["url"] for f in DEFAULT_FEEDS)  # aggregator: too noisy
     first = client.post("/api/feeds/defaults")
     assert first.status_code == 200

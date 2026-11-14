@@ -10,7 +10,7 @@ import { useDashboard } from '@/hooks/useDashboard'
 import { describeAverage, describeSentiment, formatScore } from '@/lib/sentiment'
 import { cn } from '@/lib/utils'
 
-/** One stat card. */
+/** A single headline number card with a label and optional caption. */
 function Stat({
   label, children, delay, caption, className,
 }: { label: ReactNode; children: ReactNode; delay: number; caption?: string; className?: string }) {
@@ -29,7 +29,7 @@ function Stat({
   )
 }
 
-/** The stats row, with a skeleton while loading. */
+/** The dashboard's headline numbers and sentiment trend, with a skeleton while loading. */
 export function StatsRow() {
   const { stats } = useDashboard()
   if (!stats) {
@@ -45,7 +45,9 @@ export function StatsRow() {
     )
   }
   const tone = describeSentiment(stats.avg_sentiment).tone
+  // Floor of 1 keeps the percentage bar safe when no articles are scored yet.
   const total = Math.max(stats.positive + stats.neutral + stats.negative, 1)
+  /** Share of scored articles, as a percentage. */
   const pct = (n: number) => (n / total) * 100
   const value = 'mt-1 block text-3xl font-bold tracking-tight tabular-nums'
   return (

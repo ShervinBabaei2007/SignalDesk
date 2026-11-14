@@ -54,6 +54,7 @@ def by_text(items, needle):
 # --------------------------------------------------------------------------- #
 
 def test_claims_are_agreed_disputed_or_single_source():
+    """Shared sentences agree, conflicting figures dispute, and one-outlet figures are single, listed disputed first."""
     items = claims.extractive_claims("t", [article(1, "BBC", BBC), article(2, "Reuters", REUTERS)])
     rate = by_text(items, "interest rates")
     assert rate["status"] == "agreed" and set(rate["outlets"]) == {"BBC", "Reuters"} and rate["values"] is None
@@ -66,12 +67,14 @@ def test_claims_are_agreed_disputed_or_single_source():
 
 
 def test_a_sentence_only_one_outlet_makes_and_that_has_no_figure_is_not_shown():
+    """Uncorroborated sentences without a number are dropped as unverifiable."""
     items = claims.extractive_claims("t", [article(1, "BBC", BBC), article(2, "Reuters", REUTERS)])
     assert not any("Analysts described" in c["text"] for c in items)
     assert not any("Shares in the banking" in c["text"] for c in items)
 
 
 def test_figures_within_tolerance_are_the_same_figure():
+    """Tiny rounding differences (4.20 vs 4.21) count as agreement, not a dispute."""
     close = claims.extractive_claims("t", [
         article(1, "A", "Inflation reached 4.20 percent in March according to the statistics office."),
         article(2, "B", "Inflation reached 4.21 percent in March according to the statistics office.")])
@@ -79,6 +82,7 @@ def test_figures_within_tolerance_are_the_same_figure():
 
 
 def test_different_kinds_of_figure_are_not_a_conflict():
+    """A percentage and a money amount describe different things, so they never dispute each other."""
     items = claims.extractive_claims("t", [
         article(1, "A", "The ministry announced a relief package for farmers worth 4.2 percent of the annual budget."),
         article(2, "B", "The ministry announced a relief package for farmers worth $4.2 billion in new spending.")])
@@ -86,6 +90,7 @@ def test_different_kinds_of_figure_are_not_a_conflict():
 
 
 def test_magnitude_words_are_understood():
+    """Figures parse into a kind and a value, scaling words like billion and million."""
     assert claims.figure_value("$4.2 billion") == ("money", 4.2e9)
     assert claims.figure_value("4,200 million") == ("num", 4.2e9)
     assert claims.figure_value("12%") == ("pct", 12.0)
@@ -93,6 +98,8 @@ def test_magnitude_words_are_understood():
 
 
 def test_page_furniture_and_video_timestamps_are_not_claims():
+    """Video timestamps and newsletter or page chrome are not checkable claims, while real reporting is."""
+    # Each junk line carries a 2:03 timestamp that must not pass as a figure.
     for junk in ("In this article MSFT watch now VIDEO 2:03 02:03 Widespread Microsoft outage stretches into second day",
                  "Subscribe to our newsletter to read more about the 2:03 clip from the Federal Reserve announcement",
                  "The clip runs for 2:03 and was filmed by the local broadcaster on the day"):
@@ -101,6 +108,7 @@ def test_page_furniture_and_video_timestamps_are_not_claims():
 
 
 def test_one_outlet_alone_has_no_agreement_and_nothing_crashes_on_empty_reports():
+    """A lone outlet yields only capped single-source claims, and empty input yields none."""
     solo = claims.extractive_claims("t", [article(1, "BBC", BBC)])
     assert all(c["status"] == "single" for c in solo) and len(solo) <= claims.MAX_SINGLE
     assert claims.extractive_claims("t", []) == []
@@ -112,6 +120,8 @@ def test_one_outlet_alone_has_no_agreement_and_nothing_crashes_on_empty_reports(
 # --------------------------------------------------------------------------- #
 
 def test_model_claims_are_validated():
+    """Model claims with bad status, empty text, unknown outlets or junk are dropped or cleaned."""
+    # One valid claim per kind, followed by each malformed shape the model might return.
     raw = {"claims": [
         {"text": "Rates rose 0.5 percent.", "status": "agreed", "outlets": ["BBC", "Reuters", "Ghost"]},
         {"text": "Inflation figure differs.", "status": "disputed", "outlets": ["BBC", "Reuters"],
@@ -137,6 +147,7 @@ GOOD = {"claims": [{"text": "Rates rose 0.5 percent.", "status": "agreed", "outl
 
 
 def test_the_model_is_used_when_available_and_the_fallback_when_it_fails(monkeypatch):
+    """Valid model output is used, while garbage, no answer or no model falls back to extractive claims."""
     monkeypatch.setattr(llm, "available", lambda: True)
     monkeypatch.setattr(llm, "story_claims", lambda **kw: GOOD)
     assert claims.build_claims("t", MEMBERS) == {"kind": "ai", "items": claims.normalize_claims(GOOD, {"BBC", "Reuters"})}
@@ -149,6 +160,7 @@ def test_the_model_is_used_when_available_and_the_fallback_when_it_fails(monkeyp
 
 
 def test_a_visitors_articles_never_reach_the_model(monkeypatch):
+    """Stories containing a visitor workspace's article never call the model for claims or briefs."""
     monkeypatch.setattr(llm, "available", lambda: True)
     monkeypatch.setattr(llm, "story_claims", lambda **kw: pytest.fail("must not spend the owner's quota"))
     monkeypatch.setattr(llm, "story_brief", lambda **kw: pytest.fail("must not spend the owner's quota"))
@@ -173,10 +185,12 @@ def db():
 
 
 def test_claims_are_cached_on_the_brief_row_and_rebuilt_when_the_story_changes(db, monkeypatch):
+    """Claims are stored on the brief row, reused, and rebuilt on force or when a report joins."""
     members = db.query(Article).order_by(Article.id).all()
     briefs.get_brief(db, 1, "t", members)  # creates the row the claims live on
     built = []
     real = claims.build_claims
+    # Wrap the real builder so every call is counted but still returns claims.
     monkeypatch.setattr(claims, "build_claims", lambda t, m: (built.append(1), real(t, m))[1])
     first = claims.get_claims(db, 1, "t", members)
     assert claims.get_claims(db, 1, "t", members) == first and len(built) == 1  # served from the cache
@@ -194,6 +208,7 @@ def test_claims_are_cached_on_the_brief_row_and_rebuilt_when_the_story_changes(d
 
 
 def test_a_corrupt_cache_is_rebuilt_not_a_crash(db):
+    """Unparseable cached claims are rebuilt instead of raising."""
     members = db.query(Article).order_by(Article.id).all()
     briefs.get_brief(db, 1, "t", members)
     db.get(StoryBrief, 1).claims = "{not json"
@@ -206,7 +221,9 @@ def test_a_corrupt_cache_is_rebuilt_not_a_crash(db):
 # --------------------------------------------------------------------------- #
 
 def test_the_story_endpoint_returns_the_claims():
+    """The story detail endpoint includes agreed and disputed claims with each outlet's figure."""
     Base.metadata.create_all(bind=app_engine)
+    # High ids keep these rows clear of other tests sharing the app database.
     with SessionLocal() as session:
         recent = NOW - timedelta(hours=1)
         session.add_all([article(9001, "BBC", BBC, published_at=recent), article(9002, "Reuters", REUTERS, published_at=recent)])

@@ -9,6 +9,7 @@ import {
 /** A fake feed source that records requests and returns fixed pages. */
 function fakeSource() {
   const calls: { kind: string; offset: number; limit: number; ids?: string }[] = []
+  // Partial pages cast to the full types: only the fields loadFeedPage reads are filled in.
   const source: FeedSource = {
     stories: async (_f, offset, limit, ids) => {
       calls.push({ kind: 'stories', offset, limit, ids })

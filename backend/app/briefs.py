@@ -32,9 +32,10 @@ logger = logging.getLogger("signaldesk.briefs")
 
 MAX_REPORTS = 6          # how many of the best-informed reports feed a brief
 SENTIMENT_GAP = 0.3      # how far from the story average counts as "different wording"
+# A figure as written: optional currency sign, digits with separators/decimals, optional unit or magnitude word.
 _NUMBER = re.compile(r"(?<![\w.])(?:[$€£]\s?)?\d[\d,]*(?:\.\d+)?(?:\s?(?:%|percent|million|billion|trillion|thousand))?",
                      re.IGNORECASE)
-_YEAR = re.compile(r"^(?:19|20)\d{2}$")
+_YEAR = re.compile(r"^(?:19|20)\d{2}$")  # a bare 19xx/20xx year, which is not a figure worth comparing
 
 
 def member_hash(article_ids) -> str:
@@ -45,11 +46,13 @@ def member_hash(article_ids) -> str:
 def figures(text: str) -> dict[str, str]:
     """{normalised figure: as written} for the figures worth comparing (no years, tiny numbers or dates)."""
     out: dict[str, str] = {}
+    # Keep the first spelling of each distinct figure found in the text.
     for match in _NUMBER.finditer(text or ""):
         raw = match.group(0).strip()
-        norm = re.sub(r"[\s,]", "", raw.lower())
+        norm = re.sub(r"[\s,]", "", raw.lower())  # "$4,200 million" and "$4200million" compare equal
         digits = re.sub(r"\D", "", norm)
         has_unit = bool(re.search(r"[%$€£]|percent|million|billion|trillion|thousand", norm))
+        # Skip years, and one- or two-digit numbers with no unit (list markers, day numbers and the like).
         if _YEAR.match(norm) or (len(digits) < 3 and not has_unit):
             continue
         out.setdefault(norm, raw)
@@ -62,7 +65,7 @@ def _text(a: Article) -> str:
 
 
 def _strip_title(text: str, title: str) -> str:
-    """Extracted page text often starts with the headline; it is not a fact."""
+    """Drop a leading copy of the headline, which extracted page text often starts with and which is not a fact."""
     text = text.lstrip()
     if title and text.lower().startswith(title.lower()):
         return text[len(title):].lstrip(" :-\u2013\u2014")
@@ -76,6 +79,7 @@ def _sentences(a: Article) -> list[str]:
 
 def _wording(sentiment: float, gap: float) -> str:
     """Plain-English comparison of an outlet's wording with the other outlets'."""
+    # Phrase the gap relative to the outlet's own tone, so a mildly negative outlet is "less negative".
     if gap > 0:
         return "more positively" if sentiment >= 0 else "less negatively"
     return "less positively" if sentiment > 0 else "more negatively"
@@ -85,6 +89,7 @@ def extractive_brief(title: str, members: list[Article]) -> dict[str, Any]:
     """Deterministic brief from the best-informed reports (members must be ranked)."""
     members = members[:MAX_REPORTS]
     by_source: dict[str, Article] = {}
+    # Members are ranked, so the first report seen per outlet is its best one.
     for m in members:
         by_source.setdefault(m.source, m)  # best report per outlet
     outlets = list(by_source.values())
@@ -100,18 +105,21 @@ def extractive_brief(title: str, members: list[Article]) -> dict[str, Any]:
         # skip fragments cut mid-sentence (they start in lowercase) and near-duplicates
         if not line or not (line[0].isupper() or line[0].isdigit() or line[0] in "\"\u201c'$"):
             return
-        if all(_overlap(line, existing) < 0.6 for existing in store):
+        if all(_overlap(line, existing) < 0.6 for existing in store):  # 60% word overlap counts as a duplicate
             store.append(line)
 
     # 1. figures cited by two or more outlets
     shared: dict[str, set[str]] = {}
+    # Map each normalised figure to the outlets that cite it.
     for source, figs in fig_by_outlet.items():
         for norm in figs:
             shared.setdefault(norm, set()).add(source)
+    # Most widely cited figures first; stop at the first one cited only once, or after two agreement lines.
     for norm, sources in sorted(shared.items(), key=lambda kv: (-len(kv[1]), kv[0])):
         if len(sources) < 2 or len(agree) >= 2:
             break
         raw = next(fig_by_outlet[s][norm] for s in fig_by_outlet if norm in fig_by_outlet[s])
+        # Quote the first (best-ranked) outlet sentence that contains the figure.
         for m in outlets:
             line = next((s for s in sentences[m.id] if raw in s), None)
             if line:
@@ -123,12 +131,14 @@ def extractive_brief(title: str, members: list[Article]) -> dict[str, Any]:
         lead = outlets[0]
         key_points = _sections(lead.summary_structured).get("Key points") or sentences[lead.id][:8]
         others = [s for m in outlets[1:] for s in sentences[m.id]]
+        # Keep the lead's key points that some other outlet also says, up to four agreement lines in total.
         for point in key_points:
             if len(agree) >= 4:
                 break
             point = _strip_title(point.lstrip("- ").strip(), lead.title)
-            if any(_overlap(point, o) >= 0.45 for o in others):
+            if any(_overlap(point, o) >= 0.45 for o in others):  # 45% word overlap counts as corroboration
                 add(point, agree)
+        # Nothing corroborated: fall back to the lead's own summary so the brief is never empty.
         if not agree:
             fallback = lead.summary_deep or (sentences[lead.id][0] if sentences[lead.id] else "")
             add(fallback or lead.summary or lead.title, agree)
@@ -136,12 +146,14 @@ def extractive_brief(title: str, members: list[Article]) -> dict[str, Any]:
     differ: list[str] = []
     if len(outlets) >= 2:
         avg = sum(m.sentiment for m in outlets) / len(outlets)
+        # Flag up to two outlets whose tone sits far from the story average.
         for m in outlets:
             gap = m.sentiment - avg
             if abs(gap) >= SENTIMENT_GAP and len(differ) < 2:
                 differ.append(f"{m.source} words this {_wording(m.sentiment, gap)} than the other outlets.")
     if len(outlets) >= 3:
         counts = {norm: len(sources) for norm, sources in shared.items()}
+        # Name at most one figure per outlet that no other outlet cites, up to four differences in total.
         for m in outlets:
             for norm, raw in fig_by_outlet[m.source].items():
                 if counts.get(norm) == 1 and len(differ) < 4:
@@ -161,6 +173,7 @@ def build_brief(title: str, members: list[Article]) -> dict[str, Any]:
             for m in members[:MAX_REPORTS]
         ]
         result = llm.story_brief(title=title, reports=reports)
+        # An empty result means the model failed or answered unusably; fall through to the extractive brief.
         if result:
             return {"kind": "ai", "headline": result["headline"] or title, "agree": result["agree"],
                     "differ": result["differ"] or ["The reports do not clearly differ."],
@@ -175,6 +188,7 @@ def get_brief(db: Session, cluster_id: int, title: str, members: list[Article], 
     if any(getattr(m, "workspace_id", "") for m in members):
         return {**build_brief(title, members), "generated_at": datetime.now(timezone.utc)}  # a visitor's story is never cached
     row = db.get(StoryBrief, cluster_id)
+    # Serve the cached brief while the story's reports are unchanged, unless a rewrite was requested.
     if row and row.member_hash == digest and not force:
         data = json.loads(row.payload)
         data["generated_at"] = row.created_at

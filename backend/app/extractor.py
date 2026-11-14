@@ -28,7 +28,7 @@ _BLOCK_BOUNDARY = re.compile(
 )
 _ANY_TAG = re.compile(r"<[^>]+>")
 _INLINE_WS = re.compile(r"[ \t]+")
-_BLANK_LINES = re.compile(r"\n{3,}")
+_BLANK_LINES = re.compile(r"\n{3,}")  # three or more newlines collapse to one blank line
 # Common UI noise patterns found in extracted lines
 _NOISE_LINE = re.compile(
     r"^(share|sign in|sign up|log in|subscribe|newsletter|cookie|accept all|"
@@ -56,6 +56,7 @@ def extract_main_text(html: str, max_chars: int = 10000) -> str:
         if text_len > best_len:
             best_block, best_len = inner, text_len
 
+    # a container under 400 chars is likely a teaser, so fall back to the whole page
     source = best_block if best_block and best_len > 400 else html
 
     text = _COMMENTS.sub(" ", source)
@@ -70,6 +71,7 @@ def extract_main_text(html: str, max_chars: int = 10000) -> str:
     text = unescape(text)
 
     lines = []
+    # Normalize each line and drop separators and short UI-noise lines.
     for raw_line in text.split("\n"):
         line = _INLINE_WS.sub(" ", raw_line).strip()
         if len(line) < 3:  # separators, empty lines
@@ -85,8 +87,9 @@ def extract_main_text(html: str, max_chars: int = 10000) -> str:
 
 _META_TAG = re.compile(r"<meta\b[^>]*>", re.IGNORECASE)
 _LINK_TAG = re.compile(r"<link\b[^>]*>", re.IGNORECASE)
-_ATTR = re.compile(r"""([a-zA-Z:_-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')""")
-_IMAGE_META_KEYS = ("og:image:secure_url", "og:image", "twitter:image", "twitter:image:src")
+_ATTR = re.compile(r"""([a-zA-Z:_-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')""")  # name="value" or name='value'
+# Image meta keys in order of preference
+_IMAGE_META_KEYS =("og:image:secure_url", "og:image", "twitter:image", "twitter:image:src")
 
 
 def _attrs(tag: str) -> dict[str, str]:
@@ -100,6 +103,7 @@ def clean_image_url(candidate: str | None, base_url: str = "") -> str | None:
     if not candidate:
         return None
     url = urljoin(base_url, candidate.strip())
+    # Reject data:/javascript: URLs and anything too long for the image_url column.
     if not url.lower().startswith(("http://", "https://")) or len(url) > 1000:
         return None
     return url
@@ -107,17 +111,20 @@ def clean_image_url(candidate: str | None, base_url: str = "") -> str | None:
 
 def extract_image_url(html: str, base_url: str = "") -> str | None:
     """Lead image of a page: og:image, then twitter:image, then rel=image_src."""
-    head = html[:200_000]
+    head = html[:200_000]  # meta tags live near the top; skip scanning huge bodies
     found: dict[str, str] = {}
+    # Remember the first value seen for each image meta key.
     for tag in _META_TAG.findall(head):
         a = _attrs(tag)
         key = (a.get("property") or a.get("name") or "").lower()
         if key in _IMAGE_META_KEYS and a.get("content") and key not in found:
             found[key] = a["content"]
+    # Try the keys in preference order.
     for key in _IMAGE_META_KEYS:
         url = clean_image_url(found.get(key), base_url)
         if url:
             return url
+    # Last resort: the older <link rel="image_src"> convention.
     for tag in _LINK_TAG.findall(head):
         a = _attrs(tag)
         if a.get("rel", "").lower() == "image_src":

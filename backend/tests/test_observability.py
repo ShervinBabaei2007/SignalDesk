@@ -43,6 +43,7 @@ def result(feed, fetched=10, added=4, error=None, latency_ms=300):
 
 
 def test_percentile_is_nearest_rank():
+    """Percentiles pick an actual sample by nearest rank and return 0 for no data."""
     assert observability.percentile([], 95) == 0
     assert observability.percentile([5], 50) == 5
     assert observability.percentile(list(range(1, 101)), 95) == 95
@@ -50,6 +51,7 @@ def test_percentile_is_nearest_rank():
 
 
 def test_record_cycle_stores_the_run_and_one_row_per_feed(db):
+    """A recorded cycle saves run totals plus a success or failure row for each feed."""
     run_id = observability.record_cycle(db, kind="scheduled", duration_seconds=2.5, alerts=1,
                                         results=[result("BBC"), result("Dead", fetched=0, added=0, error="HTTP 503")])
     run = db.get(PipelineRun, run_id)
@@ -59,17 +61,22 @@ def test_record_cycle_stores_the_run_and_one_row_per_feed(db):
 
 
 def test_visitor_workspaces_are_never_recorded(db):
+    """Cycles run from a visitor workspace leave no pipeline history."""
     db.info["workspace"] = "visitor1"
     assert observability.record_cycle(db, kind="manual", duration_seconds=1, results=[result("Mine")]) is None
     assert db.execute(select(PipelineRun)).first() is None
 
 
 def test_recording_failures_never_break_an_ingest(db, monkeypatch):
+    """A database error while recording is swallowed and returns None."""
+    # A lambda cannot raise, so throw into an empty generator to simulate the failure.
     monkeypatch.setattr(db, "flush", lambda: (_ for _ in ()).throw(RuntimeError("db down")))
     assert observability.record_cycle(db, kind="manual", duration_seconds=1, results=[result("BBC")]) is None
 
 
 def test_summary_reports_latency_failures_throughput_and_extraction(db):
+    """The health summary computes run latency, failure rates, throughput, extraction success and backlog."""
+    # Four hourly runs (one failed); the Flaky feed fails on every other run.
     for i, (duration, ok) in enumerate([(1000, True), (3000, True), (9000, True), (500, False)]):
         run = PipelineRun(kind="scheduled", started_at=NOW - timedelta(hours=i + 1), duration_ms=duration, ok=ok,
                           feeds_ok=2, feeds_failed=0, fetched=20, added=5)
@@ -78,6 +85,7 @@ def test_summary_reports_latency_failures_throughput_and_extraction(db):
         db.add(FeedRun(run_id=run.id, feed="BBC", at=run.started_at, ok=True, latency_ms=200 * (i + 1), added=5))
         db.add(FeedRun(run_id=run.id, feed="Flaky", at=run.started_at, ok=i % 2 == 0,
                        error=None if i % 2 == 0 else "HTTP 500", latency_ms=100))
+    # Three full-page extractions and one fallback give a 75% success rate.
     for i, extraction in enumerate(["page", "page", "page", "fallback"]):
         db.add(Article(title=f"t{i}", url=f"https://x.test/{i}", source="BBC", topic="World", sentiment=0.0,
                        is_seed=False, extraction=extraction, enriched_at=NOW - timedelta(hours=1)))
@@ -99,12 +107,14 @@ def test_summary_reports_latency_failures_throughput_and_extraction(db):
 
 
 def test_summary_of_an_empty_pipeline_is_all_zeros_not_an_error(db):
+    """With no history the summary returns zeros and None rates rather than dividing by zero."""
     s = observability.summary(db, hours=24, now=NOW)
     assert s["runs"]["total"] == 0 and s["runs"]["success_rate"] is None and s["runs"]["minutes_since_ok"] is None
     assert s["extraction"]["success_rate"] is None and s["feeds"]["items"] == []
 
 
 def test_old_history_is_purged(db):
+    """Runs and feed rows older than the retention window are deleted while recent runs stay."""
     run = PipelineRun(kind="scheduled", started_at=NOW - timedelta(days=40), duration_ms=1)
     db.add(run)
     db.flush()
@@ -116,6 +126,7 @@ def test_old_history_is_purged(db):
 
 
 def test_a_dead_feed_is_reported_as_a_failure_not_zero_new_articles(db, monkeypatch):
+    """Network errors and HTTP failures come back as errors, while an empty healthy feed does not."""
     dead = SimpleNamespace(entries=[], bozo=True, bozo_exception=OSError("name resolution failed"), status=None)
     monkeypatch.setattr(ingestion.feedparser, "parse", lambda url: dead)
     stats = ingestion.ingest_feed(db, "https://dead.example/rss", "Dead")
@@ -129,6 +140,7 @@ def test_a_dead_feed_is_reported_as_a_failure_not_zero_new_articles(db, monkeypa
 
 
 def test_a_pipeline_cycle_records_itself(db, monkeypatch):
+    """A finished ingest cycle writes its own pipeline run row."""
     db.add(Feed(name="BBC", url="https://bbc.example/rss", is_active=True))
     db.commit()
     monkeypatch.setattr(pipeline, "_last_finished", 0.0)
@@ -139,9 +151,11 @@ def test_a_pipeline_cycle_records_itself(db, monkeypatch):
 
 
 def test_a_crashing_cycle_is_recorded_as_failed_and_still_raises(db, monkeypatch):
+    """A cycle that crashes is saved as a failed run with its error, and the exception still propagates."""
     monkeypatch.setattr(pipeline, "_last_finished", 0.0)
 
     def boom(session, feeds, feed_rows=None):
+        """Stand-in ingest that always crashes."""
         raise RuntimeError("feeds exploded")
 
     with pytest.raises(RuntimeError):
@@ -151,6 +165,7 @@ def test_a_crashing_cycle_is_recorded_as_failed_and_still_raises(db, monkeypatch
 
 
 def test_the_observability_endpoint_serves_the_summary_to_anyone():
+    """The public observability endpoint returns the summary without a token and validates the window."""
     Base.metadata.create_all(bind=app_engine)  # the test client does not run the app's startup
     client = TestClient(app)
     res = client.get("/api/observability?hours=6")

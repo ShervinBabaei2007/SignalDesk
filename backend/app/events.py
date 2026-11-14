@@ -44,6 +44,7 @@ def assign(db: Session) -> int:
     stamps = {r.id: _when(r) for r in db.execute(
         select(Article.id, Article.published_at, Article.ingested_at).where(Article.id.in_(member_ids))).all()}
     touched = 0
+    # Attach each cluster to the event its articles already belong to, merging or creating events as needed.
     for cluster in by_id.values():
         existing = sorted({assigned[i] for i in cluster.article_ids if i in assigned})
         times = [stamps[i] for i in cluster.article_ids if i in stamps]
@@ -58,13 +59,15 @@ def assign(db: Session) -> int:
                 event.last_seen = max(_as_utc(event.last_seen), _as_utc(other.last_seen))
                 event.peak_reports = max(event.peak_reports, other.peak_reports)
                 db.execute(delete(Event).where(Event.id == other_id))
+                # Keep the in-memory map in step with the merge for the clusters still to come.
                 for article_id, event_id in list(assigned.items()):
                     if event_id == other_id:
                         assigned[article_id] = event.id
         else:
             event = Event(title=cluster.title, first_seen=min(times), last_seen=max(times), peak_reports=cluster.size)
             db.add(event)
-            db.flush()
+            db.flush()  # assigns event.id, needed for the links below
+        # Link the cluster's not-yet-assigned articles to the event.
         for article_id in cluster.article_ids:
             if article_id not in assigned:
                 db.add(EventArticle(article_id=article_id, event_id=event.id))
@@ -83,7 +86,7 @@ def _event_of(db: Session, cluster: Cluster) -> Event | None:
     rows = db.execute(select(EventArticle.event_id).where(EventArticle.article_id.in_(cluster.article_ids))).scalars().all()
     if not rows:
         return None
-    return db.get(Event, max(set(rows), key=rows.count))
+    return db.get(Event, max(set(rows), key=rows.count))  # the most common event id among the cluster's articles
 
 
 def timeline(db: Session, cluster: Cluster) -> dict:
@@ -102,16 +105,18 @@ def timeline(db: Session, cluster: Cluster) -> dict:
                 "days": []}
 
     by_day: dict[date, list] = {}
+    # Bucket the reports by calendar day (UTC), keeping their chronological order.
     for r in articles:
         by_day.setdefault(_when(r).date(), []).append(r)
     first_day, last_day = min(by_day), max(by_day)
     seen: set[str] = set()
     days = []
+    # Walk every day from first to last coverage, including quiet days with no reports.
     for offset in range((last_day - first_day).days + 1):
         day = first_day + timedelta(days=offset)
         rows = by_day.get(day, [])
-        new = [r.source for r in rows if r.source not in seen]
-        new = list(dict.fromkeys(new))
+        # Outlets reporting for the first time today, deduplicated in order of appearance.
+        new = list(dict.fromkeys(r.source for r in rows if r.source not in seen))
         seen.update(new)
         days.append({
             "date": day.isoformat(), "reports": len(rows), "outlets": len({r.source for r in rows}),
@@ -139,6 +144,7 @@ def annotate_trending(db: Session, stories: list[dict]) -> list[dict]:
     rows = db.execute(select(EventArticle.article_id, Event.first_seen, Event.last_seen)
                       .join(Event, Event.id == EventArticle.event_id)
                       .where(EventArticle.article_id.in_(leads))).all()
+    # Copy each tracked event's span onto the hot story it leads.
     for article_id, first, last in rows:
         story = leads[article_id]
         story["first_seen"] = _as_utc(first)

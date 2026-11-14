@@ -32,6 +32,7 @@ NEGATIVE_WORDS = {
 # Intensifiers scale the score of adjacent sentiment words
 INTENSIFIERS = {"very", "sharply", "significantly", "massively", "deeply", "highly"}
 
+# Negations flip (and soften) the score of a following sentiment word
 NEGATIONS = {"not", "no", "never", "without", "hardly", "barely"}
 
 # --- Topic taxonomy ----------------------------------------------------------
@@ -55,12 +56,14 @@ TOPIC_KEYWORDS = {
               "flood", "hurricane"],
 }
 
+# Icon shown next to each topic in the UI
 TOPIC_EMOJI = {
     "Technology": "💻", "Business": "📈", "Science": "🔬",
     "Politics": "🏛️", "Health": "🩺", "World": "🌍", "General": "📰",
 }
 
-WORD_RE = re.compile(r"[a-z']+")
+WORD_RE = re.compile(r"[a-z']+")  # lowercase words, keeping apostrophes ("don't")
+# Common words that carry no topical meaning, excluded from keywords
 STOPWORDS = set(
     "the a an and or but if while of to in on for with at by from as is are was "
     "were be been being it its this that these those he she they them his her "
@@ -85,9 +88,10 @@ def score_sentiment(text: str) -> float:
     hits = 0
     window: list[str] = []
 
+    # Score each sentiment word, adjusted by negations/intensifiers just before it.
     for token in tokens:
         window.append(token)
-        if len(window) > 3:
+        if len(window) > 3:  # keep the current token plus the two before it
             window.pop(0)
 
         if token in POSITIVE_WORDS:
@@ -98,7 +102,7 @@ def score_sentiment(text: str) -> float:
             continue
 
         hits += 1
-        # Look back for negation / intensifiers within the previous 3 tokens
+        # Look back for negation / intensifiers within the previous 2 tokens
         context = window[:-1]
         if any(w in NEGATIONS for w in context):
             polarity *= -0.75
@@ -115,6 +119,7 @@ def classify_topic(text: str) -> str:
     """Return the best-matching topic based on keyword frequency."""
     haystack = text.lower()
     best_topic, best_score = "General", 0
+    # Count keyword occurrences per topic and keep the highest (first wins ties).
     for topic, keywords in TOPIC_KEYWORDS.items():
         score = sum(haystack.count(kw) for kw in keywords)
         if score > best_score:
@@ -128,6 +133,7 @@ _BOILERPLATE = [re.compile(p, re.IGNORECASE) for p in (
     r"Story\s+text\s+Size\s+Width\s+Links\s*\*?\s*Subscribers\s+only\s+Learn\s+more",
     r"Skip\s+Navigation(?:\s+(?:Markets|Business|Investing(?:\s+Club)?|Tech|Politics(?:\s+&\s+Policy)?|Video"
     r"|Watchlist|PRO|Livestream|Menu|Key\s+Points|Related\s+Stories|Search))*",
+    # dateline, image-caption, "published N ago" and photo-credit furniture
     r"In\s+Brief\s+Posted:\s*[^.]{0,80}?\d{4}",
     r"Image\s+source,\s*[^.]{0,160}?Image\s+caption,\s*",
     r"Published\s+\d+\s+(?:minutes?|hours?)\s+ago",
@@ -148,22 +154,26 @@ def strip_boilerplate(text: str) -> str:
     """Remove scraped navigation, paywall and credit furniture from article text."""
     for pattern in _BOILERPLATE:
         text = pattern.sub(" ", text)
+    # Collapse the runs of spaces left behind, keeping line breaks.
     return re.sub(r"[ \t]{2,}", " ", text)
 
 
 def summarize(text: str, max_sentences: int = 2, max_chars: int = 280,
               avoid: str | None = None) -> str:
     """Extractive summary: keep the leading sentences up to the char budget.
+
     Skips duplicate sentences and sentences that merely restate `avoid`
-    (usually the headline, which the UI already shows)."""
+    (usually the headline, which the UI already shows).
+    """
     text = re.sub(r"\s+", " ", strip_boilerplate(text)).strip()
     if len(text) <= max_chars:
         return text
-    sentences = re.split(r"(?<=[.!?])\s+", text)
+    sentences = re.split(r"(?<=[.!?])\s+", text)  # split after sentence-ending punctuation
     out = ""
     seen: set[str] = set()
+    # Append sentences in order until the budget is reached, skipping repeats and headline restatements.
     for sentence in sentences:
-        key = sentence.strip().lower()[:80]
+        key = sentence.strip().lower()[:80]  # first 80 chars identify near-identical sentences
         if key in seen:
             continue
         seen.add(key)
@@ -177,12 +187,13 @@ def summarize(text: str, max_sentences: int = 2, max_chars: int = 280,
 
 # --- Structured (skimmable) summary ------------------------------------------
 
+# Sentences that are feed/page boilerplate rather than article content
 _JUNK_SENTENCE = re.compile(
     r"(appeared first on|read more|continue reading|share this|advertisement|"
     r"all rights reserved|photo credit|image credit|image:)", re.IGNORECASE)
 _QUOTE_CHARS = "“”\"«»"
-_NUMBER_HINT = re.compile(r"(\d+%|[$€£]\s?\d|\b\d[\d.,]*\b)")
-_WORD = re.compile(r"[a-zA-Z']{3,}")
+_NUMBER_HINT = re.compile(r"(\d+%|[$€£]\s?\d|\b\d[\d.,]*\b)")  # percentages, money amounts or plain numbers
+_WORD = re.compile(r"[a-zA-Z']{3,}")  # words of 3+ letters, ignoring short filler
 
 
 def _overlap(a: str, b: str) -> float:
@@ -198,6 +209,7 @@ def _clean_sentences(text: str) -> list[str]:
     """Split article text into clean, informative sentences with boilerplate and junk removed."""
     text = re.sub(r"\s+", " ", strip_boilerplate(text)).strip()
     out = []
+    # Keep sentences of a readable length (40-420 chars) that are not junk.
     for sentence in re.split(r"(?<=[.!?])\s+", text):
         sentence = sentence.strip()
         if 40 <= len(sentence) <= 420 and not _JUNK_SENTENCE.search(sentence):
@@ -220,12 +232,15 @@ def _score_sentence(sentence: str, position: float) -> float:
     # prefer sentences in the informative first half of the body
     score += max(0.0, 0.8 - position) * 1.2
     words = _WORD.findall(sentence)
+    # longer sentences carry more information, capped at 32 words
     score += min(len(words), 32) / 32 * 0.8
     return score
 
 
 def structured_summary(text: str, title: str = "", max_points: int = 6) -> str:
-    """Build a skimmable, hierarchical brief from an article's full text:
+    """Build a skimmable, sectioned brief from an article's full text.
+
+    Sections:
 
     ## TL;DR           — 1-2 leading sentences that say something new
     ## Key points      — the most information-dense sentences as bullets
@@ -251,6 +266,7 @@ def structured_summary(text: str, title: str = "", max_points: int = 6) -> str:
     # headline restated (the title is already on screen).
     lead: list[str] = []
     lead_chars = 0
+    # Look only at the first 6 sentences and stop once ~200 chars are collected.
     for sentence in sentences[:6]:
         if title and _overlap(sentence, title) > 0.65:
             continue
@@ -274,6 +290,7 @@ def structured_summary(text: str, title: str = "", max_points: int = 6) -> str:
     def take(pred, count):
         """Pick up to `count` unused sentences that satisfy `pred`."""
         picked = []
+        # Walk sentences best-score first.
         for s, i in remaining:
             if not pred(s) or is_used(s):
                 continue
@@ -283,7 +300,7 @@ def structured_summary(text: str, title: str = "", max_points: int = 6) -> str:
                 break
         return picked
 
-    if not lead:
+    if not lead:  # every lead sentence restated the title: fall back to plain key points
         points = take(lambda s: True, max_points)
         sections.append(("Key points", [s for s, _ in points], True))
     else:
@@ -313,6 +330,7 @@ def structured_summary(text: str, title: str = "", max_points: int = 6) -> str:
     if not sections:
         return ""
     lines = []
+    # Render each section as a "## Heading" followed by bullets or plain lines.
     for heading, items, is_bullets in sections:
         lines.append(f"## {heading}")
         for item in items:
@@ -322,6 +340,7 @@ def structured_summary(text: str, title: str = "", max_points: int = 6) -> str:
 
 def extract_keywords(text: str, top_n: int = 5) -> list[str]:
     """Simple frequency-based keyword extraction (stopwords removed)."""
+    # Count meaningful words of 4+ letters.
     counts = Counter(t for t in _tokenize(strip_boilerplate(text))
                      if t not in STOPWORDS and len(t) >= 4)
     return [w for w, _ in counts.most_common(top_n)]

@@ -21,6 +21,7 @@ function DayBars({ timeline }: { timeline: StoryTimeline }) {
               <TooltipTrigger
                 render={<div tabIndex={0} className="flex min-h-0 flex-1 cursor-help flex-col justify-end outline-none" aria-label={`${dayLabel(d.date)}: ${d.reports} reports from ${d.outlets} outlets`} />}
               >
+                {/* Days with no reports keep a 3px stub so the day still shows */}
                 <div
                   className={cn('w-full rounded-t-sm', d.reports ? 'bg-link/70' : 'bg-muted')}
                   style={{ height: d.reports ? `${heights[i]}%` : '3px' }}
@@ -55,6 +56,7 @@ function DayBars({ timeline }: { timeline: StoryTimeline }) {
 export function TimelineCard({ timeline }: { timeline: StoryTimeline }) {
   const multiDay = timeline.days_active > 1
   const shift = timeline.sentiment_shift
+  // Days on which at least one outlet covered the story for the first time.
   const joined = timeline.days.filter((d) => d.new_outlets.length > 0)
   return (
     <Card>
@@ -68,6 +70,7 @@ export function TimelineCard({ timeline }: { timeline: StoryTimeline }) {
         <CardDescription>
           {timeline.first_reported_by ? `First reported by ${timeline.first_reported_by}. ` : ''}
           {timeline.reports} report{timeline.reports === 1 ? '' : 's'} from {timeline.outlets} outlet{timeline.outlets === 1 ? '' : 's'}
+          {/* Only tone shifts of 0.1 or more over several days are worth mentioning */}
           {multiDay && Math.abs(shift) >= 0.1
             ? `; the tone moved ${shift > 0 ? 'more positive' : 'more negative'} (${shift > 0 ? '+' : '−'}${Math.abs(shift).toFixed(2)}).`
             : '.'}

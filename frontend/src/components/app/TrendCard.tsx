@@ -36,14 +36,17 @@ export function TrendCard({ points, className }: { points: Point[]; className?: 
 
   const chart = useMemo(() => {
     const vals = points.map((p) => p.avg_sentiment)
+    // Y range always spans at least -0.4..0.4 and pads the extremes so points never touch the edge.
     const lo = Math.min(-0.4, Math.min(...vals) - 0.08)
     const hi = Math.max(0.4, Math.max(...vals) + 0.08)
+    // A single point is centred; otherwise points spread evenly across the inner width.
     const x = (i: number) =>
       PAD.l + (points.length === 1 ? (W - PAD.l - PAD.r) / 2 : (i / (points.length - 1)) * (W - PAD.l - PAD.r))
     const y = (v: number) => PAD.t + ((hi - v) / (hi - lo)) * (H - PAD.t - PAD.b)
     const coords = points.map((p, i) => [x(i), y(p.avg_sentiment)] as [number, number])
     const line = monotonePath(coords)
     const base = H - PAD.b
+    // Close the line down to the baseline to get the gradient-filled area under it.
     const area =
       coords.length > 1
         ? `${line} L${coords[coords.length - 1][0].toFixed(1)},${base} L${coords[0][0].toFixed(1)},${base} Z`
@@ -62,11 +65,13 @@ export function TrendCard({ points, className }: { points: Point[]; className?: 
     )
   }
 
+  // The readout follows the hovered day and falls back to the latest one.
   const activeIdx = hover ?? points.length - 1
   const active = points[activeIdx]
   const level = describeSentiment(active.avg_sentiment)
   const prev = activeIdx > 0 ? points[activeIdx - 1] : null
   const delta = prev ? active.avg_sentiment - prev.avg_sentiment : 0
+  // Day-to-day moves under 0.02 are noise, so they read as "steady".
   const steady = !prev || Math.abs(delta) < 0.02
   let DeltaIcon = Minus
   if (!steady) DeltaIcon = delta > 0 ? ArrowUpRight : ArrowDownRight
@@ -140,6 +145,7 @@ export function TrendCard({ points, className }: { points: Point[]; className?: 
             transition={{ duration: 1, ease: 'easeOut' }}
           />
 
+          {/* One focusable column per day: a full-height hit area plus the coloured dot */}
           {points.map((p, i) => {
             const [cx, cy] = chart.coords[i]
             const lvl = describeSentiment(p.avg_sentiment)
@@ -178,6 +184,7 @@ export function TrendCard({ points, className }: { points: Point[]; className?: 
         {hover !== null && (
           <div
             className="pointer-events-none absolute top-0 z-10 w-max max-w-44 -translate-x-1/2 rounded-lg border bg-popover px-2.5 py-1.5 text-xs text-popover-foreground shadow-lg"
+            // Clamp by half the tooltip width so it never spills past the card edges.
             style={{ left: `clamp(4.5rem, ${leftPct}%, calc(100% - 4.5rem))` }}
           >
             <div className="font-semibold">{dayLabel(active.date, true)}</div>

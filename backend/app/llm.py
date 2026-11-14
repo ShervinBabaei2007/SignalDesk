@@ -57,6 +57,7 @@ _CATEGORY_MAP = {
 VALID_TOPICS = {"Technology", "Business", "Science", "Politics", "Health", "World", "General"}
 VALID_CONTENT_TYPES = {"announcement", "report", "analysis", "opinion", "speculation", "other"}
 
+# Instructions for the per-article analysis; the JSON shape matches normalize_analysis.
 SYSTEM_PROMPT = """You are an analytical research assistant for a technology and \
 current-events intelligence platform.
 
@@ -94,9 +95,11 @@ def available() -> bool:
 def _extract_json(text: str) -> dict[str, Any] | None:
     """Parse a JSON object out of a model response, tolerating fences/prose."""
     text = (text or "").strip()
+    # Strip a Markdown code fence (with optional language tag) around the JSON.
     if text.startswith("```"):
         text = re.sub(r"^```[a-zA-Z]*\s*", "", text)
         text = re.sub(r"\s*```$", "", text)
+    # Take the outermost {...} span, ignoring any prose before or after it.
     start, end = text.find("{"), text.rfind("}")
     if start == -1 or end <= start:
         return None
@@ -119,6 +122,7 @@ def _clean_list(value: Any, max_items: int, max_len: int = 300) -> list[str]:
     if not isinstance(value, list):
         return []
     out: list[str] = []
+    # Keep non-empty cleaned strings until max_items are collected.
     for item in value:
         text = _clean_str(item, max_len)
         if text:
@@ -146,10 +150,11 @@ def normalize_analysis(data: dict[str, Any]) -> dict[str, Any] | None:
         return None
 
     summary = _clean_str(data.get("summary") or data.get("tldr"), 900)
-    if len(summary) < 20:
+    if len(summary) < 20:  # too short to be a real summary
         return None
 
     raw_category = _clean_str(data.get("category") or data.get("topic"), 60).lower()
+    # Map prompt categories to topics; a model that answered with a topic name directly also works.
     topic = _CATEGORY_MAP.get(raw_category, raw_category.title())
     if topic not in VALID_TOPICS:
         topic = "General"
@@ -159,7 +164,7 @@ def normalize_analysis(data: dict[str, Any]) -> dict[str, Any] | None:
         content_type = "other"
 
     tags = _clean_list(data.get("tags") or data.get("keywords"), 6, 60)
-    keywords = [t for t in tags if len(t) >= 3][:5]
+    keywords = [t for t in tags if len(t) >= 3][:5]  # up to 5 tags of 3+ characters
 
     return {
         "topic": topic,
@@ -196,7 +201,7 @@ def build_structured_summary(analysis: dict[str, Any]) -> str:
 class LLMProvider:
     """Minimal provider interface; swap implementations without changing callers."""
 
-    name = "base"
+    name = "base"  # short provider identifier
 
     def analyze_article(self, *, title: str, source: str, text: str,
                         published_at: str | None = None) -> dict[str, Any] | None:
@@ -204,6 +209,7 @@ class LLMProvider:
         raise NotImplementedError
 
 
+# Instructions for comparing a story's reports; the JSON shape matches normalize_story_brief.
 STORY_PROMPT = """You compare several news reports about the same event.
 
 Use only what the supplied reports say. Do not invent facts, numbers, quotes or events.
@@ -247,7 +253,7 @@ class OpenAICompatibleProvider(LLMProvider):
     def analyze_article(self, *, title: str, source: str, text: str,
                         published_at: str | None = None) -> dict[str, Any] | None:
         """Ask the model for a structured analysis of the article; None when the text is too short or the reply is unusable."""
-        if not text or len(text) < 120:
+        if not text or len(text) < 120:  # too little text for a meaningful analysis
             return None
         article = (
             f"Title: {title}\nPublisher: {source}\n"
@@ -277,7 +283,7 @@ def _complete_json(provider: OpenAICompatibleProvider, system: str, user: str,
     def _post(json_mode: bool) -> httpx.Response:
         """POST one chat-completion request, optionally in JSON mode."""
         payload: dict[str, Any] = {
-            "model": provider.model, "temperature": 0.2,
+            "model": provider.model, "temperature": 0.2,  # low temperature keeps answers factual and stable
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
         }
         if json_mode:
@@ -297,15 +303,18 @@ def _complete_json(provider: OpenAICompatibleProvider, system: str, user: str,
         return None
 
 
+def _reports_body(reports: list[dict[str, Any]]) -> str:
+    """Format a story's reports for a prompt, splitting the input budget evenly between them."""
+    per_report = config.LLM_MAX_INPUT_CHARS // max(len(reports), 1)
+    return "\n\n".join(f"[{r['source']}] {r['title']}\n{r['text'][:per_report]}" for r in reports)
+
+
 def story_brief(*, title: str, reports: list[dict[str, Any]]) -> dict[str, Any] | None:
     """Ask the configured model to compare a story's reports. None when LLM is off or unusable."""
     provider = get_provider()
     if provider is None or not reports:
         return None
-    body = "\n\n".join(
-        f"[{r['source']}] {r['title']}\n{r['text'][: config.LLM_MAX_INPUT_CHARS // max(len(reports), 1)]}"
-        for r in reports
-    )
+    body = _reports_body(reports)
     content = _complete_json(provider, STORY_PROMPT, f"Story: {title}\n\nReports:\n{body}")
     raw = _extract_json(content or "")
     brief = normalize_story_brief(raw) if raw else None
@@ -316,6 +325,7 @@ def story_brief(*, title: str, reports: list[dict[str, Any]]) -> dict[str, Any] 
     return brief
 
 
+# Instructions for extracting and comparing checkable claims across a story's reports.
 CLAIMS_PROMPT = """You compare factual claims across several news reports about the same event.
 
 Use only what the supplied reports say. Do not invent facts, numbers, quotes or events.
@@ -339,10 +349,7 @@ def story_claims(*, title: str, reports: list[dict[str, Any]]) -> dict[str, Any]
     provider = get_provider()
     if provider is None or not reports:
         return None
-    body = "\n\n".join(
-        f"[{r['source']}] {r['title']}\n{r['text'][: config.LLM_MAX_INPUT_CHARS // max(len(reports), 1)]}"
-        for r in reports
-    )
+    body = _reports_body(reports)
     content = _complete_json(provider, CLAIMS_PROMPT, f"Story: {title}\n\nReports:\n{body}", purpose="claims")
     raw = _extract_json(content or "")
     if raw is None:

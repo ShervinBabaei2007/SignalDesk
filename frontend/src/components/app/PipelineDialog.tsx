@@ -16,7 +16,7 @@ const WINDOWS = [
   { hours: 168, label: '7 days' },
 ] as const
 
-/** One headline figure. */
+/** One headline figure tile, turning red when it signals a problem. */
 function Kpi({ label, value, note, warn }: { label: string; value: string; note?: string; warn?: boolean }) {
   return (
     <div className="rounded-lg border bg-background/50 px-3 py-2.5">
@@ -27,17 +27,22 @@ function Kpi({ label, value, note, warn }: { label: string; value: string; note?
   )
 }
 
-/** The pipeline-health dialog. */
+/** Dialog showing ingestion health: run success, speed, throughput, backlog and per-feed failures. */
 export function PipelineDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const [hours, setHours] = useState<number>(24)
   const [data, setData] = useState<Observability | null>(null)
   const [error, setError] = useState('')
 
+  // Fetch the metrics whenever the dialog opens or the window changes, ignoring stale replies.
   useEffect(() => {
     if (!open) return
     let live = true
     api.observability(hours).then(
-      (d) => live && (setData(d), setError('')),
+      (d) => {
+        if (!live) return
+        setData(d)
+        setError('')
+      },
       (e: Error) => live && setError(e.message),
     )
     return () => {
@@ -45,7 +50,9 @@ export function PipelineDialog({ open, onOpenChange }: { open: boolean; onOpenCh
     }
   }, [open, hours])
 
+  // The last successful run is overdue when it is older than the scheduler's expected interval allows.
   const stale = data !== null && data.runs.minutes_since_ok !== null && data.runs.minutes_since_ok > STALE_AFTER_MINUTES
+  // Pad the throughput series with empty periods so the bar chart covers the whole window.
   const series = data ? fillSeries(data.throughput.series, data.window_hours) : []
   const heights = barHeights(series.map((s) => s.added))
 

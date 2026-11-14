@@ -17,6 +17,16 @@ function requestedUrl(fetchMock: ReturnType<typeof stubFetch>): string {
   return (fetchMock.mock.calls[0] as unknown as [string])[0]
 }
 
+/** Back localStorage with a plain object so tokens can be stored and read in tests. */
+function stubStorage(initial: Record<string, string> = {}) {
+  const store = { ...initial }
+  vi.stubGlobal('localStorage', {
+    getItem: (k: string) => store[k] ?? null,
+    setItem: (k: string, v: string) => void (store[k] = v),
+    removeItem: (k: string) => void delete store[k],
+  })
+}
+
 afterEach(() => vi.unstubAllGlobals())
 
 describe('api over a fake fetch', () => {
@@ -65,33 +75,19 @@ describe('isDemoToken', () => {
 
 describe('startDemo', () => {
   it('stores the demo token handed out by the server', async () => {
-    const store: Record<string, string> = {}
-    vi.stubGlobal('localStorage', {
-      getItem: (k: string) => store[k] ?? null,
-      setItem: (k: string, v: string) => void (store[k] = v),
-      removeItem: (k: string) => void delete store[k],
-    })
+    stubStorage()
     stubFetch(200, { token: 'demo.1.abc' })
     expect(await startDemo()).toBe(true)
     expect(getToken()).toBe('demo.1.abc')
   })
 
   it('reports false when demo mode is off on the server', async () => {
+    // Empty storage that ignores writes: no token is held before or after.
     vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} })
     stubFetch(404, { detail: 'Demo mode is not enabled' })
     expect(await startDemo()).toBe(false)
   })
 })
-
-/** Back localStorage with a plain object so tokens can be stored and read in tests. */
-function stubStorage(initial: Record<string, string> = {}) {
-  const store = { ...initial }
-  vi.stubGlobal('localStorage', {
-    getItem: (k: string) => store[k] ?? null,
-    setItem: (k: string, v: string) => void (store[k] = v),
-    removeItem: (k: string) => void delete store[k],
-  })
-}
 
 describe('sessionMode', () => {
   it('tells a workspace, the demo, the owner and a plain visitor apart', () => {
@@ -149,6 +145,7 @@ describe('startWorkspace', () => {
 
 describe('switching between the demo and a workspace', () => {
   it('drops a workspace token when the visitor takes the demo tour, but keeps the owner token', async () => {
+    // Start inside a workspace, then switch to an owner token for the second half.
     stubStorage({ 'signaldesk-api-token': 'ws.mine.sig' })
     stubFetch(200, { token: 'demo.1.abc' })
     expect(await startDemo()).toBe(true)

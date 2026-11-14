@@ -56,16 +56,21 @@ function SourceRow({ profile }: { profile: SourceProfile }) {
   )
 }
 
-/** The sources dialog. */
+/** Dialog listing every outlet's source profile score and how it was worked out. */
 export function SourcesDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const [data, setData] = useState<SourceList | null>(null)
   const [error, setError] = useState('')
 
+  // Fetch fresh profiles each time the dialog opens, ignoring a reply that arrives after it closes.
   useEffect(() => {
     if (!open) return
     let live = true
     api.sources().then(
-      (d) => live && (setData(d), setError('')),
+      (d) => {
+        if (!live) return
+        setData(d)
+        setError('')
+      },
       (e: Error) => live && setError(e.message),
     )
     return () => {
@@ -87,6 +92,7 @@ export function SourcesDialog({ open, onOpenChange }: { open: boolean; onOpenCha
         <ScrollArea className="max-h-96 pr-3">
           {error && <p className="text-sm text-negative">Could not load the profiles: {error}</p>}
           {!error && !data && <Skeleton className="h-40 w-full" />}
+          {/* Explain why every outlet is still unscored instead of showing a list of blanks */}
           {data && data.items.length > 0 && data.items.every((p) => p.score === null) && (
             <p className="mb-3 rounded-lg border border-dashed px-3 py-2 text-[12.5px] leading-snug text-muted-foreground">
               Profiles appear once SignalDesk has read a few article pages from an outlet, because most of the signals (author, dates, linked sources,

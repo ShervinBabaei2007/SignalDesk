@@ -17,8 +17,9 @@ import httpx
 import websocket
 
 CHROME = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
-PORT = 9333
+PORT = 9333  # DevTools port, chosen away from Chrome's default 9222 to avoid clashing with a normal session
 
+# Defaults emulate an iPhone-sized viewport and give the page 9 seconds to settle.
 url = sys.argv[1]
 out = Path(sys.argv[2])
 width = int(sys.argv[3]) if len(sys.argv) > 3 else 390
@@ -32,7 +33,7 @@ proc = subprocess.Popen([
 ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 try:
-    # wait for the devtools endpoint
+    # wait for the devtools endpoint (up to roughly 15 seconds)
     for _ in range(50):
         try:
             httpx.get(f"http://127.0.0.1:{PORT}/json/version", timeout=1)
@@ -50,6 +51,7 @@ try:
         """Send one Chrome DevTools Protocol command and wait for its result."""
         msg_id = next(message_ids)
         ws.send(json.dumps({"id": msg_id, "method": method, "params": params or {}}))
+        # Skip event messages until the reply carrying our id arrives.
         while True:
             msg = json.loads(ws.recv())
             if msg.get("id") == msg_id:
@@ -63,6 +65,7 @@ try:
     cmd("Page.enable")
     cmd("Page.navigate", {"url": url})
     time.sleep(wait_s)
+    # Optional script argument, followed by a short pause so its UI change can render.
     if len(sys.argv) > 6:
         cmd("Runtime.evaluate", {"expression": sys.argv[6]})
         time.sleep(0.8)

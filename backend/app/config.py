@@ -56,7 +56,7 @@ LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").strip().upper()
 
 INGEST_INTERVAL_MINUTES = _int("INGEST_INTERVAL_MINUTES", 15)
 INGEST_COOLDOWN_SECONDS = _int("INGEST_COOLDOWN_SECONDS", 20)  # min seconds between manual ingests
-ENRICH_BATCH_SIZE = _int("ENRICH_BATCH_SIZE", 30)
+ENRICH_BATCH_SIZE = _int("ENRICH_BATCH_SIZE", 30)  # articles enriched with full text per background pass
 
 # Only ingest stories published within this many days (0 disables the filter).
 MAX_ARTICLE_AGE_DAYS = _int("MAX_ARTICLE_AGE_DAYS", 7)
@@ -73,8 +73,8 @@ LLM_ENABLED = _bool("LLM_ENABLED")
 LLM_API_KEY = os.getenv("LLM_API_KEY", "").strip()
 LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://api.openai.com/v1").strip().rstrip("/")
 LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini").strip()
-LLM_TIMEOUT = _int("LLM_TIMEOUT", 45)
-LLM_MAX_INPUT_CHARS = _int("LLM_MAX_INPUT_CHARS", 12000)
+LLM_TIMEOUT = _int("LLM_TIMEOUT", 45)  # seconds per model request
+LLM_MAX_INPUT_CHARS = _int("LLM_MAX_INPUT_CHARS", 12000)  # article text is truncated to this before prompting
 
 # --------------------------------------------------------------------------- #
 # Digest delivery (Slack incoming webhook and/or SMTP email)

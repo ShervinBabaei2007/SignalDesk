@@ -13,9 +13,9 @@ from sqlalchemy.orm import DeclarativeBase, sessionmaker
 BASE_DIR = Path(__file__).resolve().parent.parent  # backend/
 
 
-
 def _normalize_url(url: str) -> str:
     """Point bare postgres:// and postgresql:// URLs (as Neon and Vercel give them) at the psycopg 3 driver."""
+    # Swap whichever bare scheme the URL uses for the explicit psycopg 3 dialect.
     for prefix in ("postgres://", "postgresql://"):
         if url.startswith(prefix):
             return "postgresql+psycopg://" + url[len(prefix):]
@@ -23,6 +23,7 @@ def _normalize_url(url: str) -> str:
 
 
 DATABASE_URL = _normalize_url(os.getenv("DATABASE_URL", "").strip()) or f"sqlite:///{BASE_DIR / 'signaldesk.db'}"
+# SQLite connections are shared across FastAPI's worker threads, so its same-thread check is disabled.
 connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
 
 engine = create_engine(DATABASE_URL, connect_args=connect_args)
@@ -31,7 +32,6 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 class Base(DeclarativeBase):
     """Declarative base class shared by all ORM models."""
-    pass
 
 
 def get_db():
@@ -51,6 +51,7 @@ def _legacy_uniques(inspector) -> list[tuple[str, str, str | None, str]]:
     """(table, 'constraint' | 'index', name, column) for each old single-column unique that must go."""
     found = []
     tables = set(inspector.get_table_names())
+    # Check each table that used to carry a global unique for the old single-column uniques.
     for table, columns in _LEGACY_UNIQUE.items():
         if table not in tables:
             continue
@@ -62,9 +63,11 @@ def _legacy_uniques(inspector) -> list[tuple[str, str, str | None, str]]:
                         continue
                     cols = [r["name"] for r in conn.execute(text(f'PRAGMA index_info("{row["name"]}")')).mappings()]
                     if len(cols) == 1 and cols[0] in columns:
+                        # sqlite_autoindex_* backs an inline UNIQUE constraint; anything else is a named index.
                         found.append((table, "constraint" if row["name"].startswith("sqlite_autoindex") else "index",
                                       row["name"], cols[0]))
             continue
+        # Other dialects report constraints and unique indexes separately; collect both kinds.
         for uc in inspector.get_unique_constraints(table):
             if len(uc["column_names"]) == 1 and uc["column_names"][0] in columns:
                 found.append((table, "constraint", uc.get("name"), uc["column_names"][0]))
@@ -78,8 +81,10 @@ def _legacy_uniques(inspector) -> list[tuple[str, str, str | None, str]]:
 def _rebuild_sqlite_tables(tables: set[str]) -> None:
     """SQLite cannot drop a UNIQUE constraint, so recreate each table from the models and copy its rows."""
     with engine.begin() as conn:
+        # Rename each old table aside, create the new one from the model, copy the shared columns, drop the old.
         for table in sorted(tables):
             conn.execute(text(f"ALTER TABLE {table} RENAME TO {table}_legacy"))
+            # Drop the old named indexes so the new table can reuse their names.
             for ix in inspect(conn).get_indexes(f"{table}_legacy"):
                 if ix["name"] and not ix["name"].startswith("sqlite_autoindex"):
                     conn.execute(text(f'DROP INDEX IF EXISTS "{ix["name"]}"'))
@@ -102,11 +107,13 @@ def migrate_workspace_uniques() -> None:
             _rebuild_sqlite_tables({table for table, *_ in legacy})
         return
     with engine.begin() as conn:
+        # Drop each legacy unique by its kind; unnamed ones cannot be addressed and are skipped.
         for table, kind, name, _ in legacy:
             if name:
                 conn.execute(text(f'ALTER TABLE {table} DROP CONSTRAINT IF EXISTS "{name}"') if kind == "constraint"
                              else text(f'DROP INDEX IF EXISTS "{name}"'))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_articles_url ON articles (url)"))
+        # Recreate uniqueness as composite (workspace_id, column) indexes matching the models.
         for table, ddl in (("articles", "uq_article_workspace_url ON articles (workspace_id, url)"),
                            ("feeds", "uq_feed_workspace_name ON feeds (workspace_id, name)"),
                            ("feeds", "uq_feed_workspace_url ON feeds (workspace_id, url)")):
@@ -145,8 +152,10 @@ def ensure_columns():
         "feeds": {"last_fetched_at": "TIMESTAMP WITH TIME ZONE", "last_status": "VARCHAR(300)"},
         "story_briefs": {"claims": "TEXT"},
     }
+    # Every workspace-scoped table gets a workspace_id column defaulting to the shared data.
     for table in ("articles", "feeds", "watches"):
         migrations.setdefault(table, {})["workspace_id"] = "VARCHAR(40) NOT NULL DEFAULT ''"
+    # Add each missing column to tables that already exist.
     for table, columns in migrations.items():
         if table not in inspector.get_table_names():
             continue
@@ -157,6 +166,7 @@ def ensure_columns():
                     conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}"))
     if engine.dialect.name != "sqlite":
         migrate_workspace_uniques()
+    # Index workspace_id on every scoped table, since each query filters on it.
     for table in ("articles", "feeds", "watches"):
         if table in inspect(engine).get_table_names():
             with engine.begin() as conn:

@@ -32,6 +32,8 @@ def clamp_future(published_at: datetime | None, now: datetime | None = None) -> 
         return now
     return published_at
 
+
+# Feeds seeded on first boot and offered by the "Add recommended feeds" action.
 DEFAULT_FEEDS = [
     {"name": "BBC World", "url": "https://feeds.bbci.co.uk/news/world/rss.xml"},
     {"name": "BBC Technology", "url": "https://feeds.bbci.co.uk/news/technology/rss.xml"},
@@ -62,6 +64,7 @@ def add_missing_default_feeds(db: Session) -> list[Feed]:
     urls = set(db.execute(select(Feed.url)).scalars())
     names = set(db.execute(select(Feed.name)).scalars())
     added = []
+    # Queue every recommended feed whose URL and name are both new.
     for spec in DEFAULT_FEEDS:
         if spec["url"] in urls or spec["name"] in names:
             continue
@@ -70,6 +73,7 @@ def add_missing_default_feeds(db: Session) -> list[Feed]:
         added.append(feed)
     if added:
         db.commit()
+        # Reload ids and defaults the database assigned on commit.
         for feed in added:
             db.refresh(feed)
     return added
@@ -77,6 +81,7 @@ def add_missing_default_feeds(db: Session) -> list[Feed]:
 
 def _parse_published(entry) -> datetime | None:
     """Parse a feed entry's published date into an aware UTC datetime, or None."""
+    # Prefer feedparser's pre-parsed UTC struct_time fields.
     for attr in ("published_parsed", "updated_parsed"):
         value = getattr(entry, attr, None)
         if value:
@@ -84,6 +89,7 @@ def _parse_published(entry) -> datetime | None:
                 return datetime.fromtimestamp(calendar.timegm(value), tz=timezone.utc)
             except Exception:  # noqa: BLE001
                 pass
+    # Fall back to parsing the raw RFC 2822 date strings.
     for attr in ("published", "updated"):
         raw = getattr(entry, attr, None)
         if raw:
@@ -96,6 +102,7 @@ def _parse_published(entry) -> datetime | None:
 
 def strip_feed_metadata(text: str) -> str:
     """Remove feed-provider metadata junk (e.g. Hacker News embeds)."""
+    # Cut everything from the first metadata marker onward.
     for marker in ("Article URL:", "Comments URL:", "Points:"):
         if marker in text:
             text = text.split(marker)[0]
@@ -112,7 +119,7 @@ def _entry_text(entry) -> str:
         body = entry.description
     elif getattr(entry, "summary", None):
         body = entry.summary
-    # feedparser can leave HTML entities/links in text; keep it readable
+    # feedparser can leave HTML entities/links in text; keep it readable (the regex drops any tag)
     body = re.sub(r"<[^>]+>", " ", body)
     body = unescape(body)
     body = strip_feed_metadata(body)
@@ -122,14 +129,17 @@ def _entry_text(entry) -> str:
 def _entry_image(entry) -> str | None:
     """Thumbnail advertised by the RSS entry itself (media:*, image enclosure)."""
     candidates = []
+    # Collect media:* URLs; thumbnails always count, media:content only when it is (or may be) an image.
     for key in ("media_thumbnail", "media_content"):
         for m in getattr(entry, key, None) or []:
             if isinstance(m, dict) and (key == "media_thumbnail" or "image" in (m.get("type") or "image")
                                         or m.get("medium") == "image"):
                 candidates.append(m.get("url"))
+    # Image enclosures are the other common place feeds put a thumbnail.
     for enc in getattr(entry, "enclosures", None) or []:
         if (enc.get("type") or "").startswith("image"):
             candidates.append(enc.get("href") or enc.get("url"))
+    # Return the first candidate that survives URL cleaning.
     for c in candidates:
         url = clean_image_url(c)
         if url:
@@ -155,14 +165,14 @@ def ingest_feed(
         """Record the feed's last fetch time and status when a Feed row was given."""
         if feed is not None:
             feed.last_fetched_at = datetime.now(timezone.utc)
-            feed.last_status = status[:300]
+            feed.last_status = status[:300]  # fits the last_status column
             db.commit()
 
     workspace = db.info.get("workspace", NO_WORKSPACE)
     started = time.perf_counter()
     try:
         if workspace:  # a visitor's URL: fetch it ourselves so only public addresses are ever requested
-            parsed = feedparser.parse(netguard.fetch(feed_url, max_bytes=2_000_000).content)
+            parsed = feedparser.parse(netguard.fetch(feed_url, max_bytes=2_000_000).content)  # 2 MB cap per feed
         else:
             parsed = feedparser.parse(feed_url)
     except Exception as exc:  # noqa: BLE001
@@ -175,9 +185,10 @@ def ingest_feed(
     entries = (parsed.entries or [])[:max_entries]
     stats["fetched"] = len(entries)
     status = getattr(parsed, "status", None)
-    if not entries and (getattr(parsed, "bozo", False) or (isinstance(status, int) and status >= 400)):
+    http_failed = isinstance(status, int) and status >= 400
+    if not entries and (getattr(parsed, "bozo", False) or http_failed):
         # feedparser does not raise on a dead or broken feed, so surface it as a failure
-        reason = f"HTTP {status}" if isinstance(status, int) and status >= 400 else str(getattr(parsed, "bozo_exception", "unreadable feed"))
+        reason = f"HTTP {status}" if http_failed else str(getattr(parsed, "bozo_exception", "unreadable feed"))
         stats["error"] = reason[:300]
         _finish(f"error: {reason}")
         return stats
@@ -186,6 +197,7 @@ def ingest_feed(
         owned = db.scalar(select(func.count()).select_from(Article).where(Article.workspace_id == workspace)) or 0
         room = max(config.WORKSPACE_MAX_ARTICLES - owned, 0)
 
+    # Store each new, in-range entry as an analyzed Article, counting everything else as skipped.
     for entry in entries:
         url = getattr(entry, "link", None)
         title = unescape(getattr(entry, "title", None) or "").strip()
@@ -193,6 +205,7 @@ def ingest_feed(
             stats["skipped"] += 1
             continue
 
+        # Already stored (any workspace) or this workspace is at its article cap.
         if db.scalar(select(Article.id).where(Article.url == url)):
             stats["skipped"] += 1
             continue
@@ -202,6 +215,7 @@ def ingest_feed(
 
         text = _entry_text(entry)
         published_at = clamp_future(_parse_published(entry))
+        # Drop entries older than the configured age limit (0 disables the limit).
         if config.MAX_ARTICLE_AGE_DAYS > 0 and published_at is not None:
             cutoff = datetime.now(timezone.utc) - timedelta(days=config.MAX_ARTICLE_AGE_DAYS)
             if published_at < cutoff:
@@ -226,7 +240,7 @@ def ingest_feed(
         try:
             db.commit()
             stats["added"] += 1
-        except IntegrityError:
+        except IntegrityError:  # a concurrent ingest stored the same URL first
             db.rollback()
             stats["skipped"] += 1
 
@@ -237,6 +251,7 @@ def ingest_feed(
 def ingest_all(db: Session, feeds: list[dict], feed_rows: dict[str, Feed] | None = None) -> list[dict]:
     """Ingest a list of {'name', 'url'} feeds. Returns stats per feed."""
     feed_rows = feed_rows or {}
+    # Fetch feeds one after another, passing the matching Feed row so its health is recorded.
     return [
         ingest_feed(db, f["url"], f["name"], feed=feed_rows.get(f["name"]))
         for f in feeds

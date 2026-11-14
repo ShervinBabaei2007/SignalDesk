@@ -43,6 +43,7 @@ def workspaces_on(monkeypatch):
     story_index.reset_cache()
     yield
     with SessionLocal() as db:  # leave no workspace rows behind for other test modules
+        # An empty workspace_id marks shared rows, so delete everything else.
         for model in (Watch, Feed, Article):
             db.execute(model.__table__.delete().where(model.workspace_id != ""))
         db.commit()
@@ -73,6 +74,7 @@ def fake_feed(monkeypatch, links):
 # --------------------------------------------------------------------------- #
 
 def test_workspace_tokens_cannot_be_forged_or_borrowed():
+    """Tampered, owner, demo or malformed tokens never verify as a workspace."""
     _, token = workspace.issue()
     wid = workspace.verify(token)
     assert wid
@@ -83,17 +85,20 @@ def test_workspace_tokens_cannot_be_forged_or_borrowed():
 
 
 def test_workspaces_are_off_without_a_secret(monkeypatch):
+    """Without a signing secret no workspace can be created or verified."""
     monkeypatch.setattr(config, "SESSION_SECRET", "")
     assert client.post("/api/workspace").status_code == 404
     assert workspace.verify("ws.abc.def") is None
 
 
 def test_creating_workspaces_is_rate_limited(monkeypatch):
+    """Creating more workspaces than the limit allows returns 429."""
     monkeypatch.setattr(workspace, "creations", workspace.RateLimiter(2))
     assert [client.post("/api/workspace").status_code for _ in range(3)] == [201, 201, 429]
 
 
 def test_rate_limiter_window_slides():
+    """The limiter frees a slot once the oldest request leaves the time window."""
     limiter = workspace.RateLimiter(1, window_seconds=10)
     assert limiter.allow("ip", now=0) and not limiter.allow("ip", now=5) and limiter.allow("ip", now=11)
 
@@ -103,6 +108,7 @@ def test_rate_limiter_window_slides():
 # --------------------------------------------------------------------------- #
 
 def test_a_visitors_feeds_are_invisible_to_others_but_shared_feeds_are_visible_to_all():
+    """A visitor's feed is hidden from other visitors and the tour, while base feeds are visible to everyone."""
     a, b = new_workspace(), new_workspace()
     assert add_feed(a).status_code == 201
     names = lambda headers: {f["name"]: f["shared"] for f in client.get("/api/feeds", headers=headers).json()}  # noqa: E731
@@ -113,6 +119,7 @@ def test_a_visitors_feeds_are_invisible_to_others_but_shared_feeds_are_visible_t
 
 
 def test_two_visitors_can_add_the_same_feed():
+    """The same feed URL can exist in two workspaces but only once per workspace."""
     a, b = new_workspace(), new_workspace()
     assert add_feed(a).status_code == 201
     assert add_feed(b).status_code == 201
@@ -120,6 +127,7 @@ def test_two_visitors_can_add_the_same_feed():
 
 
 def test_a_visitor_cannot_delete_shared_feeds_or_someone_elses():
+    """Visitors can delete only their own feeds; shared and other visitors' feeds return 404."""
     a, b = new_workspace(), new_workspace()
     mine = add_feed(a).json()["id"]
     shared = next(f["id"] for f in client.get("/api/feeds", headers=a).json() if f["shared"])
@@ -130,6 +138,7 @@ def test_a_visitor_cannot_delete_shared_feeds_or_someone_elses():
 
 
 def test_watchlists_are_private():
+    """A visitor's watches are invisible to and unchangeable by anyone else."""
     a, b = new_workspace(), new_workspace()
     created = client.post("/api/watches", headers=a, json={"term": "chips", "min_outlets": 2})
     assert created.status_code == 201
@@ -142,6 +151,7 @@ def test_watchlists_are_private():
 
 
 def test_ingested_articles_stay_in_the_visitors_workspace(monkeypatch):
+    """Articles ingested by a visitor are visible and counted only in that workspace."""
     a, b = new_workspace(), new_workspace()
     add_feed(a)
     fake_feed(monkeypatch, ["https://private.example/one", "https://private.example/two"])
@@ -149,6 +159,7 @@ def test_ingested_articles_stay_in_the_visitors_workspace(monkeypatch):
     assert res.status_code == 200 and res.json()["added"] == 2
 
     def urls(headers):
+        """Return the set of article URLs visible to the given headers."""
         return {i["url"] for i in client.get("/api/articles?limit=100", headers=headers).json()["items"]}
 
     assert {"https://private.example/one", "https://private.example/two"} <= urls(a)
@@ -160,6 +171,7 @@ def test_ingested_articles_stay_in_the_visitors_workspace(monkeypatch):
 
 
 def test_two_visitors_can_ingest_the_same_story(monkeypatch):
+    """Two workspaces can each store the same article URL."""
     a, b = new_workspace(), new_workspace()
     add_feed(a)
     add_feed(b)
@@ -169,6 +181,7 @@ def test_two_visitors_can_ingest_the_same_story(monkeypatch):
 
 
 def test_a_workspace_ingest_fetches_only_its_own_feeds(monkeypatch):
+    """A workspace ingest fetches only that workspace's feeds, never the shared ones."""
     a = new_workspace()
     add_feed(a, name="Mine", url="https://mine.example/rss")
     fetched = []
@@ -179,7 +192,9 @@ def test_a_workspace_ingest_fetches_only_its_own_feeds(monkeypatch):
 
 
 def test_resetting_a_workspace_leaves_everyone_else_alone(monkeypatch):
+    """Resetting a workspace clears only its own feeds and watches, and anonymous resets are refused."""
     a, b = new_workspace(), new_workspace()
+    # Give both workspaces a private feed and watch.
     for headers in (a, b):
         add_feed(headers)
         client.post("/api/watches", headers=headers, json={"term": "chips", "min_outlets": 2})
@@ -194,6 +209,7 @@ def test_resetting_a_workspace_leaves_everyone_else_alone(monkeypatch):
 
 
 def test_expired_workspaces_are_purged_but_shared_data_is_kept():
+    """Purging removes workspace rows past their TTL but keeps shared feeds."""
     a = new_workspace()
     add_feed(a)
     client.post("/api/watches", headers=a, json={"term": "chips", "min_outlets": 2})
@@ -212,6 +228,7 @@ def test_expired_workspaces_are_purged_but_shared_data_is_kept():
 # --------------------------------------------------------------------------- #
 
 def test_workspace_feed_and_watch_caps(monkeypatch):
+    """Workspaces cannot exceed their feed and watch caps."""
     monkeypatch.setattr(config, "WORKSPACE_MAX_FEEDS", 2)
     monkeypatch.setattr(config, "WORKSPACE_MAX_WATCHES", 1)
     a = new_workspace()
@@ -221,6 +238,7 @@ def test_workspace_feed_and_watch_caps(monkeypatch):
 
 
 def test_workspace_article_cap(monkeypatch):
+    """A workspace ingest stops adding articles at the article cap."""
     monkeypatch.setattr(config, "WORKSPACE_MAX_ARTICLES", 3)
     a = new_workspace()
     add_feed(a)
@@ -229,11 +247,13 @@ def test_workspace_article_cap(monkeypatch):
 
 
 def test_unsafe_feed_urls_are_rejected(monkeypatch):
+    """Feeds pointing at loopback, private, metadata or non-web ports are rejected with 422."""
     monkeypatch.undo()  # use the real guard for this test
     monkeypatch.setattr(config, "SESSION_SECRET", "test-secret")
     monkeypatch.setattr(config, "API_TOKEN", "owner-token")
     monkeypatch.setattr(workspace, "creations", workspace.RateLimiter(1000))
     a = new_workspace()
+    # Loopback, cloud metadata, private network, IPv6 loopback and an SSH port.
     for bad in ("http://127.0.0.1/rss", "http://localhost/rss", "http://169.254.169.254/latest/meta-data",
                 "http://10.0.0.5/rss", "http://[::1]/rss", "http://example.com:22/rss"):
         res = add_feed(a, name=bad, url=bad)
@@ -241,6 +261,8 @@ def test_unsafe_feed_urls_are_rejected(monkeypatch):
 
 
 def test_netguard_blocks_non_public_and_non_http_urls():
+    """The URL guard raises for non-http schemes and every private or reserved address range."""
+    # Non-http schemes plus loopback, unspecified, private, carrier-grade NAT and link-local addresses.
     for bad in ("file:///etc/passwd", "ftp://example.com/x", "http://127.0.0.1", "http://0.0.0.0",
                 "http://192.168.1.1", "http://172.16.0.1", "http://100.64.0.1", "http://[fe80::1]/"):
         with pytest.raises(netguard.UnsafeURL):
@@ -248,6 +270,7 @@ def test_netguard_blocks_non_public_and_non_http_urls():
 
 
 def test_owner_only_actions_reject_workspace_tokens():
+    """Owner-only endpoints refuse workspace tokens and anonymous writes."""
     a = new_workspace()
     assert client.post("/api/feeds/defaults", headers=a).status_code == 401
     assert client.post("/api/digest/send", headers=a).status_code == 401
@@ -256,6 +279,7 @@ def test_owner_only_actions_reject_workspace_tokens():
 
 
 def test_a_workspace_watch_alert_is_never_delivered_to_the_owners_channels(monkeypatch):
+    """A visitor's watch alerts appear in their dashboard but are never sent to the owner's channels."""
     from app import watches
     called = []
     monkeypatch.setattr(watches, "deliver_to_channels", lambda alerts: called.append(alerts) or True)

@@ -32,14 +32,14 @@ from . import story_index
 from .models import Article, FeedRun, StoryBrief
 from .story_index import _as_utc
 
-WINDOW_DAYS = 30
+WINDOW_DAYS = 30       # days of shared data a profile is built from
 MIN_ARTICLES = 10      # reports needed before a profile is shown at all
 MIN_SIGNALS = 5        # pages with readable signals needed for transparency and corrections
 MIN_CLAIMS = 5         # compared claims needed for the agreement component
 MIN_FEED_RUNS = 10     # feed checks needed for availability
 MIN_KNOWN_WEIGHT = 60  # of 100: below this much evidence the score is withheld (in practice: page signals are needed)
 MIN_WINDOW = 6         # recent reports needed before corroboration is judged
-CACHE_SECONDS = 600
+CACHE_SECONDS = 600    # how long computed profiles are reused (10 minutes)
 NOTE = ("Derived from signals SignalDesk observed in its own data over the last 30 days. It describes how an "
         "outlet publishes, not whether it is right, and is not an editorial rating.")
 
@@ -63,7 +63,11 @@ def label_for(score: int | None) -> str:
     """Words for a score band. Deliberately about signals, not trustworthiness."""
     if score is None:
         return "Not enough data"
-    return "Strong signals" if score >= STRONG else "Mixed signals" if score >= MIXED else "Limited signals"
+    if score >= STRONG:
+        return "Strong signals"
+    if score >= MIXED:
+        return "Mixed signals"
+    return "Limited signals"
 
 
 def _pct(value: float) -> str:
@@ -80,6 +84,7 @@ def _transparency(sig: list[dict]) -> tuple[float | None, str]:
     dated = sum(bool(s.get("published")) for s in sig) / n
     sourced = sum(s.get("sources", 0) > 0 for s in sig) / n
     policy = sum(bool(s.get("policy")) for s in sig) / n
+    # Sub-weights sum to 1: a named author matters most, a standards link least.
     points = WEIGHTS["transparency"] * (0.35 * byline + 0.25 * dated + 0.25 * sourced + 0.15 * policy)
     return points, (f"Across {n} pages: author named on {_pct(byline)}, dated on {_pct(dated)}, "
                     f"links its sources on {_pct(sourced)}, standards or corrections link on {_pct(policy)}")
@@ -89,11 +94,12 @@ def _corrections(sig: list[dict]) -> tuple[float | None, str, dict]:
     """Points, explanation and raw figures for the corrections practice."""
     n = len(sig)
     notices = sum(bool(s.get("correction")) for s in sig)
-    policy = n and sum(bool(s.get("policy")) for s in sig) / n > 0.5
+    policy = n and sum(bool(s.get("policy")) for s in sig) / n > 0.5  # a standards link on most pages counts as a policy
     figures = {"notices": notices, "rate": round(notices / n, 3) if n else 0.0, "policy": bool(policy)}
     if n < MIN_SIGNALS:
         return None, f"Only {n} readable pages so far", figures
     practice = policy or notices > 0
+    # Full marks for a visible practice, minus up to 5 points as the notice rate climbs (10% of pages costs all 5).
     points = max(0, min(WEIGHTS["corrections"], (WEIGHTS["corrections"] if practice else 0) - min(5, round(figures["rate"] * 50))))
     detail = ("Shows a corrections practice" if practice else "No corrections practice found") + \
              f"; {notices} correction notice{'s' if notices != 1 else ''} in {n} pages ({_pct(figures['rate'])})"
@@ -109,6 +115,7 @@ def compute(db: Session, now: datetime | None = None) -> dict[str, dict]:
         .where(Article.is_seed.is_(False), Article.workspace_id == "", Article.ingested_at >= since)
     ).all()
     by_source: dict[str, list] = defaultdict(list)
+    # Group the window's reports by outlet.
     for r in rows:
         by_source[r.source].append(r)
 
@@ -121,12 +128,14 @@ def compute(db: Session, now: datetime | None = None) -> dict[str, dict]:
     finally:
         db.info["workspace"] = previous
     in_window = set(window_ids)
-    multi = {c.id: c for c in set(by_article.values()) if len(c.sources) >= 2}
+    multi = {c.id: c for c in set(by_article.values()) if len(c.sources) >= 2}  # stories with two or more outlets
     stamp = {r.id: _as_utc(r.published_at or r.ingested_at) for r in rows}
     source_of = {r.id: r.source for r in rows}
-    first_source = {cid: source_of.get(min(c.article_ids, key=lambda i: (stamp.get(i) or now, i))) for cid, c in multi.items()}
+    # The outlet behind each multi-outlet story's earliest report (ties broken by article id).
+    first_source ={cid: source_of.get(min(c.article_ids, key=lambda i: (stamp.get(i) or now, i))) for cid, c in multi.items()}
 
     feed_runs: dict[str, list[bool]] = defaultdict(list)
+    # Each feed's success history over the window (feeds are named after their outlet).
     for feed, ok in db.execute(select(FeedRun.feed, FeedRun.ok).where(FeedRun.at >= since)).all():
         feed_runs[feed].append(ok)
 
@@ -134,19 +143,28 @@ def compute(db: Session, now: datetime | None = None) -> dict[str, dict]:
     dispute: dict[str, int] = defaultdict(int)
     cached = db.execute(select(StoryBrief.claims).join(Article, Article.id == StoryBrief.cluster_id)
                         .where(StoryBrief.claims.is_not(None), Article.workspace_id == "")).scalars().all()
+    # Tally, per outlet, the agreed and disputed claims from every cached claim comparison.
     for blob in cached:
         try:
             items = json.loads(blob).get("items", [])
         except (json.JSONDecodeError, AttributeError):
-            continue
+            continue  # skip unreadable cache entries
         for item in items:
-            bucket = agree if item.get("status") == "agreed" else dispute if item.get("status") == "disputed" else None
-            for outlet in item.get("outlets", []) if bucket is not None else []:
+            status = item.get("status")
+            if status == "agreed":
+                bucket = agree
+            elif status == "disputed":
+                bucket = dispute
+            else:
+                continue  # single-outlet claims say nothing about agreement
+            for outlet in item.get("outlets", []):
                 bucket[outlet] += 1
 
     profiles = {}
+    # Build one profile per outlet from its reports and the shared tallies above.
     for source, items in by_source.items():
         sig = []
+        # Collect the readable page signals, ignoring missing or malformed JSON.
         for r in items:
             try:
                 parsed = json.loads(r.signals) if r.signals else None
@@ -165,6 +183,8 @@ def compute(db: Session, now: datetime | None = None) -> dict[str, dict]:
 
         t_points, t_detail = _transparency(sig)
         c_points, c_detail, corr = _corrections(sig)
+        # Each component is (points, explanation), or (None, why) when there is not enough evidence yet.
+        # Corroboration earns full marks once half of the outlet's recent reports are corroborated.
         parts: dict[str, tuple[float | None, str]] = {
             "transparency": (t_points, t_detail),
             "corrections": (c_points, c_detail),
@@ -179,6 +199,7 @@ def compute(db: Session, now: datetime | None = None) -> dict[str, dict]:
         }
         known = sum(WEIGHTS[k] for k, (p, _) in parts.items() if p is not None)
         score = None
+        # Rescale the known components to 100, but only with enough reports and enough known weight.
         if n >= MIN_ARTICLES and known >= MIN_KNOWN_WEIGHT:
             score = round(100 * sum(p for p, _ in parts.values() if p is not None) / known)
         profiles[source] = {
@@ -195,6 +216,7 @@ def compute(db: Session, now: datetime | None = None) -> dict[str, dict]:
 def profiles(db: Session) -> dict[str, dict]:
     """Cached profiles (rebuilt every CACHE_SECONDS; the data changes slowly and the query is not free)."""
     with _lock:
+        # Serve the cached profiles while they are younger than CACHE_SECONDS.
         if _cache["value"] is not None and time.time() - _cache["at"] < CACHE_SECONDS:
             return _cache["value"]
     value = compute(db)
@@ -205,5 +227,6 @@ def profiles(db: Session) -> dict[str, dict]:
 
 def listing(db: Session) -> dict:
     """The sources view: every profile, best first, with the standing disclaimer."""
+    # Scored outlets first, highest score first, then alphabetically.
     items = sorted(profiles(db).values(), key=lambda p: (p["score"] is None, -(p["score"] or 0), p["source"].lower()))
     return {"note": NOTE, "window_days": WINDOW_DAYS, "items": items}

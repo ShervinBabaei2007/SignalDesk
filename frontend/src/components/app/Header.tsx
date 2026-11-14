@@ -16,7 +16,7 @@ import { goHome, leaveDashboard } from '@/hooks/useRoute'
 import { useSettings } from '@/hooks/useSettings'
 import { api, ApiError, authMessage, sessionMode } from '@/lib/api'
 
-/** The app header. */
+/** Sticky top bar with the logo, ingest button, tool dialogs and a mobile menu. */
 export function Header() {
   const { health, ingesting, runIngest, clearFilters } = useDashboard()
   const { token, saveToken } = useSettings()
@@ -31,14 +31,14 @@ export function Header() {
   const [sourcesOpen, setSourcesOpen] = useState(false)
   const [pipelineOpen, setPipelineOpen] = useState(false)
 
-  // The logo always means "take me home": back to the dashboard, filters cleared, scrolled to top.
+  /** Takes the visitor back to the dashboard with filters cleared and scrolled to the top. */
   const onLogo = (e: MouseEvent) => {
     e.preventDefault()
     clearFilters()
     goHome()
   }
 
-  /** Go back to the landing page. A workspace token stays, so "Open my workspace" resumes it; a demo token is dropped. */
+  /** Returns to the landing page, keeping a workspace token so it can resume but dropping a demo token. */
   const leave = () => {
     if (mode === 'workspace') {
       toast.success('Your workspace is saved in this browser')
@@ -49,13 +49,17 @@ export function Header() {
     leaveDashboard()
   }
 
+  /** Sends the daily brief from the mobile menu and reports the outcome in a toast. */
   const sendBrief = async () => {
     try {
       const r = await api.sendDigest()
       toast.success(`Daily brief sent via ${r.sent.join(' + ')}`)
     } catch (err) {
       const e = err as ApiError
-      toast.error(e.status === 400 ? 'No delivery channel configured — set Slack or SMTP settings' : e.status === 401 ? authMessage(token) : e.message)
+      let message = e.message
+      if (e.status === 400) message = 'No delivery channel configured — set Slack or SMTP settings'
+      else if (e.status === 401) message = authMessage(token)
+      toast.error(message)
     }
   }
 

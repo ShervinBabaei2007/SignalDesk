@@ -34,6 +34,7 @@ function FilterSelect({
   className?: string
 }) {
   return (
+    // An empty filter shows as "all", and picking "all" (or clearing) sends back an empty filter.
     <Select items={options} value={value || ALL} onValueChange={(v) => onChange(v === ALL || v === null ? '' : String(v))}>
       <SelectTrigger aria-label={label} className={className ?? 'w-full'}>
         <SelectValue />
@@ -49,10 +50,11 @@ function FilterSelect({
   )
 }
 
-/** The filter bar. */
+/** The bar above the feed for searching, filtering and sorting articles. */
 export function Filters() {
   const { filters, setFilter, sources, stats } = useDashboard()
   const topics = Object.keys(stats?.topic_breakdown ?? {}).sort()
+  // Builds an onChange handler that writes the picked value into one filter field.
   const set = <K extends keyof FilterState>(key: K) => (v: string) => setFilter({ [key]: v } as Partial<FilterState>)
 
   return (

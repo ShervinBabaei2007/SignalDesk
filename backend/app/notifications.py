@@ -35,13 +35,14 @@ logger = logging.getLogger("signaldesk.notifications")
 
 def _fmt_item(item) -> str:
     """One plain-text line for a digest item."""
-    sign = "+" if item.sentiment >= 0 else ""
+    sign = "+" if item.sentiment >= 0 else ""  # negatives already carry their minus sign
     return f"{sign}{item.sentiment:.2f} · {item.title} ({item.source}) — {item.url}"
 
 
 def digest_text(digest) -> str:
     """Render a digest as plain text suitable for Slack or an email body."""
     generated = digest.generated_at
+    # Treat a naive timestamp as UTC so the date renders consistently.
     if generated.tzinfo is None:
         generated = generated.replace(tzinfo=timezone.utc)
     lines = [
@@ -53,6 +54,7 @@ def digest_text(digest) -> str:
     ]
 
     if digest.topic_breakdown:
+        # The five largest topics (the breakdown is already sorted by count).
         topics = " · ".join(f"{name} {count}" for name, count in
                             list(digest.topic_breakdown.items())[:5])
         lines += ["", f"Topics: {topics}"]
@@ -155,10 +157,12 @@ def _deliver(log_tag: str, subject: str, text: str, html_body: str | None = None
     """Send to every configured channel, collecting per-channel failures instead of raising."""
     result: dict = {"channels": configured_channels(), "sent": [], "errors": []}
     senders = []
+    # Email is attempted whenever recipients are set, so a missing SMTP_HOST is reported as an error.
     if config.SLACK_WEBHOOK_URL:
         senders.append(("slack", "Slack", lambda: send_slack(text)))
     if config.DIGEST_EMAILS:
         senders.append(("email", "email", lambda: send_email(subject, text, html_body)))
+    # Try each channel independently so one failure does not stop the others.
     for channel, name, send in senders:
         try:
             send()

@@ -60,6 +60,7 @@ def test_clustering_is_transitive_and_id_is_smallest():
 
 def test_same_story_far_apart_in_time_is_not_merged():
     """The same story published far apart in time is not merged."""
+    # 100 hours is far beyond the clustering time window.
     rows = _rows("Jensen Huang agrees to testify before Congress",
                  "Jensen Huang agrees to testify before Congress", gap_hours=100)
     assert cluster_rows(rows) == []
@@ -75,6 +76,7 @@ def test_api_exposes_cluster_fields_filter_and_related():
     """The API exposes cluster fields, the cluster filter and related reports."""
     Base.metadata.create_all(bind=engine)
     with SessionLocal() as db:
+        # Two outlets cover the storm and one unrelated story stands alone.
         for i, (title, src) in enumerate([
             ("Huge Atlantic storm forces airport closures across Europe", "Alpha"),
             ("Atlantic storm closes airports across Europe", "Beta"),
@@ -125,6 +127,7 @@ def test_trending_api_ranks_multi_outlet_stories_and_skips_single_source():
     """The trending API ranks multi-outlet stories and skips single-source ones."""
     Base.metadata.create_all(bind=engine)
     with SessionLocal() as db:
+        # A volcano story from three outlets and a tax story from only one outlet.
         for i, (title, src) in enumerate([
             ("Volcano eruption closes Iceland airspace for travellers", "Alpha"),
             ("Iceland volcano eruption closes airspace for travellers", "Beta"),
@@ -153,6 +156,7 @@ def test_hot_filter_matches_the_union_of_hot_stories():
     stories = client.get("/api/trending").json()
     assert stories
     expected = set()
+    # Collect every article id belonging to any hot story.
     for s in stories:
         page = client.get(f"/api/articles?cluster={s['cluster_id']}&limit=100").json()
         expected |= {a["id"] for a in page["items"]}

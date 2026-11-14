@@ -47,6 +47,7 @@ def test_rich_report_outscores_a_thin_excerpt():
 
 def test_longer_text_scores_higher_until_full_depth():
     """Longer text scores higher until full depth is reached."""
+    # Full depth is reached around 6000 characters.
     short = make(full_text="x" * 1500)
     medium = make(full_text="x" * 3000)
     full = make(full_text="x" * 6000)
@@ -70,6 +71,7 @@ def test_llm_analysis_beats_a_plain_deep_summary():
 def test_substance_counts_numbers_quotes_points_and_conclusion():
     """Substance counts numbers, quotes, key points and a conclusion."""
     parts = breakdown(make(summary_structured=RICH_BRIEF))
+    # Numbers + key points + quotes + bottom line.
     assert parts["substance"] == 8 + 6 + 8 + 3
 
 

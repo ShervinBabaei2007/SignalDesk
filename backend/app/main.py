@@ -50,6 +50,7 @@ _started_at = time.time()
 async def _scheduled_ingestion():
     """Auto-pilot: periodically run the ingestion pipeline in the background."""
     wait = 30  # first run shortly after boot, then on the regular interval
+    # Runs until the lifespan cancels the task on shutdown.
     while True:
         await asyncio.sleep(wait)
         wait = INGEST_INTERVAL_MINUTES * 60
@@ -62,11 +63,13 @@ async def _scheduled_ingestion():
 async def _scheduled_digest():
     """Deliver the daily brief once per day at DIGEST_HOUR (UTC)."""
     last_sent_date = None
+    # Wake once a minute until the lifespan cancels the task on shutdown.
     while True:
         await asyncio.sleep(60)
         if config.DIGEST_HOUR < 0 or not notifications.configured_channels():
             continue
         now = datetime.now(timezone.utc)
+        # Only send during the configured hour, and only once per calendar day.
         if now.hour != config.DIGEST_HOUR or last_sent_date == now.date():
             continue
         last_sent_date = now.date()
@@ -130,6 +133,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# A wildcard origin is matched by regex and must not be combined with credentials.
 _allow_all = config.CORS_ORIGINS == ["*"]
 app.add_middleware(
     CORSMiddleware,
@@ -166,7 +170,7 @@ def _supplied_token(request: Request) -> str:
     if not supplied:
         auth = request.headers.get("authorization", "")
         if auth.lower().startswith("bearer "):
-            supplied = auth[7:].strip()
+            supplied = auth[len("bearer "):].strip()
     return supplied
 
 
@@ -230,6 +234,7 @@ def require_api_token(request: Request) -> None:
 DIST_DIR = FRONTEND_DIR / "dist"   # production build of the React app (npm run build)
 _NO_CACHE = {"Cache-Control": "no-cache"}
 
+# Serve the built React app when it exists, otherwise a page explaining how to build it.
 if (DIST_DIR / "index.html").exists():
     app.mount("/assets", StaticFiles(directory=DIST_DIR / "assets"), name="assets")
 
@@ -476,6 +481,7 @@ def export_articles_csv(db: Session = Depends(scoped_db)):
     writer = csv.writer(buffer)
     writer.writerow(["id", "title", "source", "topic", "sentiment", "sentiment_label",
                      "url", "published_at", "keywords"])
+    # One CSV row per article, in the same column order as the header.
     for a in items:
         writer.writerow([a.id, a.title, a.source, a.topic, a.sentiment, a.sentiment_label,
                          a.url, a.published_at.isoformat() if a.published_at else "", a.keywords or ""])
@@ -581,6 +587,7 @@ def create_feed(body: FeedCreate, db: Session = Depends(scoped_db)):
             raise HTTPException(409, f"A workspace can have up to {config.WORKSPACE_MAX_FEEDS} feeds; remove one first")
     feed = Feed(name=body.name.strip(), url=str(body.url), workspace_id=owner_ws)
     db.add(feed)
+    # A commit failure here means one of the per-workspace unique constraints was hit.
     try:
         db.commit()
     except Exception:
@@ -602,6 +609,7 @@ def add_default_feeds(db: Session = Depends(scoped_db)):
 def delete_feed(feed_id: int, db: Session = Depends(scoped_db)):
     """Remove an RSS feed."""
     feed = db.get(Feed, feed_id)
+    # A feed outside the caller's own workspace is reported as missing (so a visitor cannot remove a shared feed).
     if not feed or feed.workspace_id != db.info.get("workspace", NO_WORKSPACE):
         raise HTTPException(404, "Feed not found")
     db.delete(feed)

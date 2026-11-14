@@ -22,7 +22,7 @@ from .models import Article, FeedRun, PipelineRun
 
 logger = logging.getLogger("signaldesk.observability")
 
-RETENTION_DAYS = 30
+RETENTION_DAYS = 30  # run history older than this is purged by the cron
 
 
 def percentile(values: list[float], pct: float) -> float:
@@ -30,6 +30,7 @@ def percentile(values: list[float], pct: float) -> float:
     if not values:
         return 0.0
     ordered = sorted(values)
+    # Nearest rank is ceil(pct% of n), 1-based; clamp to the first element for pct 0.
     return float(ordered[max(math.ceil(pct / 100 * len(ordered)) - 1, 0)])
 
 
@@ -47,7 +48,8 @@ def record_cycle(db: Session, *, kind: str, duration_seconds: float, results: li
             skipped=sum(r.get("skipped", 0) for r in results), alerts=alerts,
         )
         db.add(run)
-        db.flush()
+        db.flush()  # assigns run.id for the per-feed rows
+        # One FeedRun per feed result, with text truncated to the column sizes.
         for r in results:
             db.add(FeedRun(run_id=run.id, feed=str(r.get("feed", "?"))[:200], ok=not r.get("error"),
                            error=(str(r["error"])[:300] if r.get("error") else None),
@@ -97,9 +99,11 @@ def summary(db: Session, hours: int = 24, now: datetime | None = None) -> dict:
     last_ok = max((r for r in runs if r.ok), key=lambda r: r.started_at, default=None)
 
     by_feed: dict[str, list[FeedRun]] = defaultdict(list)
+    # Group the window's feed checks by feed, oldest first.
     for row in feed_rows:
         by_feed[row.feed].append(row)
     feeds = []
+    # Summarise each feed's reliability, latency and yield.
     for name, rows in by_feed.items():
         failures = [r for r in rows if not r.ok]
         feeds.append({
@@ -110,15 +114,17 @@ def summary(db: Session, hours: int = 24, now: datetime | None = None) -> dict:
             "last_error": failures[-1].error if failures else None,
             "last_ok_at": max((r.at for r in rows if r.ok), default=None),
         })
-    feeds.sort(key=lambda f: (-f["failure_rate"], -f["runs"], f["feed"]))
+    feeds.sort(key=lambda f: (-f["failure_rate"], -f["runs"], f["feed"]))  # worst feeds first
 
     # throughput: new articles per hour for a day or less, per day beyond that
     step = "%Y-%m-%dT%H:00" if hours <= 48 else "%Y-%m-%d"
     series: dict[str, int] = defaultdict(int)
+    # Sum each run's new articles into its hour (or day) bucket.
     for r in runs:
         series[_aware(r.started_at).strftime(step)] += r.added
     added = sum(r.added for r in runs)
 
+    # Articles enriched in the window whose full page was read, versus those that fell back to feed text.
     page, fallback = (db.scalar(select(func.count()).select_from(Article)
                                 .where(Article.is_seed.is_(False), Article.enriched_at >= since,
                                        Article.extraction == kind)) or 0 for kind in ("page", "fallback"))

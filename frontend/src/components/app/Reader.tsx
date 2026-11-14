@@ -67,13 +67,14 @@ function ReaderSkeleton() {
   )
 }
 
-/** The article reader for one article id. */
+/** Full-page reader for one article, with its summary, sections, related coverage and sentiment. */
 export function Reader({ id }: { id: number }) {
   const [article, setArticle] = useState<ArticleDetail | null>(null)
   const [error, setError] = useState('')
   const [generating, setGenerating] = useState(false)
   const { markRead } = useLibrary()
 
+  // Load the article when the id changes, mark it read, and ignore replies for an article we already left.
   useEffect(() => {
     setArticle(null)
     setError('')
@@ -97,6 +98,7 @@ export function Reader({ id }: { id: number }) {
     [article],
   )
 
+  /** Asks the server for a clean summary from the full article page and shows it. */
   const generate = async () => {
     setGenerating(true)
     try {
@@ -153,6 +155,7 @@ export function Reader({ id }: { id: number }) {
               </div>
             </BlurFade>
 
+            {/* Jump links only help when there is more than one section */}
             {sections.length > 1 && (
               <nav aria-label="Sections" className="mt-4 flex flex-wrap gap-1.5">
                 {sections.map((s) => (

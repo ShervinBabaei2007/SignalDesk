@@ -17,6 +17,7 @@ interface Feature {
   text: string
 }
 
+/** The capabilities highlighted on the landing page. */
 const FEATURES: Feature[] = [
   { icon: Layers, title: 'One story, many reports', text: 'Articles about the same event are grouped, with the most informative report on top.' },
   { icon: Gauge, title: 'Information score', text: 'Every article is scored on how much concrete detail it carries, not just clicks.' },
@@ -29,20 +30,28 @@ const FEATURES: Feature[] = [
 /** Which entry button is starting. */
 type Starting = 'workspace' | 'demo' | null
 
-/** The public front door of the app. */
+/** Public landing page that explains the app and starts a workspace or demo session. */
 export function Landing() {
   const { saveToken } = useSettings()
   const { refreshAll } = useDashboard()
   const [starting, setStarting] = useState<Starting>(null)
   const [status, setStatus] = useState<AuthStatus | null>(null)
 
+  // Ask the server once whether private workspaces are enabled, which decides the entry buttons.
   useEffect(() => {
     void getAuthStatus().then(setStatus)
   }, [])
 
   const workspaces = status?.workspaces ?? false
+  // The highlighted button opens a workspace when the server allows it, and the demo otherwise.
+  const primaryBusy = starting === (workspaces ? 'workspace' : 'demo')
+  let primaryIcon = <Play className="mr-2 size-4 fill-current" aria-hidden />
+  if (primaryBusy) primaryIcon = <Loader2 className="mr-2 size-4 animate-spin" aria-hidden />
+  else if (workspaces) primaryIcon = <LockKeyhole className="mr-2 size-4" aria-hidden />
+  let primaryLabel = workspaces ? 'Open my workspace' : 'Try as a demo'
+  if (primaryBusy) primaryLabel = workspaces ? 'Opening…' : 'Starting demo…'
 
-  /** Switch to the chosen mode, reload the data for it, then open the dashboard. */
+  /** Switches to the chosen mode, reloads the data for it, then opens the dashboard. */
   const enter = async (kind: 'workspace' | 'demo') => {
     setStarting(kind)
     if (kind === 'workspace') {
@@ -96,14 +105,8 @@ export function Landing() {
               borderRadius="0.625rem"
               className="h-11 w-full px-6 text-base font-medium disabled:opacity-70 sm:w-auto"
             >
-              {starting === (workspaces ? 'workspace' : 'demo') ? (
-                <Loader2 className="mr-2 size-4 animate-spin" aria-hidden />
-              ) : workspaces ? (
-                <LockKeyhole className="mr-2 size-4" aria-hidden />
-              ) : (
-                <Play className="mr-2 size-4 fill-current" aria-hidden />
-              )}
-              {workspaces ? (starting === 'workspace' ? 'Opening…' : 'Open my workspace') : starting === 'demo' ? 'Starting demo…' : 'Try as a demo'}
+              {primaryIcon}
+              {primaryLabel}
             </ShimmerButton>
             {workspaces ? (
               <Button variant="outline" size="lg" className="h-11 w-full px-5 sm:w-auto" onClick={() => void enter('demo')} disabled={starting !== null}>

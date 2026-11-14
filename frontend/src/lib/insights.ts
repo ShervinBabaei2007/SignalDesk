@@ -17,6 +17,7 @@ export function reliabilityTone(score: number | null): Tone | null {
 export function barHeights(values: number[]): number[] {
   const peak = Math.max(...values, 0)
   if (peak === 0) return values.map(() => 0)
+  // A 6% floor keeps a tiny but non-zero bar visible next to a tall peak.
   return values.map((v) => (v === 0 ? 0 : Math.max(Math.round((v / peak) * 100), 6)))
 }
 
@@ -39,6 +40,7 @@ export function minutesAgo(minutes: number | null): string {
   if (minutes < 1) return 'just now'
   if (minutes < 60) return `${minutes} min ago`
   const hours = Math.round(minutes / 60)
+  // Switch to days only after two full days, so "36 h ago" is not rounded to "2 d ago".
   return hours < 48 ? `${hours} h ago` : `${Math.round(hours / 24)} d ago`
 }
 
@@ -61,17 +63,19 @@ export interface Bucket {
   added: number
 }
 
-/** The throughput series on a complete time axis. The server only reports periods that had a run, so a quiet
- *  hour would otherwise be missing and one data point would stretch across the whole chart. Hourly up to two
- *  days, daily beyond (matching the server's bucketing). */
+/** The throughput series on a complete time axis, with zero for the quiet periods the server leaves out.
+ *  Hourly up to two days, daily beyond (matching the server's bucketing). */
 export function fillSeries(series: Bucket[], hours: number, now: Date = new Date()): Bucket[] {
   const daily = hours > 48
+  // One day or one hour, in milliseconds.
   const step = daily ? 86_400_000 : 3_600_000
   const count = daily ? Math.ceil(hours / 24) : hours
   const byKey = new Map(series.map((b) => [b.at, b.added]))
   const out: Bucket[] = []
+  // Walk from the oldest bucket up to the current one, filling gaps with zero.
   for (let i = count - 1; i >= 0; i--) {
     const iso = new Date(now.getTime() - i * step).toISOString()
+    // Cut the ISO string to the server's key: "YYYY-MM-DD" for days, "YYYY-MM-DDTHH:00" for hours.
     const at = daily ? iso.slice(0, 10) : `${iso.slice(0, 13)}:00`
     out.push({ at, added: byKey.get(at) ?? 0 })
   }

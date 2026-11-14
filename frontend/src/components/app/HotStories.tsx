@@ -8,8 +8,7 @@ import { timeAgo } from '@/lib/format'
 import { describeSentiment } from '@/lib/sentiment'
 import { cn } from '@/lib/utils'
 
-/** Shown above the feed while the "Hot topics" category is selected: the stories
- *  the most outlets are covering right now. Picking one narrows the feed to it. */
+/** Panel above the feed, while "Hot topics" is selected, listing the most-covered stories to narrow the feed to. */
 export function HotStories() {
   const { trending, openStory } = useDashboard()
   return (

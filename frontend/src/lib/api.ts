@@ -361,6 +361,7 @@ export const EMPTY_FILTERS: Filters = {
 /** Error from the API carrying the HTTP status. */
 export class ApiError extends Error {
   status: number
+  /** Build an error from the server's message and its HTTP status code. */
   constructor(message: string, status: number) {
     super(message)
     this.status = status
@@ -388,11 +389,13 @@ export function setToken(token: string) {
 
 /** True when a stored token is a demo token rather than the real API token. */
 export function isDemoToken(token: string): boolean {
+  // The server signs demo tokens as "demo.<expiry>.<signature>".
   return token.startsWith('demo.')
 }
 
 /** True when a stored token is a private-workspace token. */
 export function isWorkspaceToken(token: string): boolean {
+  // The server signs workspace tokens as "ws.<id>.<signature>".
   return token.startsWith('ws.')
 }
 
@@ -447,6 +450,7 @@ export interface StartResult {
 /** Start the demo tour: a short-lived token that can run ingests on the shared data (a real API token is kept). */
 export async function startDemo(): Promise<boolean> {
   const current = getToken()
+  // The owner's real token already allows everything the tour does, so keep it.
   if (current && sessionMode(current) === 'owner') return true
   setToken('') // leaving a workspace for the tour: the tour has its own, weaker token
   try {
@@ -463,6 +467,7 @@ export async function startDemo(): Promise<boolean> {
 /** Open the visitor's private workspace, resuming the one already stored in this browser. */
 export async function startWorkspace(): Promise<StartResult> {
   const current = getToken()
+  // Resume a stored workspace, and never swap the owner's token for a weaker one.
   if (isWorkspaceToken(current) || sessionMode(current) === 'owner') return { ok: true }
   try {
     const res = await fetch('/api/workspace', { method: 'POST' })
@@ -492,6 +497,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
     let detail: unknown = body.detail ?? `${res.status} ${res.statusText}`
+    // FastAPI validation errors (422) arrive as a list of { loc, msg } entries.
     if (Array.isArray(detail)) {
       detail = detail.map((d: { loc?: string[]; msg: string }) => `${(d.loc ?? []).join('.')}: ${d.msg}`).join('; ')
     } else if (typeof detail === 'object') {
@@ -499,6 +505,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     }
     throw new ApiError(String(detail), res.status)
   }
+  // 204 No Content has no body to parse.
   return (res.status === 204 ? null : await res.json()) as T
 }
 
@@ -508,6 +515,7 @@ export const HOT_STORIES = 8
 /** Build the query string for the feed endpoints from filters, paging and saved ids. */
 export function feedParams(filters: Filters, offset: number, limit: number, ids?: string): URLSearchParams {
   const params = new URLSearchParams({ limit: String(limit), offset: String(offset), order: filters.order })
+  // Send every non-blank filter except order (already set) and saved (sent as ids instead).
   for (const [key, value] of Object.entries(filters)) {
     if (key !== 'order' && key !== 'saved' && value.trim()) params.set(key, value.trim())
   }
@@ -517,33 +525,57 @@ export function feedParams(filters: Filters, offset: number, limit: number, ids?
 
 /** One method per backend endpoint. */
 export const api = {
+  /** Server status, counts and enabled features. */
   health: () => request<Health>('/health'),
+  /** Totals and sentiment figures for the dashboard. */
   stats: () => request<Stats>('/stats'),
+  /** The daily brief of the most positive and negative articles. */
   digest: () => request<Digest>('/digest'),
+  /** The stories most outlets are covering right now. */
   trending: (limit = HOT_STORIES) => request<TrendingStory[]>(`/trending?limit=${limit}`),
+  /** Email the daily brief through the configured delivery channels. */
   sendDigest: () => request<{ sent: string[] }>('/digest/send', { method: 'POST' }),
+  /** One page of the flat feed, one entry per report. */
   articles: (filters: Filters, offset: number, limit: number, ids?: string) =>
     request<ArticlePage>(`/articles?${feedParams(filters, offset, limit, ids)}`),
+  /** One page of the grouped feed, one entry per event. */
   stories: (filters: Filters, offset: number, limit: number, ids?: string) =>
     request<StoryPage>(`/stories?${feedParams(filters, offset, limit, ids)}`),
+  /** A story with its reports, outlet comparison, brief and claims. */
   story: (id: number) => request<StoryDetail>(`/stories/${id}`),
+  /** Regenerate a story's brief and return the updated story. */
   refreshBrief: (id: number) => request<StoryDetail>(`/stories/${id}/brief`, { method: 'POST' }),
+  /** How a story's coverage developed day by day. */
   timeline: (id: number) => request<StoryTimeline>(`/stories/${id}/timeline`),
+  /** Evidence-based profiles of every outlet. */
   sources: () => request<SourceList>('/sources'),
+  /** Pipeline health over the last `hours`. */
   observability: (hours = 24) => request<Observability>(`/observability?hours=${hours}`),
+  /** An article with its full text and analysis. */
   article: (id: number) => request<ArticleDetail>(`/articles/${id}`),
+  /** Ask the server to (re)write an article's summary. */
   summarize: (id: number) => request<ArticleDetail>(`/articles/${id}/summarize`, { method: 'POST' }),
+  /** The RSS feeds visible to this visitor. */
   feeds: () => request<Feed[]>('/feeds'),
+  /** Subscribe to a new RSS feed. */
   addFeed: (name: string, url: string) =>
     request<Feed>('/feeds', { method: 'POST', body: JSON.stringify({ name, url }) }),
+  /** Add the server's starter set of feeds. */
   addDefaultFeeds: () => request<Feed[]>('/feeds/defaults', { method: 'POST' }),
+  /** Unsubscribe from a feed. */
   deleteFeed: (id: number) => request<null>(`/feeds/${id}`, { method: 'DELETE' }),
+  /** Delete everything in the visitor's workspace. */
   resetWorkspace: () => request<null>('/workspace', { method: 'DELETE' }),
+  /** The watchlist rules with their match counts. */
   watches: () => request<Watch[]>('/watches'),
+  /** Create a watchlist rule. */
   addWatch: (term: string, topic: string | null, minOutlets: number) =>
     request<Watch>('/watches', { method: 'POST', body: JSON.stringify({ term, topic, min_outlets: minOutlets }) }),
+  /** Pause or resume a watchlist rule. */
   setWatchActive: (id: number, isActive: boolean) =>
     request<Watch>(`/watches/${id}`, { method: 'PATCH', body: JSON.stringify({ is_active: isActive }) }),
+  /** Remove a watchlist rule. */
   deleteWatch: (id: number) => request<null>(`/watches/${id}`, { method: 'DELETE' }),
+  /** Fetch the feeds now and report what was added. */
   ingest: () => request<IngestResult>('/ingest', { method: 'POST' }),
 }

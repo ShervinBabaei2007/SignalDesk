@@ -25,9 +25,10 @@ export function SourceAvatar({ name, size = 'lg' }: { name: string; size?: 'defa
   )
 }
 
-/** One related report with its outlet, summary and link. */
+/** A link to one related report, with a hover card previewing its summary. */
 function Row({ item, index }: { item: RelatedArticle; index: number }) {
   const snippet = item.summary_deep || item.summary
+  const domain = domainOf(item.url)
   return (
     <BlurFade delay={0.05 * index} duration={0.3} offset={6}>
       <HoverCard>
@@ -58,7 +59,7 @@ function Row({ item, index }: { item: RelatedArticle; index: number }) {
         <HoverCardContent className="w-80 space-y-2" align="start">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <span className="font-semibold text-foreground">{item.source}</span>
-            {domainOf(item.url) && <span>{domainOf(item.url)}</span>}
+            {domain && <span>{domain}</span>}
           </div>
           <div className="text-sm leading-snug font-semibold">{item.title}</div>
           {snippet && <p className="line-clamp-4 text-[13px] leading-relaxed text-muted-foreground">{snippet}</p>}
@@ -72,7 +73,7 @@ function Row({ item, index }: { item: RelatedArticle; index: number }) {
   )
 }
 
-/** Other outlets' coverage of the same story. */
+/** Card under an article listing other outlets' coverage of the same story. */
 export function AlsoCoveredBy({ items, clusterId }: { items: RelatedArticle[]; clusterId?: number | null }) {
   if (!items.length) return null
   const outlets = new Set(items.map((i) => i.source)).size

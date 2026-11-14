@@ -40,6 +40,7 @@ def setup_module(_):
     """Create the tables and seed the test articles once for this module."""
     Base.metadata.create_all(bind=engine)
     with SessionLocal() as db:
+        # Each article is published five minutes before the previous one.
         for i, (title, src, score, text, sent, topic) in enumerate(GLACIER + [SOLO] + OTHER):
             db.add(Article(title=title, url=f"https://s.example/{i}", source=src, topic=topic, sentiment=sent,
                            info_score=score, full_text=text, published_at=NOW - timedelta(minutes=i * 5),
@@ -101,8 +102,8 @@ def test_most_informative_order_ranks_stories_by_their_best_report():
 
 
 def test_filters_apply_to_reports_before_grouping():
-    # a topic filter keeps only matching reports, so the marathon story is the only one left
     """Filters apply to reports before they are grouped."""
+    # a topic filter keeps only matching reports, so the marathon story is the only one left
     only = stories(topic="Sports", limit=50)
     assert only["total"] == 1 and only["article_total"] == 2
     # the sentiment filter must also be reflected in the total (it used to be ignored)

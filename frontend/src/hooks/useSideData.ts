@@ -10,7 +10,7 @@ export function useSideData() {
   const [health, setHealth] = useState<Health | null>(null)
   const [feeds, setFeeds] = useState<Feed[]>([])
 
-  // Each part loads on its own: one failing endpoint must not blank the others.
+  /** Reload every side panel; each part loads on its own so one failing endpoint cannot blank the others. */
   const reloadSide = useCallback(async () => {
     const [s, d, t, h, fs] = await Promise.allSettled([
       api.stats(), api.digest(), api.trending(), api.health(), api.feeds(),
@@ -22,10 +22,12 @@ export function useSideData() {
     if (fs.status === 'fulfilled') setFeeds(fs.value)
   }, [])
 
+  // Load the side panels once on mount.
   useEffect(() => {
     void reloadSide()
   }, [reloadSide])
 
+  /** Reload just the feed list, e.g. after adding or removing a feed. */
   const refreshFeeds = useCallback(async () => {
     setFeeds(await api.feeds())
   }, [])

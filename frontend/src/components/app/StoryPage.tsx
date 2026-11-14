@@ -116,6 +116,7 @@ export function StoryPage({ id }: { id: number }) {
   const [error, setError] = useState('')
   const [refreshing, setRefreshing] = useState(false)
 
+  // Load the story and its timeline whenever the id changes, ignoring replies for a story we already left.
   useEffect(() => {
     setStory(null)
     setTimeline(null)
@@ -136,6 +137,7 @@ export function StoryPage({ id }: { id: number }) {
     }
   }, [id])
 
+  /** Asks the server to rewrite the brief from the latest reports. */
   const refresh = async () => {
     setRefreshing(true)
     try {
@@ -165,6 +167,7 @@ export function StoryPage({ id }: { id: number }) {
                 {story.report_count} reports · {story.outlets} outlets
               </Badge>
               <SentimentBadge score={story.avg_sentiment} />
+              {/* A spread of 0.3+ means outlets word the story noticeably differently */}
               {story.sentiment_spread >= 0.3 && (
                 <Badge variant="outline" title="The most and least positive wording differ by this much on the −1 to +1 scale">
                   Wording varies · spread {story.sentiment_spread.toFixed(2)}

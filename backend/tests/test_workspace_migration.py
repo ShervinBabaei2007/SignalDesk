@@ -24,6 +24,7 @@ def legacy_engine(monkeypatch):
     """An in-memory SQLite database in the pre-workspace shape, wired in as the app's engine."""
     engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
     with engine.begin() as conn:
+        # SQLAlchemy runs one statement at a time, so split the script on statement ends.
         for statement in LEGACY_SCHEMA.strip().split(";\n"):
             conn.execute(text(statement))
     monkeypatch.setattr(database, "engine", engine)
@@ -31,6 +32,7 @@ def legacy_engine(monkeypatch):
 
 
 def test_migration_keeps_rows_and_allows_the_same_feed_in_two_workspaces(legacy_engine):
+    """Existing rows land in the shared workspace, and uniqueness now applies per workspace."""
     database.ensure_columns()
     with legacy_engine.begin() as conn:
         assert conn.execute(text("SELECT workspace_id, name FROM feeds")).all() == [("", "BBC")]
@@ -46,6 +48,7 @@ def test_migration_keeps_rows_and_allows_the_same_feed_in_two_workspaces(legacy_
 
 
 def test_migration_is_idempotent(legacy_engine):
+    """Running the migration twice leaves the workspace column and no legacy unique constraints."""
     database.ensure_columns()
     database.ensure_columns()
     inspector = inspect(legacy_engine)

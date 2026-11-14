@@ -64,6 +64,8 @@ def event_count(db):
 # --------------------------------------------------------------------------- #
 
 def test_each_story_becomes_one_event_and_assigning_again_changes_nothing(db):
+    """Each story maps to exactly one event, and re-running assignment is idempotent."""
+    # Two reports each of two different stories.
     for i, title in enumerate([FLOOD, FLOOD, VOTE, VOTE], start=1):
         add(db, i, title=title, age_hours=i)
     assert refresh(db) == 2
@@ -76,6 +78,7 @@ def test_each_story_becomes_one_event_and_assigning_again_changes_nothing(db):
 
 
 def test_new_reports_extend_the_event_instead_of_creating_another(db):
+    """A later report joins the existing event, keeping its first-seen time and raising its peak."""
     add(db, 1, age_hours=5)
     add(db, 2, age_hours=4)
     refresh(db)
@@ -109,6 +112,8 @@ def test_an_event_keeps_its_history_after_the_story_id_changes(db):
 
 
 def test_events_that_turn_out_to_be_one_story_are_merged(db):
+    """Two events whose reports form one story are merged into the older event."""
+    # Four reports of the same story.
     for i in range(1, 5):
         add(db, i, age_hours=i)
     db.commit()
@@ -124,6 +129,7 @@ def test_events_that_turn_out_to_be_one_story_are_merged(db):
 
 
 def test_a_visitor_session_never_writes_events(db):
+    """Event assignment from a visitor workspace session writes nothing."""
     add(db, 1)
     add(db, 2)
     db.info["workspace"] = "visitor"
@@ -137,6 +143,7 @@ def test_a_visitor_session_never_writes_events(db):
 # --------------------------------------------------------------------------- #
 
 def test_timeline_buckets_by_day_fills_gaps_and_tracks_who_joined_and_the_tone(db):
+    """The timeline has one entry per day including quiet ones, notes each outlet's first day and the tone shift."""
     add(db, 1, source="BBC", age_hours=60, sentiment=-0.6)    # day 1
     add(db, 2, source="Reuters", age_hours=59, sentiment=-0.4)
     add(db, 3, source="BBC", age_hours=11, sentiment=-0.1)    # day 3 (a quiet day 2 between)
@@ -159,6 +166,7 @@ def test_timeline_buckets_by_day_fills_gaps_and_tracks_who_joined_and_the_tone(d
 
 
 def test_a_workspace_timeline_is_computed_from_its_own_story_without_events(db):
+    """A visitor's timeline is built on the fly from its story and creates no event."""
     add(db, 1, source="Mine", workspace_id="visitor", age_hours=3)
     add(db, 2, source="Other", age_hours=2)
     db.commit()
@@ -170,6 +178,7 @@ def test_a_workspace_timeline_is_computed_from_its_own_story_without_events(db):
 
 
 def test_timeline_of_a_single_day_story(db):
+    """A story from the last few hours spans at most two calendar days and has no tone shift."""
     add(db, 1, age_hours=3)
     add(db, 2, age_hours=2)
     refresh(db)
@@ -183,20 +192,24 @@ def test_timeline_of_a_single_day_story(db):
 # --------------------------------------------------------------------------- #
 
 def test_an_ingest_cycle_keeps_events_in_step(db, monkeypatch):
+    """Running an ingest cycle also assigns events for the current stories."""
     add(db, 1, age_hours=2)
     add(db, 2, age_hours=1)
     db.add(Feed(name="BBC", url="https://bbc.example/rss", is_active=True))
     db.commit()
     story_index.reset_cache()
+    # Clear the cooldown and stub out fetching so only the post-ingest steps run.
     monkeypatch.setattr(pipeline, "_last_finished", 0.0)
     pipeline.ingest_cycle(db, manual=False, ingest=lambda s, feeds, feed_rows=None: [])
     assert event_count(db) == 1
 
 
 def test_the_timeline_and_trending_endpoints_expose_events():
+    """The timeline endpoint returns event history and trending stories carry event fields."""
     Base.metadata.create_all(bind=app_engine)
     recent = NOW - timedelta(hours=1)
     with SessionLocal() as session:
+        # Two outlets on one story, with high ids to avoid clashing with the shared app database.
         for i, source in ((9101, "BBC"), (9102, "Reuters")):
             session.add(Article(id=i, title=FLOOD, url=f"https://x.test/{i}", source=source, topic="World",
                                 sentiment=0.0, is_seed=False, published_at=recent))

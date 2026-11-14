@@ -6,7 +6,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { useLibrary } from '@/hooks/useLibrary'
 import { cn } from '@/lib/utils'
 
-/** Save an article to read later. Stored in this browser; find it under Topics → Saved. */
+/** Toggles an article in this browser's read-later library (listed under Topics → Saved). */
 export function BookmarkButton({ id, withLabel = false }: { id: number; withLabel?: boolean }) {
   const { isSaved, toggleSaved } = useLibrary()
   const saved = isSaved(id)

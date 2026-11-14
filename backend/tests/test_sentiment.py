@@ -15,6 +15,7 @@ from app import reporting, sentiment, stories  # noqa: E402
 from app.database import Base  # noqa: E402
 from app.models import Article  # noqa: E402
 
+# Scores straddling the +/-0.15 neutral threshold on both sides.
 BOUNDARY_SCORES = [-1.0, -0.151, -0.15, -0.149, 0.0, 0.149, 0.15, 0.151, 1.0]
 
 
@@ -25,6 +26,7 @@ def db():
     Base.metadata.create_all(bind=engine)
     with sessionmaker(bind=engine)() as session:
         now = datetime.now(timezone.utc)
+        # One recent article per boundary score.
         for i, score in enumerate(BOUNDARY_SCORES):
             session.add(Article(title=f"Story {i}", url=f"https://t.example/{i}", source="Wire",
                                 topic="World", sentiment=score,
@@ -57,6 +59,7 @@ def test_tone_follows_the_same_thresholds():
 
 def test_sql_filter_agrees_with_label_for_every_boundary_score(db):
     """The SQL filter agrees with label() for every boundary score."""
+    # For each label, rows the SQL filter selects must match what label() would pick.
     for wanted in sentiment.LABELS:
         q = select(Article.sentiment).where(*sentiment.conditions(Article.sentiment, wanted))
         selected = sorted(s for (s,) in db.execute(q))
@@ -70,6 +73,7 @@ def test_feed_filter_stats_and_label_property_agree(db):
     result = reporting.stats(db)
     assert (result.positive, result.neutral, result.negative) == (
         by_label["positive"], by_label["neutral"], by_label["negative"])
+    # The feed's sentiment filter must return exactly the rows of that label.
     for wanted in sentiment.LABELS:
         q = stories.apply_filters(db, select(Article), search=None, source=None, topic=None,
                                   sentiment=wanted, cluster=None, hot=False, ids=None)

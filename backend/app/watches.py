@@ -30,7 +30,7 @@ from .models import NO_WORKSPACE, Article, Watch, WatchAlert
 
 logger = logging.getLogger("signaldesk.watches")
 
-MAX_WATCHES = 25
+MAX_WATCHES = 25  # cap for the owner's shared watchlist (workspaces use WORKSPACE_MAX_WATCHES)
 
 
 class WatchError(Exception):
@@ -61,6 +61,7 @@ class WatchNotFound(WatchError):
 
 def term_matches(term: str, text: str) -> bool:
     """Whole-word / whole-phrase, case-insensitive ('AI' does not match 'said')."""
+    # Lookarounds require a non-word character (or the text edge) on both sides of the escaped term.
     return bool(re.search(rf"(?<!\w){re.escape(term.strip())}(?!\w)", text, re.IGNORECASE))
 
 
@@ -99,6 +100,7 @@ def active(db: Session) -> list[Watch]:
 def _headline(key: str, members: list[Article], by_id: dict) -> tuple[str, int | None, int]:
     """(title, cluster id, lead article id) for an alert."""
     parsed = story_index.parse_story_key(key)
+    # Prefer the cluster's own title and lead; fall back to the first report for a single-article story.
     if parsed.is_cluster:
         cluster = by_id.get(parsed.id)
         if cluster is not None:
@@ -120,6 +122,7 @@ def baseline(db: Session, watch: Watch) -> int:
     """Mark the stories that already match as seen, so only new ones alert."""
     keys = _seen_keys(db, watch.id)
     added = 0
+    # Record every currently matching story not yet seen, without notifying anyone.
     for key, _ in matching_stories(db, watch):
         if key not in keys:
             db.add(WatchAlert(watch_id=watch.id, story_key=key, notified=False))
@@ -143,10 +146,12 @@ class RecordingDelivery:
     """
 
     def __init__(self, succeeds: bool = True):
+        """Choose whether delivery reports success and start with no recorded batches."""
         self.succeeds = succeeds
         self.batches: list[list[dict]] = []
 
     def __call__(self, alerts: list[dict]) -> bool:
+        """Remember the batch and report the configured outcome."""
         self.batches.append(alerts)
         return self.succeeds
 
@@ -164,6 +169,7 @@ def check_watches(db: Session, deliver: bool = True,
     _, by_id = story_index.get_clusters(db)
     stories = story_index.recent_stories(db)
     alerts: list[dict] = []
+    # Pair every active watch with every recent story it has not alerted on yet.
     for watch in watches:
         seen = _seen_keys(db, watch.id)
         for key, members in stories:
@@ -181,6 +187,7 @@ def check_watches(db: Session, deliver: bool = True,
         # a visitor's alerts show in their dashboard only: the Slack/email channels belong to the owner
         if deliver and not db.info.get("workspace") and (notify or deliver_to_channels)(alerts):
             pairs = {(a["watch_id"], a["story_key"]) for a in alerts}
+            # The IN filters over-select (any watch x any key), so check each row's exact pair before marking it.
             for row in db.execute(
                 select(WatchAlert).where(WatchAlert.notified.is_(False),
                                          WatchAlert.watch_id.in_({w for w, _ in pairs}),
@@ -203,6 +210,7 @@ def alert_subject(alerts: list[dict]) -> str:
 def alert_text(alerts: list[dict]) -> str:
     """Plain-text body for a batch of alerts."""
     lines = ["Stories matching your watchlist:", ""]
+    # One bullet line per alert.
     for a in alerts:
         lines.append(f"• [{a['term']}] {a['title']} — {a['reports']} reports from {a['outlets']} outlets")
     return "\n".join(lines)
@@ -220,6 +228,7 @@ def all_watches(db: Session) -> list[Watch]:
 def with_counts(db: Session, rows: list[Watch]) -> list[Watch]:
     """Set `.matches` on each watch: how many recent stories it fires on right now."""
     stories = story_index.recent_stories(db)
+    # Count, for each watch, the recent stories that would fire it.
     for w in rows:
         w.matches = sum(1 for _, members in stories if story_matches(w, members))
     return rows
@@ -227,7 +236,7 @@ def with_counts(db: Session, rows: list[Watch]) -> list[Watch]:
 
 def create(db: Session, term: str, topic: str | None, min_outlets: int) -> Watch:
     """Validate and create a watch, baselining today's matches so only later stories alert."""
-    term = " ".join(term.split())
+    term = " ".join(term.split())  # collapse runs of whitespace
     topic = (topic or "").strip() or None
     if not term:
         raise InvalidWatch("A watch needs a word or phrase")
@@ -270,6 +279,7 @@ def set_active(db: Session, watch_id: int, is_active: bool) -> Watch:
 def remove(db: Session, watch_id: int) -> None:
     """Delete a watch and its alert history."""
     watch = _get(db, watch_id)
+    # Delete the watch's alert history first so no orphaned alerts remain.
     for row in db.execute(select(WatchAlert).where(WatchAlert.watch_id == watch_id)).scalars():
         db.delete(row)
     db.delete(watch)

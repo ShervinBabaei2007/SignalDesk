@@ -24,6 +24,7 @@ def test_negative_sentiment():
 def test_neutral_sentiment():
     """Neutral wording scores near zero."""
     score = score_sentiment("The board meeting is scheduled for Tuesday")
+    # 0.15 is the neutral band the app uses to label sentiment.
     assert -0.15 <= score <= 0.15
 
 
@@ -53,6 +54,7 @@ def test_summarize_truncates():
     """Summaries are cut to the character limit."""
     text = "Sentence one. " * 100
     summary = summarize(text)
+    # 280 characters is the summary length cap.
     assert len(summary) <= 280
 
 
@@ -81,6 +83,7 @@ def test_ingest_decodes_html_entities_in_titles(monkeypatch):
     from app.models import Article
 
     Base.metadata.create_all(bind=engine)
+    # Fake feedparser entry whose title and summary carry HTML entities.
     entry = SimpleNamespace(title="Microsoft&#8217;s outage &amp; fallout", link="https://x.example/entity-test",
                             summary="It&#8217;s big", published_parsed=None, updated_parsed=None)
     monkeypatch.setattr(ingestion.feedparser, "parse", lambda url: SimpleNamespace(entries=[entry]))

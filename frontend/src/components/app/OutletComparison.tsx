@@ -17,7 +17,9 @@ function SpreadLine({ rows }: { rows: OutletStat[] }) {
   return (
     <div>
       <div className="relative mx-2 h-9">
+        {/* Gradient stops at 42.5% and 57.5% mark the neutral band in the middle of the scale */}
         <div className="absolute top-1/2 h-1.5 w-full -translate-y-1/2 rounded-full bg-[linear-gradient(90deg,color-mix(in_srgb,var(--negative)_50%,transparent)_0_42.5%,color-mix(in_srgb,var(--neutral)_40%,transparent)_42.5%_57.5%,color-mix(in_srgb,var(--positive)_50%,transparent)_57.5%_100%)]" />
+        {/* One lettered dot per outlet, placed at its sentiment score */}
         {rows.map((r, i) => {
           const hue = sourceHue(r.source)
           const level = describeSentiment(r.sentiment)
@@ -58,7 +60,9 @@ function SpreadLine({ rows }: { rows: OutletStat[] }) {
 
 /** One outlet's row with its information, depth and wording. */
 function Row({ row, index }: { row: OutletStat; index: number }) {
+  // Rough word count, assuming about six characters per word including the space.
   const words = Math.round(row.chars / 6)
+  const reliability = reliabilityTone(row.reliability)
   return (
     <BlurFade delay={0.04 * index} duration={0.3} offset={6}>
       <a
@@ -79,15 +83,15 @@ function Row({ row, index }: { row: OutletStat; index: number }) {
           </span>
         </span>
         <InfoScore score={row.info_score} variant="bar" />
-        {row.reliability !== null && (
+        {reliability !== null && (
           <Tooltip>
             <TooltipTrigger
               render={
                 <span
                   className={cn(
                     'w-16 rounded-md border px-1.5 py-0.5 text-center text-[11px] font-semibold tabular-nums',
-                    toneBg[reliabilityTone(row.reliability)!],
-                    toneText[reliabilityTone(row.reliability)!],
+                    toneBg[reliability],
+                    toneText[reliability],
                   )}
                 />
               }

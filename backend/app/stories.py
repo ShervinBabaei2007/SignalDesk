@@ -26,7 +26,7 @@ from .quality import _sections
 
 SENTIMENTS = sentiment_scale.LABELS
 ORDERS = ("newest", "oldest", "sentiment_high", "sentiment_low", "info")
-MAX_IDS = 200
+MAX_IDS = 200  # cap on ids accepted in one ?ids= filter
 
 
 def parse_ids(raw: str | None) -> list[int] | None:
@@ -68,6 +68,7 @@ def apply_filters(
     ids: list[int] | None,
 ) -> Select:
     """Apply the shared feed filters (search, topic, sentiment, source, etc.) to a query."""
+    # Id-list filters use [0] when empty, since no article has id 0 and IN () is invalid on some databases.
     if search:
         like = f"%{search}%"
         q = q.where(Article.title.ilike(like) | Article.summary.ilike(like))
@@ -107,8 +108,7 @@ def _ts(dt: datetime | None) -> float:
 
 
 def report_rank(a: Article) -> tuple[float, int, float]:
-    """Sort key for the reports of one story (use reverse=True): best score,
-    then longer text, then newer."""
+    """Sort key for the reports of one story (use reverse=True): best score, then longer text, then newer."""
     return (a.info_score or 0.0, len(a.full_text or ""), _ts(a.published_at))
 
 
@@ -142,6 +142,7 @@ def build_page(db: Session, ordered_ids: list[int], offset: int, limit: int) -> 
     """
     by_article, _ = story_index.get_clusters(db)
     groups: dict[str, list[int]] = {}
+    # Group ids by story key; dict order keeps each story at its first report's position.
     for article_id in ordered_ids:
         groups.setdefault(story_index.story_key(by_article.get(article_id), article_id), []).append(article_id)
 
@@ -153,6 +154,7 @@ def build_page(db: Session, ordered_ids: list[int], offset: int, limit: int) -> 
     active_watches = watches.active(db)
     stories = []
     leads = []
+    # Build one story card per key, with the best-informed report as its lead.
     for key in page_keys:
         members = ranked([articles[i] for i in groups[key] if i in articles])
         if not members:
@@ -184,11 +186,14 @@ def count_matching(db: Session, q: Select) -> int:
 def outlet_stats(members: list[Article]) -> list[dict]:
     """One row per outlet (its best report): information, wording, depth and who was first.
 
-    Badges are relative to the other outlets of the same story."""
+    Badges are relative to the other outlets of the same story.
+    """
     best: dict[str, Article] = {}
+    # Members are ranked best first, so the first report seen per outlet is its best.
     for m in ranked(members):
         best.setdefault(m.source, m)
     rows = []
+    # Measure each outlet's best report.
     for m in best.values():
         sections = _sections(m.summary_structured)
         rows.append({
@@ -197,10 +202,11 @@ def outlet_stats(members: list[Article]) -> list[dict]:
             "numbers": len(sections.get("By the numbers", [])), "quotes": len(sections.get("Notable quotes", [])),
             "published_at": m.published_at, "badges": [],
         })
-    if len(rows) > 1:
+    if len(rows) > 1:  # badges only mean something when outlets can be compared
         dated = [r for r in rows if r["published_at"]]
         if dated:
             min(dated, key=lambda r: _ts(r["published_at"]))["badges"].append("First to report")
+        # Award each badge to the outlet that leads that metric, if it is non-zero.
         for metric, badge in (("chars", "Most detailed"), ("numbers", "Most figures"), ("quotes", "Most quotes")):
             top = max(rows, key=lambda r: r[metric])
             if top[metric]:

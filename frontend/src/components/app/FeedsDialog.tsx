@@ -42,7 +42,7 @@ function FeedRow({ feed, onDelete, canRemove }: { feed: Feed; onDelete: () => vo
   )
 }
 
-/** The feeds management dialog. */
+/** Dialog for listing the RSS feeds and, when allowed, adding or removing them. */
 export function FeedsDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const { feeds, refreshFeeds } = useDashboard()
   const { token } = useSettings()
@@ -53,6 +53,7 @@ export function FeedsDialog({ open, onOpenChange }: { open: boolean; onOpenChang
   const [url, setUrl] = useState('')
   const [busy, setBusy] = useState(false)
 
+  /** Runs a feed change with a busy flag, then reloads the list or toasts the error. */
   const guard = async (fn: () => Promise<void>) => {
     setBusy(true)
     try {
@@ -66,6 +67,7 @@ export function FeedsDialog({ open, onOpenChange }: { open: boolean; onOpenChang
     }
   }
 
+  /** Submits the add-feed form and clears it on success. */
   const add = (e: FormEvent) => {
     e.preventDefault()
     void guard(async () => {
@@ -76,6 +78,7 @@ export function FeedsDialog({ open, onOpenChange }: { open: boolean; onOpenChang
     })
   }
 
+  /** Adds the built-in recommended feeds that are not configured yet. */
   const addRecommended = () =>
     void guard(async () => {
       const added = await api.addDefaultFeeds()
@@ -97,6 +100,7 @@ export function FeedsDialog({ open, onOpenChange }: { open: boolean; onOpenChang
 
         <ScrollArea className="max-h-72 pr-3">
           <ul className="space-y-2">
+            {/* Workspace visitors can remove only their own feeds; the owner can remove any */}
             {feeds.map((f) => (
               <FeedRow key={f.id} feed={f} canRemove={owner || !f.shared} onDelete={() => void guard(async () => { await api.deleteFeed(f.id) })} />
             ))}

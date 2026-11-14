@@ -69,6 +69,7 @@ export function WatchlistDialog({ open, onOpenChange }: { open: boolean; onOpenC
   ]
   const channels = health?.features?.digest_delivery ?? []
 
+  /** Fetches the current watches from the API. */
   const load = useCallback(async () => {
     try {
       setWatches(await api.watches())
@@ -77,10 +78,12 @@ export function WatchlistDialog({ open, onOpenChange }: { open: boolean; onOpenC
     }
   }, [])
 
+  // Reload the watchlist every time the dialog opens so match counts are fresh.
   useEffect(() => {
     if (open) void load()
   }, [open, load])
 
+  /** Runs a watchlist change with a busy flag, then reloads it or toasts the error. */
   const run = async (fn: () => Promise<void>) => {
     setBusy(true)
     try {
@@ -95,6 +98,7 @@ export function WatchlistDialog({ open, onOpenChange }: { open: boolean; onOpenC
     }
   }
 
+  /** Submits the add-watch form and clears the term on success. */
   const add = (e: FormEvent) => {
     e.preventDefault()
     void run(async () => {

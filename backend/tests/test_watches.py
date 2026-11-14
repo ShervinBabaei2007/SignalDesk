@@ -26,6 +26,7 @@ _article_numbers = itertools.count(1)
 
 def add_story(db, titles_sources, topic="World"):
     """Insert one report per (title, source) and reset the cluster cache."""
+    # A global counter keeps URLs unique and makes each later report slightly older.
     for title, source in titles_sources:
         n = next(_article_numbers)
         db.add(Article(title=title, url=f"https://w.example/{n}", source=source, topic=topic,
@@ -98,6 +99,7 @@ def test_min_outlets_and_topic_are_respected():
 def test_alerts_are_delivered_to_configured_channels(monkeypatch):
     """Alerts are delivered to the configured channels."""
     sent = []
+    # Pretend Slack is configured and capture each message instead of sending it.
     monkeypatch.setattr(notifications, "configured_channels", lambda: ["slack"])
     monkeypatch.setattr(notifications, "deliver_alert",
                         lambda subject, text: (sent.append((subject, text)), {"channels": ["slack"], "sent": ["slack"], "errors": []})[1])

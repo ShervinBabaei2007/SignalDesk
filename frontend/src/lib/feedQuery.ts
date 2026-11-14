@@ -71,6 +71,7 @@ export async function loadFeedPage(source: FeedSource, q: FeedQuery): Promise<Fe
 export function latestOnly() {
   let current = 0
   return {
+    /** Start a request and get a check that stays true only while no newer request has started. */
     begin(): () => boolean {
       const mine = ++current
       return () => mine === current

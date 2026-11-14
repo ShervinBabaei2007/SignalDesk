@@ -37,6 +37,7 @@ def session_factory(monkeypatch):
 def fake_ingest(calls):
     """Build a stand-in ingest function that records which feeds it was asked to fetch."""
     def ingest(db, feeds, feed_rows=None):
+        """Record the requested feed names and report two new articles per feed."""
         calls.append([f["name"] for f in feeds])
         return [{"feed": f["name"], "added": 2, "fetched": 3, "skipped": 1} for f in feeds]
     return ingest
@@ -72,6 +73,7 @@ def test_a_scheduled_run_does_not_start_the_manual_cooldown(session_factory):
 def test_a_running_cycle_blocks_both_manual_and_scheduled_runs(session_factory):
     """A running cycle blocks both manual and scheduled runs."""
     calls = []
+    # Hold the pipeline lock ourselves to simulate a cycle already in progress.
     assert pipeline._lock.acquire(blocking=False)
     try:
         with session_factory() as db:
@@ -86,6 +88,7 @@ def test_a_running_cycle_blocks_both_manual_and_scheduled_runs(session_factory):
 def test_a_failing_watch_check_never_fails_the_ingest(session_factory, monkeypatch):
     """A failing watch check never fails the ingest."""
     def boom(db):
+        """Stand-in watch check that always crashes."""
         raise RuntimeError("watch table is broken")
     monkeypatch.setattr(pipeline.watches, "check_watches", boom)
     with session_factory() as db:
@@ -98,6 +101,7 @@ def test_scheduled_cycle_ingests_then_enriches_until_the_backlog_is_empty(sessio
     waves = []
 
     def enrich(db):
+        """Fake enrichment wave that clears the backlog on its third call."""
         waves.append(1)
         return {"enriched": 3, "remaining": 5 if len(waves) < 3 else 0}
 
@@ -110,6 +114,7 @@ def test_enrichment_stops_when_a_wave_makes_no_progress(session_factory):
     waves = []
 
     def enrich(db):
+        """Fake enrichment wave that never makes progress."""
         waves.append(1)
         return {"enriched": 0, "remaining": 4}
 
@@ -120,6 +125,7 @@ def test_enrichment_stops_when_a_wave_makes_no_progress(session_factory):
 def test_enrichment_failures_are_contained(session_factory):
     """Enrichment failures are contained and never raise."""
     def enrich(db):
+        """Fake enrichment wave that always crashes."""
         raise RuntimeError("model is down")
 
     pipeline.enrich_backlog(session_factory, enrich)  # does not raise

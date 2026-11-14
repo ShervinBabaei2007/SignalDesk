@@ -13,6 +13,7 @@ from .analysis import extract_keywords
 from .ingestion import add_missing_default_feeds, ingest_all
 from .models import Article, Feed
 
+# Offline sample articles: (title, source, topic, sentiment, age marker such as "-2d", summary).
 SEED_ARTICLES = [
     # --- Technology ---------------------------------------------------------
     ("AI Chipmaker Hits Record Quarterly Revenue on Surging Data Center Demand",
@@ -171,11 +172,13 @@ SEED_ARTICLES = [
 
 
 def backfill_keywords(db: Session) -> int:
-    """One-time migration: compute keywords for articles ingested before the
-    keywords column existed. Idempotent — only touches rows with no keywords."""
+    """Compute keywords for articles ingested before the keywords column existed.
+
+    One-time migration. Idempotent — only touches rows with no keywords."""
     rows = db.execute(
         select(Article).where((Article.keywords.is_(None)) | (Article.keywords == ""))
     ).scalars().all()
+    # Derive each article's keywords from its title and feed summary.
     for article in rows:
         article.keywords = ", ".join(extract_keywords(f"{article.title}. {article.summary or ''}"))
     if rows:
@@ -202,11 +205,12 @@ def seed_if_empty(db: Session, live: bool = True) -> int:
                      for f in db.execute(select(Feed).where(Feed.is_active)).scalars().all()]
             results = ingest_all(db, feeds)
             added = sum(r["added"] for r in results)
-            if added >= 3:
+            if added >= 3:  # a handful of real articles is enough; fewer means the network is mostly down
                 return added
         except Exception:  # noqa: BLE001 — offline first boot is expected sometimes
             pass
 
+    # Insert the sample articles with placeholder URLs, flagged as seeds so real sessions can hide them.
     for number, (title, source, topic, sentiment, age, summary) in enumerate(SEED_ARTICLES, start=1):
         db.add(Article(
             title=title,
@@ -232,13 +236,14 @@ def repair_seed_dates(db: Session) -> int:
     """
     rows = db.execute(select(Article).where(Article.is_seed.is_(True), Article.published_at.is_not(None))).scalars().all()
     fixed = 0
+    # Mirror each future-dated seed around its creation time.
     for a in rows:
         published, created = a.published_at, a.ingested_at
         if published.tzinfo is None:
             published = published.replace(tzinfo=timezone.utc)
         if created.tzinfo is None:
             created = created.replace(tzinfo=timezone.utc)
-        if published > created + timedelta(minutes=5):
+        if published > created + timedelta(minutes=5):  # small slack so clock jitter is not "the future"
             a.published_at = created - (published - created)
             fixed += 1
     if fixed:

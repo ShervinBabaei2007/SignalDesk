@@ -49,6 +49,7 @@ def provider(monkeypatch):
 # --------------------------------------------------------------------------- #
 
 def test_vectors_round_trip_and_come_back_unit_length():
+    """Encoded vectors decode normalised to length 1 and are stored compactly."""
     blob = embeddings.encode([3.0, 4.0, 0.0])
     vec = embeddings.decode(blob)
     assert math.isclose(float(np.linalg.norm(vec)), 1.0, rel_tol=1e-3)
@@ -57,6 +58,7 @@ def test_vectors_round_trip_and_come_back_unit_length():
 
 
 def test_availability_needs_opt_in_and_a_key_or_a_local_server(monkeypatch):
+    """Embeddings run only when enabled and either a key is set or the endpoint is local."""
     assert embeddings.available()
     monkeypatch.setattr(config, "EMBEDDINGS_ENABLED", False)
     assert not embeddings.available()
@@ -71,6 +73,7 @@ def test_availability_needs_opt_in_and_a_key_or_a_local_server(monkeypatch):
 def fake_post(calls, responder):
     """An httpx.post stand-in that records payloads and answers with `responder(payload)`."""
     def post(url, headers=None, json=None, timeout=None):
+        """Record the request and return a response object whose raise_for_status raises on 4xx/5xx."""
         calls.append({"url": url, "json": dict(json), "auth": (headers or {}).get("Authorization")})
         status, body = responder(json)
         return SimpleNamespace(status_code=status, json=lambda: body, raise_for_status=lambda: None if status < 400
@@ -84,6 +87,7 @@ def ok_body(payload):
 
 
 def test_embed_texts_batches_and_keeps_order(monkeypatch):
+    """Inputs larger than one batch are split into requests and return one vector per text."""
     calls = []
     monkeypatch.setattr(embeddings.httpx, "post", fake_post(calls, ok_body))
     vectors = embeddings.embed_texts([f"headline {i}" for i in range(embeddings.BATCH + 5)])
@@ -94,6 +98,7 @@ def test_embed_texts_batches_and_keeps_order(monkeypatch):
 
 
 def test_embed_texts_retries_without_dimensions_when_the_model_rejects_them(monkeypatch):
+    """A 400 caused by the dimensions field triggers one retry without it."""
     calls = []
     monkeypatch.setattr(embeddings.httpx, "post", fake_post(calls, lambda p: (400, {}) if "dimensions" in p else ok_body(p)))
     assert embeddings.embed_texts(["a headline"]) is not None
@@ -101,6 +106,7 @@ def test_embed_texts_retries_without_dimensions_when_the_model_rejects_them(monk
 
 
 def test_embed_texts_returns_none_on_failure_or_a_malformed_reply(monkeypatch):
+    """Server errors and malformed or short replies yield None instead of raising."""
     monkeypatch.setattr(embeddings.httpx, "post", fake_post([], lambda p: (500, {})))
     assert embeddings.embed_texts(["x"]) is None
     monkeypatch.setattr(embeddings.httpx, "post", fake_post([], lambda p: (200, {"data": []})))
@@ -131,12 +137,14 @@ def add(db, i, **kw):
 
 
 def test_embed_pending_stores_vectors_for_shared_articles_only(db, monkeypatch):
+    """Only recent, shared, non-seed articles are sent for embedding and stored."""
     add(db, 1)
     add(db, 2, is_seed=True)                         # demo seed: never embedded
     add(db, 3, workspace_id="visitor")               # a visitor's article: never sent to a paid API
     add(db, 4, published_at=NOW - timedelta(days=30))  # too old for clustering to use
     db.commit()
     seen = []
+    # Record which texts are sent and answer with one dummy vector each.
     monkeypatch.setattr(embeddings, "embed_texts", lambda texts: (seen.extend(texts), [[1.0, 0.0, 0.0, 0.0]] * len(texts))[1])
     assert embeddings.embed_pending(db) == 1
     assert len(seen) == 1 and seen[0].startswith("Story 1")
@@ -148,6 +156,7 @@ def test_embed_pending_stores_vectors_for_shared_articles_only(db, monkeypatch):
 
 
 def test_embed_pending_does_nothing_when_off_or_for_a_workspace_session(db, monkeypatch):
+    """A visitor session or disabled embeddings never call the provider."""
     add(db, 1)
     db.commit()
     monkeypatch.setattr(embeddings, "embed_texts", lambda texts: pytest.fail("must not call the provider"))
@@ -159,6 +168,7 @@ def test_embed_pending_does_nothing_when_off_or_for_a_workspace_session(db, monk
 
 
 def test_embed_pending_survives_a_provider_failure_and_reembeds_after_a_model_change(db, monkeypatch):
+    """A failed provider call stores nothing, and switching models re-embeds stored articles."""
     add(db, 1)
     db.commit()
     monkeypatch.setattr(embeddings, "embed_texts", lambda texts: None)
@@ -171,6 +181,7 @@ def test_embed_pending_survives_a_provider_failure_and_reembeds_after_a_model_ch
 
 
 def test_vectors_from_another_model_are_ignored_by_clustering(monkeypatch):
+    """Only decodable vectors from the current model are handed to clustering."""
     blob = embeddings.encode([1.0, 0.0, 0.0, 0.0])
     got = embeddings.vectors_for([(1, blob, "test-embed"), (2, blob, "older-model"), (3, None, None), (4, "!!bad!!", "test-embed")])
     assert set(got) == {1}
@@ -181,6 +192,7 @@ def test_vectors_from_another_model_are_ignored_by_clustering(monkeypatch):
 # --------------------------------------------------------------------------- #
 
 def test_paraphrases_with_no_shared_words_cluster_when_their_meaning_is_close():
+    """Headlines sharing no words still cluster when their vectors are close."""
     titles = ["Regulators halt every domestic departure", "Air travel paralysed across the country"]
     assert cluster_rows(rows(titles)) == []  # words alone cannot tell
     close = {1: unit(1, 0.2, 0, 0), 2: unit(1, 0.3, 0.1, 0)}
@@ -189,18 +201,21 @@ def test_paraphrases_with_no_shared_words_cluster_when_their_meaning_is_close():
 
 
 def test_distant_meaning_does_not_cluster():
+    """Vectors below the similarity threshold keep headlines apart."""
     titles = ["Regulators halt every domestic departure", "Central bank holds interest rates steady"]
     far = {1: unit(1, 0, 0, 0), 2: unit(0.3, 1, 0, 0)}
     assert cluster_rows(rows(titles), far) == []
 
 
 def test_meaning_cannot_link_stories_published_days_apart():
+    """Identical vectors do not merge articles published five days apart."""
     titles = ["Regulators halt every domestic departure", "Air travel paralysed across the country"]
     same = {1: unit(1, 0, 0, 0), 2: unit(1, 0, 0, 0)}
     assert cluster_rows(rows(titles, hours=24 * 5), same) == []
 
 
 def test_articles_without_vectors_still_cluster_by_words_alongside_embedded_ones():
+    """Word-based and vector-based matching both work in the same clustering run."""
     clusters = cluster_rows(rows([
         "FAA issues nationwide ground stop due to extraordinary circumstances",
         "FAA ground stop shuts down flights nationwide",
@@ -211,8 +226,10 @@ def test_articles_without_vectors_still_cluster_by_words_alongside_embedded_ones
 
 
 def test_a_chain_bridged_by_one_headline_is_split_into_its_two_stories():
+    """An oversized cluster chained through one bridging headline splits back into its two real stories."""
     a, b = unit(1, 0), unit(0.3, math.sqrt(1 - 0.09))   # about 72 degrees apart: not the same story
     bridge = unit(*(a + b))                             # close enough to both (cosine about 0.81) to chain them
+    # Two groups of n together exceed MAX_CLUSTER, forcing the split.
     n = MAX_CLUSTER // 2 + 2
     titles = [f"alpha{i}word{i} beta{i}word{i}" for i in range(2 * n + 1)]  # no shared words: only meaning links
     vectors = {i + 1: a for i in range(n)} | {n + i + 1: b for i in range(n)} | {2 * n + 1: bridge}
@@ -223,6 +240,8 @@ def test_a_chain_bridged_by_one_headline_is_split_into_its_two_stories():
 
 
 def test_story_index_uses_stored_embeddings(db, monkeypatch):
+    """The story index clusters by stored vectors and ignores those from another model."""
+    # Two wordless paraphrases with nearly identical stored vectors.
     for i, title in enumerate(["Regulators halt every domestic departure", "Air travel paralysed across the country"]):
         add(db, i + 1, title=title, source=f"Src{i}", embedding=embeddings.encode([1.0, 0.2 + i / 10, 0, 0]),
             embedding_model="test-embed")

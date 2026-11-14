@@ -37,6 +37,7 @@ describe('barHeights', () => {
 })
 
 describe('fillSeries', () => {
+  // Half past the hour, so the newest hourly bucket is 10:00.
   const now = new Date('2026-11-14T10:30:00Z')
 
   it('gives a 24 hour window one bucket per hour, quiet hours included', () => {

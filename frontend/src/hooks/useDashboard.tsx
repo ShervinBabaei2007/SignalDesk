@@ -53,6 +53,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   const { saved } = useLibrary()
   const { reload, ...feed } = useFeedQuery(grouped, saved)
   const { reloadSide, ...side } = useSideData()
+  /** Reload the feed page and the side panels together, e.g. after an ingest. */
   const refreshAll = useCallback(async () => {
     await Promise.all([reload(), reloadSide()])
   }, [reload, reloadSide])

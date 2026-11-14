@@ -17,6 +17,7 @@ describe('monotonePath', () => {
 
   it('does not overshoot at a peak (all coordinates stay within the data range)', () => {
     const d = monotonePath([[0, 10], [10, 0], [20, 10]])
+    // Strip the path commands and read the remaining numbers as alternating x, y pairs.
     const nums = d.replace(/[MC]/g, ' ').trim().split(/[\s,]+/).map(Number)
     const ys = nums.filter((_, i) => i % 2 === 1)
     expect(Math.min(...ys)).toBeGreaterThanOrEqual(0)

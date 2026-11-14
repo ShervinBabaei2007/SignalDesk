@@ -19,7 +19,7 @@ interface SettingsValue {
 /** Context holding the settings value. */
 const Ctx = createContext<SettingsValue | null>(null)
 
-/** Read a saved boolean setting. */
+/** Read a saved boolean setting, falling back when it is missing, malformed or unreadable. */
 function readSaved(key: string, fallback: boolean): boolean {
   try {
     const v = JSON.parse(localStorage.getItem(KEY) ?? '{}')[key]
@@ -29,7 +29,7 @@ function readSaved(key: string, fallback: boolean): boolean {
   }
 }
 
-/** Persist one boolean setting. */
+/** Persist one boolean setting while keeping the others already stored. */
 function writeSaved(key: string, value: boolean) {
   try {
     const prev = JSON.parse(localStorage.getItem(KEY) ?? '{}')
@@ -39,7 +39,7 @@ function writeSaved(key: string, value: boolean) {
   }
 }
 
-/** `?compact=1` / `?compact=0` in the URL wins over the saved choice. */
+/** The starting compact setting, where `?compact=1` / `?compact=0` in the URL wins over the saved choice. */
 function readCompact(): boolean {
   const q = new URLSearchParams(location.search)
   if (q.has('compact')) return q.get('compact') !== '0'
@@ -52,23 +52,28 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const [token, setTokenState] = useState(getToken)
   const [grouped, setGroupedState] = useState(() => readSaved('grouped', true))
 
+  // Expose the density on <html> so the CSS can switch spacing.
   useEffect(() => {
     document.documentElement.dataset.compact = compact ? 'on' : 'off'
   }, [compact])
 
+  /** Switch compact layout on or off and remember the choice. */
   const setCompact = useCallback((v: boolean) => {
     setCompactState(v)
     writeSaved('compact', v)
   }, [])
 
+  /** Switch story grouping on or off and remember the choice. */
   const setGrouped = useCallback((v: boolean) => {
     setGroupedState(v)
     writeSaved('grouped', v)
   }, [])
 
+  /** Store the API token (trimmed) and update the app with it. */
   const saveToken = useCallback((v: string) => {
-    setToken(v.trim())
-    setTokenState(v.trim())
+    const trimmed = v.trim()
+    setToken(trimmed)
+    setTokenState(trimmed)
   }, [])
 
   const value = useMemo(

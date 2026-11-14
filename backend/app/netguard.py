@@ -15,8 +15,8 @@ from urllib.parse import urljoin, urlparse
 
 import httpx
 
-ALLOWED_PORTS = {None, 80, 443, 8080, 8443}
-MAX_REDIRECTS = 4
+ALLOWED_PORTS = {None, 80, 443, 8080, 8443}  # None means the scheme's default port
+MAX_REDIRECTS = 4  # hops followed before giving up
 
 
 class UnsafeURL(ValueError):
@@ -38,6 +38,7 @@ def check_url(url: str) -> None:
         infos = socket.getaddrinfo(parsed.hostname, port or 443, proto=socket.IPPROTO_TCP)
     except OSError:
         raise UnsafeURL("That host could not be resolved") from None
+    # Take each resolved IP from the sockaddr tuple, stripping any IPv6 zone id ("%eth0").
     addresses = {info[4][0].split("%")[0] for info in infos}
     if not addresses or not all(ipaddress.ip_address(a).is_global for a in addresses):
         raise UnsafeURL("That address is not public")
@@ -45,6 +46,7 @@ def check_url(url: str) -> None:
 
 def fetch(url: str, *, headers: dict | None = None, timeout: float = 12.0, max_bytes: int = 3_000_000) -> httpx.Response:
     """GET `url`, validating the URL and every redirect hop, and reading at most `max_bytes`."""
+    # The first request plus up to MAX_REDIRECTS hops, each re-checked before it is requested.
     for _ in range(MAX_REDIRECTS + 1):
         check_url(url)
         with httpx.stream("GET", url, headers=headers, timeout=timeout, follow_redirects=False) as resp:
@@ -52,6 +54,7 @@ def fetch(url: str, *, headers: dict | None = None, timeout: float = 12.0, max_b
                 url = urljoin(url, resp.headers["location"])
                 continue
             body = bytearray()
+            # Stream the body and stop reading once it passes the size cap.
             for chunk in resp.iter_bytes():
                 body.extend(chunk)
                 if len(body) > max_bytes:

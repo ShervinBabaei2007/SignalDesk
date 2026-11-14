@@ -13,6 +13,7 @@ export interface InfoLevel {
 /** Map a 0-100 information score to a level. */
 export function infoLevel(score: number | null | undefined): InfoLevel & { value: number } {
   const value = Math.round(score ?? 0)
+  // Four equal quarter bands of the 0–100 scale.
   if (value >= 75) return { value, label: 'Very detailed', bar: 'bg-link', text: 'text-link' }
   if (value >= 50) return { value, label: 'Detailed', bar: 'bg-link/70', text: 'text-link' }
   if (value >= 25) return { value, label: 'Brief', bar: 'bg-muted-foreground/60', text: 'text-muted-foreground' }

@@ -44,8 +44,9 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
   const [read, setRead] = useState<number[]>(() => load(READ_KEY))
   const readSet = useMemo(() => new Set(read), [read])
 
-  // keep several open tabs in step
+  // Keep several open tabs in step: another tab's write fires a storage event here.
   useEffect(() => {
+    /** Reload whichever list another tab changed. */
     const onStorage = (e: StorageEvent) => {
       if (e.key === SAVED_KEY) setSaved(load(SAVED_KEY))
       if (e.key === READ_KEY) setRead(load(READ_KEY))
@@ -54,6 +55,7 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('storage', onStorage)
   }, [])
 
+  /** Save or unsave an article and persist the list. */
   const toggleSaved = useCallback((id: number) => {
     setSaved((prev) => {
       const next = toggleId(prev, id)
@@ -62,11 +64,12 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
+  /** Record an article as read and persist the list when it changed. */
   const markRead = useCallback((id: number) => {
     setRead((prev) => {
-      if (prev[0] === id) return prev
       const next = addRead(prev, id)
-      save(READ_KEY, next)
+      // addRead hands back the same array when the article is already the newest read.
+      if (next !== prev) save(READ_KEY, next)
       return next
     })
   }, [])

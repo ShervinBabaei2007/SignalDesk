@@ -22,6 +22,7 @@ export function useFeedQuery(grouped: boolean, saved: number[]) {
   // The search text last sent to the server; typing differs from it and is debounced, other changes are not.
   const appliedSearch = useRef(applied.filters.search)
 
+  /** Fetch one feed page, letting only the newest request update the view. */
   const load = useCallback(async (q: FeedQuery) => {
     const isLatest = gate.current.begin()
     setLoading(true)
@@ -35,31 +36,38 @@ export function useFeedQuery(grouped: boolean, saved: number[]) {
     }
   }, [])
 
+  // Turn the UI state into the query to send, waiting for a pause in search typing first.
   useEffect(() => {
     const searchChanged = filters.search !== appliedSearch.current
     const t = setTimeout(() => {
       appliedSearch.current = filters.search
+      // Saved ids are sent only while the Saved category is selected.
       setApplied({ filters, page, grouped, ids: filters.saved ? savedKey : undefined })
-    }, searchChanged ? 250 : 0)
+    }, searchChanged ? 250 : 0) // 250 ms debounce for typing; other changes apply on the next tick
     return () => clearTimeout(t)
   }, [filters, page, grouped, savedKey])
 
+  // Fetch whenever the applied query changes.
   useEffect(() => {
     void load(applied)
   }, [applied, load])
 
+  /** Change some filters and go back to the first page. */
   const setFilter = useCallback((patch: Partial<Filters>) => {
     setFilters((f) => ({ ...f, ...patch }))
     setPageState(1)
   }, [])
+  /** Turn every filter off (keeping the sort order) and go back to the first page. */
   const clearFilters = useCallback(() => {
     setFilters(clearedFilters)
     setPageState(1)
   }, [])
+  /** Show every report of one story from the first page. */
   const openStory = useCallback((clusterId: number) => {
     setFilters((f) => storyFilters(f, clusterId))
     setPageState(1)
   }, [])
+  /** Fetch the current page again without changing the query. */
   const reload = useCallback(() => load(applied), [applied, load])
 
   return {

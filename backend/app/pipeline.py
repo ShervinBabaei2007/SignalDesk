@@ -37,7 +37,7 @@ _last_finished = 0.0
 # A visitor's workspace has its own lock and cooldown, so visitors never block each other or the base ingest.
 _workspace_locks: dict[str, threading.Lock] = {}
 _workspace_finished: dict[str, float] = {}
-MAX_ENRICH_WAVES = 12
+MAX_ENRICH_WAVES = 12  # upper bound on enrichment batches per backlog run, so it always terminates
 
 
 class Busy(Exception):
@@ -63,6 +63,7 @@ def ingest_cycle(db: Session, *, manual: bool,
     :func:`app.ingestion.ingest_all`); tests pass a fake so nothing touches the network.
     """
     global _last_finished
+    kind = "manual" if manual else "scheduled"
     workspace = db.info.get("workspace", "")
     lock = _workspace_locks.setdefault(workspace, threading.Lock()) if workspace else _lock
     last_finished = _workspace_finished.get(workspace, 0.0) if workspace else _last_finished
@@ -80,10 +81,11 @@ def ingest_cycle(db: Session, *, manual: bool,
         try:
             results = (ingest or ingest_all)(db, feeds, feed_rows=feed_rows)
         except Exception as exc:
-            observability.record_cycle(db, kind="manual" if manual else "scheduled",
+            observability.record_cycle(db, kind=kind,
                                        duration_seconds=time.perf_counter() - started, results=[], error=repr(exc))
             raise
         duration = time.perf_counter() - started
+        # Only manual runs start the cooldown clock.
         if manual:
             if workspace:
                 _workspace_finished[workspace] = time.time()
@@ -107,7 +109,7 @@ def ingest_cycle(db: Session, *, manual: bool,
     except Exception:  # noqa: BLE001 - event tracking must never fail an ingest
         db.rollback()
         logger.exception("[events] assignment failed")
-    observability.record_cycle(db, kind="manual" if manual else "scheduled", duration_seconds=duration,
+    observability.record_cycle(db, kind=kind, duration_seconds=duration,
                                results=results, alerts=len(alerts))
     return CycleResult(results=results, duration_seconds=round(duration, 2), alerts=alerts,
                        enrich_pending=pending, enrich_needed=bool(pending or missing_images))
@@ -115,11 +117,14 @@ def ingest_cycle(db: Session, *, manual: bool,
 
 def enrich_backlog(session_factory: Callable[[], Session] | None = None,
                    enrich: Callable[[Session], dict] | None = None, workspace: str = "") -> None:
-    """Enrich pending articles wave by wave, so a big ingest is fully enriched,
-    stopping if a wave makes no progress. `workspace` enriches that visitor's articles instead of the shared ones."""
+    """Enrich pending articles wave by wave, so a big ingest is fully enriched.
+
+    Stops if a wave makes no progress. `workspace` enriches that visitor's articles instead of the shared ones.
+    """
     with (session_factory or SessionLocal)() as db:
         db.info["workspace"] = workspace
         try:
+            # Run batches until nothing is left or a batch enriches nothing.
             for _ in range(MAX_ENRICH_WAVES):
                 stats = (enrich or enrichment.enrich_pending_articles)(db)
                 logger.info("[enrich] deep summaries generated for %s articles (%s remaining)",

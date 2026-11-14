@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from typing import Iterable
 
+# Scores within +/-0.15 of zero are neutral.
 POSITIVE_ABOVE = 0.15
 NEGATIVE_BELOW = -0.15
 
@@ -41,6 +42,7 @@ def conditions(column, wanted: str) -> tuple:
 def counts(scores: Iterable[float]) -> dict[str, int]:
     """How many scores fall in each label, always with all three keys."""
     out = {name: 0 for name in LABELS}
+    # Tally each score under its label.
     for score in scores:
         out[label(score)] += 1
     return out

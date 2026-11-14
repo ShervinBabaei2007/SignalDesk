@@ -42,6 +42,7 @@ def test_hot_ranking_prefers_outlets_and_recency_and_skips_single_outlet_stories
     fresh = Cluster(id=1, article_ids=(1, 2), sources=("A", "B"), title="Fresh", lead_id=1)
     big_but_old = Cluster(id=3, article_ids=(3, 4, 5), sources=("A", "B", "C"), title="Old", lead_id=3)
     one_outlet = Cluster(id=6, article_ids=(6, 7), sources=("A",), title="Echo", lead_id=6)
+    # The three-outlet story is about 60 hours old, the two-outlet one only hours old.
     info = {1: _member(hours_ago=1), 2: _member(hours_ago=2),
             3: _member(hours_ago=60), 4: _member(hours_ago=61), 5: _member(hours_ago=62),
             6: _member(), 7: _member()}
@@ -67,6 +68,7 @@ def db():
         rows = [("Quake strikes coastal city overnight, hundreds evacuated", "Alpha"),
                 ("Hundreds evacuated as quake strikes coastal city overnight", "Beta"),
                 ("Local bakery wins national bread award this weekend", "Gamma")]
+        # Two outlets on the quake story and one unrelated lone report.
         for i, (title, source) in enumerate(rows):
             session.add(Article(title=title, url=f"https://x.example/{i}", source=source, topic="World",
                                 sentiment=0.0, published_at=NOW - timedelta(minutes=i), is_seed=False))
@@ -93,6 +95,7 @@ def test_the_window_is_read_once_per_article_set(db, monkeypatch):
     story_index.recent_stories(db)  # primes the cache
     calls = []
     real = story_index.cluster_rows
+    # Wrap the real clusterer so any re-clustering would be counted.
     monkeypatch.setattr(story_index, "cluster_rows", lambda rows: (calls.append(1), real(rows))[1])
     story_index.recent_stories(db)
     story_index.get_clusters(db)

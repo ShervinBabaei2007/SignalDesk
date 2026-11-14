@@ -51,6 +51,7 @@ THIRD = report(3, "Gamma", -0.9, [
 
 def test_figures_ignore_years_times_and_tiny_numbers():
     """Figures exclude years, times and tiny numbers."""
+    # 2026 is a year, 9 pm a time and 12 too small to count as a figure.
     found = figures("In 2026 at 9 pm about 1,200 flights and $400 million, or 35% of 12 routes, were hit.")
     assert set(found) == {"1200", "$400million", "35%"}
 
@@ -136,6 +137,7 @@ def comet_story():
     """Fixture that seeds a comet story covered by several outlets."""
     Base.metadata.create_all(bind=engine)
     numbers = "## By the numbers\n- The comet is 4,000 km wide.\n## Notable quotes\n- \"A rare sight,\" said one astronomer."
+    # Bout has the best info score and longest text; Aout was published first.
     with SessionLocal() as db:
         _add(db, 1, "Aout", "Giant comet becomes visible to naked eye over Europe tonight", 40.0, 300, -0.1, minutes=30)
         _add(db, 2, "Bout", "Comet giant visible to the naked eye over Europe tonight", 88.0, 1200, 0.1, numbers, minutes=10)
@@ -166,6 +168,7 @@ def test_brief_is_cached_until_the_story_changes(comet_story, monkeypatch):
     """A brief is cached until the story's reports change."""
     calls = []
     real = briefs.build_brief
+    # Wrap the real builder so every call is counted but still returns a brief.
     monkeypatch.setattr(briefs, "build_brief", lambda t, m: (calls.append(1), real(t, m))[1])
     client.get(f"/api/stories/{comet_story}")
     client.get(f"/api/stories/{comet_story}")

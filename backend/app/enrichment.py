@@ -26,6 +26,7 @@ from .quality import information_score
 # Serialize enrichment: SQLite dislikes concurrent writers
 _lock = threading.Lock()
 
+# Browser-like request headers, since many news sites block obvious bots.
 _HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -52,6 +53,7 @@ def fetch_page_signals(url: str, timeout: float = 12.0,
     if resp.status_code != 200:
         return None, None, None
     content_type = resp.headers.get("content-type", "")
+    # Skip PDFs, images and other non-text responses.
     if "html" not in content_type and "text" not in content_type:
         return None, None, None
     try:
@@ -92,6 +94,7 @@ def enrich_article(db: Session, article: Article) -> bool:
         return False
 
     fetched = None
+    # Demo seed articles have fake URLs, so never fetch them.
     if not article.is_seed:
         fetched, image, signals = fetch_page_signals(article.url, guarded=bool(article.workspace_id))
         article.extraction = "page" if fetched else "fallback"  # observability: did the page itself yield text?
@@ -100,6 +103,7 @@ def enrich_article(db: Session, article: Article) -> bool:
         if image:
             article.image_url = image  # the page's own lead image beats the feed's thumbnail
 
+    # Full text is available (freshly fetched or stored earlier): summarize it.
     if fetched or article.full_text:
         if fetched:
             article.full_text = strip_boilerplate(fetched)
@@ -124,7 +128,7 @@ def enrich_article(db: Session, article: Article) -> bool:
             article.analysis_source = "llm"
             if analysis["keywords"]:
                 article.keywords = ", ".join(analysis["keywords"])
-            if analysis["topic"] != "General":
+            if analysis["topic"] != "General":  # keep the lexicon topic over the model's catch-all
                 article.topic = analysis["topic"]
             article.sentiment = analysis["sentiment"]
         else:
@@ -170,6 +174,7 @@ def enrich_pending_articles(db: Session, limit: int | None = None) -> dict:
             .limit(limit)
         ).scalars().all()
 
+        # Enrich each pending article and count the ones actually updated.
         enriched = sum(1 for article in pending if enrich_article(db, article))
 
         # Articles enriched before image support: fetch their lead image once.

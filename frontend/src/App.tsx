@@ -54,6 +54,7 @@ export default function App() {
         <Header />
         <main className="mx-auto max-w-[96rem] px-4 py-5 sm:px-6">
           <AnimatePresence mode="wait" initial={false}>
+            {/* A key per page (and per article or story id) makes every navigation animate */}
             <motion.div
               key={route.name === 'home' ? 'home' : `${route.name}-${route.id}`}
               initial={{ opacity: 0, y: 8 }}

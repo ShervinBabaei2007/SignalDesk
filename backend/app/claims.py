@@ -32,16 +32,18 @@ logger = logging.getLogger("signaldesk.claims")
 MATCH_MIN = 0.5            # word overlap at which two sentences are the same claim
 FIGURE_TOLERANCE = 0.05    # figures within 5% of each other are the same figure
 MAX_PER_REPORT = 12        # checkable sentences kept per report
-MAX_CLAIMS = 10
-MAX_SINGLE = 3
+MAX_CLAIMS = 10            # claims shown per story
+MAX_SINGLE = 3             # of which at most this many are single-outlet claims
 STATUSES = ("agreed", "disputed", "single")
 
-_QUOTE = re.compile(r"[\"“”][^\"“”]{12,}[\"“”]")
+_QUOTE = re.compile(r"[\"“”][^\"“”]{12,}[\"“”]")  # a quotation of at least 12 characters
+# Verbs and phrases that attribute a statement or report a concrete event.
 _ATTRIBUTION = re.compile(
     r"\b(said|says|announced|confirmed|reported|according to|told|warned|estimated|expects?|plans?|"
     r"will|has been|have been|killed|injured|arrested|approved|signed|rose|fell|raised|cut)\b", re.IGNORECASE)
-_ENTITIES = re.compile(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b")
+_ENTITIES = re.compile(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b")  # runs of capitalised words, a rough proper-noun finder
 _CLOCK = re.compile(r"\b\d{1,2}:\d{2}\b")  # 2:03 is a video length or a timestamp, not a figure
+# Page chrome (buttons, promos, video labels) that sometimes survives text extraction.
 _FURNITURE = re.compile(r"\b(watch now|in this article|click here|sign up|subscribe|read more|follow us|"
                         r"advertisement|video \d)\b", re.IGNORECASE)
 _MULTIPLIER = {"thousand": 1e3, "million": 1e6, "billion": 1e9, "trillion": 1e12}
@@ -54,10 +56,16 @@ def figure_value(raw: str) -> tuple[str, float] | None:
     if not number:
         return None
     value = float(number.group(0).replace(",", ""))
+    # Scale by any magnitude word ("billion") the figure carries.
     for word, factor in _MULTIPLIER.items():
         if word in lowered:
             value *= factor
-    unit = "pct" if ("%" in lowered or "percent" in lowered) else "money" if re.search(r"[$€£]", lowered) else "num"
+    if "%" in lowered or "percent" in lowered:
+        unit = "pct"
+    elif re.search(r"[$€£]", lowered):
+        unit = "money"
+    else:
+        unit = "num"
     return unit, value
 
 
@@ -72,17 +80,20 @@ def is_checkable(sentence: str) -> bool:
 
 def _words(sentence: str) -> str:
     """The sentence without its figures, so the same claim with different numbers still matches."""
+    # Same figure shape as briefs._NUMBER: optional currency, digits, optional unit or magnitude word.
     return re.sub(r"[$€£]?\d[\d,]*(?:\.\d+)?\s?(?:%|percent|million|billion|trillion|thousand)?", " ", sentence)
 
 
 def _conflict(per_outlet: dict[str, dict[str, str]]) -> dict[str, str] | None:
     """Each outlet's figure when two outlets give different figures of the same kind, else None."""
     parsed: dict[str, dict[str, tuple[str, float]]] = {}
+    # Group figures by unit class, keeping each outlet's first figure of that class.
     for outlet, figs in per_outlet.items():
         for raw in figs.values():
             val = figure_value(raw)
             if val:
                 parsed.setdefault(val[0], {}).setdefault(outlet, (raw, val[1]))
+    # A unit class is disputed when every pair of outlets differs by more than the tolerance.
     for by_outlet in parsed.values():
         if len(by_outlet) < 2:
             continue
@@ -96,9 +107,11 @@ def _conflict(per_outlet: dict[str, dict[str, str]]) -> dict[str, str] | None:
 def extractive_claims(title: str, members: list[Article]) -> list[dict[str, Any]]:
     """Deterministic claim comparison (members must be ranked best first)."""
     best: dict[str, Article] = {}
+    # Members are ranked, so the first report seen per outlet is its best one.
     for m in members[:MAX_REPORTS]:
         best.setdefault(m.source, m)  # the best report per outlet
     groups: list[dict[str, Any]] = []
+    # Group each outlet's checkable sentences with a matching claim from another outlet, or start a new claim.
     for outlet, report in best.items():
         picked = [s for s in _sentences(report) if is_checkable(s)][:MAX_PER_REPORT]
         for sentence in picked:
@@ -110,6 +123,7 @@ def extractive_claims(title: str, members: list[Article]) -> list[dict[str, Any]
                 groups.append({"text": sentence, "by_outlet": {outlet: sentence}})
 
     claims = []
+    # Classify each group as disputed, agreed or single, dropping lone sentences without a figure.
     for group in groups:
         outlets = list(group["by_outlet"])
         values = _conflict({o: figures(s) for o, s in group["by_outlet"].items()}) if len(outlets) > 1 else None
@@ -125,6 +139,7 @@ def extractive_claims(title: str, members: list[Article]) -> list[dict[str, Any]
     order = {"disputed": 0, "agreed": 1, "single": 2}
     claims.sort(key=lambda c: (order[c["status"]], -len(c["outlets"])))
     kept, singles = [], 0
+    # Keep every multi-outlet claim but only the first MAX_SINGLE single-outlet ones.
     for claim in claims:
         if claim["status"] == "single":
             singles += 1
@@ -140,6 +155,7 @@ def normalize_claims(data: Any, known_outlets: set[str]) -> list[dict[str, Any]]
     if not isinstance(items, list):
         return None
     out = []
+    # Keep only well-formed claims whose outlets are among the story's own.
     for item in items:
         if not isinstance(item, dict):
             continue
@@ -185,8 +201,9 @@ def get_claims(db: Session, cluster_id: int, title: str, members: list[Article],
         try:
             return json.loads(row.claims)
         except json.JSONDecodeError:
-            pass
+            pass  # a corrupt cache entry is simply rebuilt below
     data = build_claims(title, members)
+    # Only cache onto a brief row describing the same reports; otherwise the brief rewrite will clear it anyway.
     if row and row.member_hash == digest:
         row.claims = json.dumps(data)
         db.commit()

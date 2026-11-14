@@ -44,13 +44,14 @@ def available() -> bool:
 
 def encode(vector: list[float]) -> str:
     """Pack a vector as base64 float16."""
+    # "<Ne": N little-endian half-precision floats
     return base64.b64encode(struct.pack(f"<{len(vector)}e", *vector)).decode("ascii")
 
 
 def decode(blob: str) -> np.ndarray:
     """Unpack a stored vector and normalise it, so a dot product is a cosine."""
     raw = base64.b64decode(blob)
-    vec = np.array(struct.unpack(f"<{len(raw) // 2}e", raw), dtype=np.float32)
+    vec = np.array(struct.unpack(f"<{len(raw) // 2}e", raw), dtype=np.float32)  # 2 bytes per float16
     norm = float(np.linalg.norm(vec))
     return vec / norm if norm else vec
 
@@ -65,23 +66,26 @@ def embed_texts(texts: list[str]) -> list[list[float]] | None:
     headers = {"Content-Type": "application/json"}
     if config.EMBEDDING_API_KEY:
         headers["Authorization"] = f"Bearer {config.EMBEDDING_API_KEY}"
+    url = f"{config.EMBEDDING_BASE_URL}/embeddings"
     out: list[list[float]] = []
+    # Send the texts BATCH at a time, giving up entirely on the first failed or malformed batch.
     for start in range(0, len(texts), BATCH):
         batch = texts[start:start + BATCH]
         payload: dict[str, Any] = {"model": config.EMBEDDING_MODEL, "input": batch}
         if config.EMBEDDING_DIMENSIONS:
             payload["dimensions"] = config.EMBEDDING_DIMENSIONS
         try:
-            resp = httpx.post(f"{config.EMBEDDING_BASE_URL}/embeddings", headers=headers, json=payload, timeout=30)
+            resp = httpx.post(url, headers=headers, json=payload, timeout=30)
             if resp.status_code == 400 and "dimensions" in payload:
                 payload.pop("dimensions")  # models that cannot shorten their vectors reject the parameter
-                resp = httpx.post(f"{config.EMBEDDING_BASE_URL}/embeddings", headers=headers, json=payload, timeout=30)
+                resp = httpx.post(url, headers=headers, json=payload, timeout=30)
             resp.raise_for_status()
-            data = sorted(resp.json()["data"], key=lambda d: d["index"])
+            data = sorted(resp.json()["data"], key=lambda d: d["index"])  # the API may return items out of order
             vectors = [[float(x) for x in d["embedding"]] for d in data]
         except Exception as exc:  # noqa: BLE001
             logger.warning("[embeddings] request failed: %s", exc)
             return None
+        # One non-empty vector per text, all of the same dimension.
         if len(vectors) != len(batch) or len({len(v) for v in vectors}) != 1 or not vectors[0]:
             logger.warning("[embeddings] unusable response: %s vectors for %s texts", len(vectors), len(batch))
             return None
@@ -91,7 +95,7 @@ def embed_texts(texts: list[str]) -> list[list[float]] | None:
 
 def embed_pending(db: Session, limit: int = PER_WAVE) -> int:
     """Embed recent shared articles that have no vector for the current model. Returns how many were stored."""
-    if not available() or db.info.get("workspace"):
+    if not available() or db.info.get("workspace"):  # visitors' articles are never sent out
         return 0
     cutoff = datetime.now(timezone.utc) - timedelta(days=WINDOW_DAYS)
     articles = db.execute(
@@ -106,6 +110,7 @@ def embed_pending(db: Session, limit: int = PER_WAVE) -> int:
     vectors = embed_texts([article_text(a) for a in articles])
     if vectors is None:
         return 0
+    # Store each vector with the model that produced it.
     for article, vector in zip(articles, vectors):
         article.embedding, article.embedding_model = encode(vector), config.EMBEDDING_MODEL
     db.commit()
@@ -116,6 +121,7 @@ def embed_pending(db: Session, limit: int = PER_WAVE) -> int:
 def vectors_for(rows: list[tuple]) -> dict[int, np.ndarray]:
     """{article id: unit vector} from (id, embedding, model) rows, keeping only the current model's vectors."""
     out: dict[int, np.ndarray] = {}
+    # Decode only vectors made by the current model; others are incompatible.
     for article_id, blob, model in rows:
         if blob and model == config.EMBEDDING_MODEL:
             try:

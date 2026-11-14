@@ -61,6 +61,7 @@ class Article(Base):
     @property
     def keyword_list(self) -> list[str]:
         """Comma-separated keywords as a list."""
+        # Trim each entry and drop empty ones left by stray commas.
         return [k.strip() for k in (self.keywords or "").split(",") if k.strip()]
 
 
@@ -189,6 +190,7 @@ class EventArticle(Base):
 @event.listens_for(Session, "do_orm_execute")
 def _scope_to_workspace(state) -> None:
     """Add the workspace visibility filters to every SELECT."""
+    # Writes are not filtered; only SELECTs are narrowed to the session's workspace.
     if not state.is_select:
         return
     ws = state.session.info.get("workspace", NO_WORKSPACE)

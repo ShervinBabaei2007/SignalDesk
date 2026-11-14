@@ -17,7 +17,7 @@ from . import sentiment as sentiment_scale
 from .models import Article
 from .schemas import Digest, DigestItem, Stats
 
-DAY = timedelta(hours=24)
+DAY = timedelta(hours=24)  # the "last 24 hours" window used by both stats and the digest
 
 
 def stats(db: Session) -> Stats:
@@ -47,6 +47,7 @@ def stats(db: Session) -> Stats:
         .where(Article.published_at >= week_ago, Article.published_at <= now)
     ).all()
     buckets: dict[str, list[float]] = {}
+    # Group the week's sentiment scores by UTC calendar day.
     for published, sentiment in rows:
         if published is None:
             continue
@@ -77,6 +78,7 @@ def digest(db: Session) -> Digest:
     ).scalars().all()
 
     window = "Last 24 hours"
+    # A quiet day still gets a brief: fall back to the 50 most recent articles.
     if not recent:
         recent = db.execute(select(Article).order_by(Article.published_at.desc().nullslast()).limit(50)).scalars().all()
         window = "Most recent signals"
@@ -103,6 +105,7 @@ def digest(db: Session) -> Digest:
         return DigestItem(id=a.id, title=a.title, source=a.source,
                           sentiment=a.sentiment, topic=a.topic, url=a.url)
 
+    # The three most positive and most negative articles, keeping only those that really are positive/negative.
     top_positive = [to_item(a) for a in sorted(recent, key=lambda x: -x.sentiment)[:3]
                     if sentiment_scale.label(a.sentiment) == "positive"]
     top_negative = [to_item(a) for a in sorted(recent, key=lambda x: x.sentiment)[:3]

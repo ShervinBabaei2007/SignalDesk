@@ -42,6 +42,7 @@ def test_health():
 def test_stats_shape():
     """The stats endpoint returns the expected fields."""
     body = client.get("/api/stats").json()
+    # Every stats field the dashboard reads must be present.
     for key in ("total_articles", "total_sources", "avg_sentiment",
                 "positive", "neutral", "negative", "topic_breakdown", "sentiment_7d"):
         assert key in body
@@ -62,6 +63,7 @@ def test_search_filter():
     """The search filter narrows results to matching articles."""
     res = client.get("/api/articles?search=chip")
     assert res.status_code == 200
+    # Each hit must mention the search term in its title or summary.
     for item in res.json()["items"]:
         assert "chip" in (item["title"] + (item["summary"] or "")).lower()
 
@@ -70,6 +72,7 @@ def test_sentiment_filter():
     """The sentiment filter returns only that sentiment."""
     items = client.get("/api/articles?sentiment=negative").json()["items"]
     assert items, "expected at least one negative seed article"
+    # -0.15 is the lower edge of the neutral band.
     assert all(i["sentiment"] < -0.15 for i in items)
 
 
@@ -118,11 +121,13 @@ def test_invalid_order_rejected():
 def test_digest():
     """The daily brief endpoint returns its headline and sections."""
     body = client.get("/api/digest").json()
+    # The brief must expose every section the UI renders.
     for key in ("generated_at", "window_label", "avg_sentiment", "headline",
                 "topic_breakdown", "top_positive", "top_negative"):
         assert key in body
     assert body["total_articles"] > 0
     assert body["headline"]
+    # Top lists must hold only articles outside the +/-0.15 neutral band.
     for item in body["top_positive"]:
         assert item["sentiment"] > 0.15
     for item in body["top_negative"]:
@@ -206,6 +211,7 @@ def test_demo_token_can_ingest_but_not_edit_feeds(monkeypatch):
     assert client.post("/api/ingest", headers={"X-API-Key": "wrong"}).status_code == 401
 
     def busy(db, manual):
+        """Stand-in ingest cycle that always reports the pipeline as busy."""
         raise pipeline.Busy("busy")
 
     monkeypatch.setattr("app.main.pipeline.ingest_cycle", busy)
@@ -215,6 +221,7 @@ def test_demo_token_can_ingest_but_not_edit_feeds(monkeypatch):
 def test_demo_tokens_expire_and_reject_tampering():
     """Expired, forged or differently-keyed demo tokens are invalid."""
     from app import demo
+    # A 60-second token issued at t=1000 expires at t=1060.
     token = demo.issue("secret", 60, now=1000)
     assert demo.is_valid(token, "secret", now=1030)
     assert not demo.is_valid(token, "secret", now=1061)

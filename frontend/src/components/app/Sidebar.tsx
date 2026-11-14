@@ -42,6 +42,7 @@ export function Sidebar() {
   const { stats, filters, setFilter, hotCount } = useDashboard()
   const { saved } = useLibrary()
   const entries = Object.entries(stats?.topic_breakdown ?? {}).sort((a, b) => b[1] - a[1])
+  // Largest topic count scales every bar; the floor of 1 avoids dividing by zero on an empty feed.
   const max = Math.max(...entries.map(([, n]) => n), 1)
   return (
     <aside>
@@ -70,6 +71,7 @@ export function Sidebar() {
               hint="Articles you saved for later (stored in this browser)"
               onClick={() => setFilter({ saved: filters.saved === '1' ? '' : '1', hot: '', topic: '', cluster: '' })}
             />
+            {/* One row per topic, busiest first; clicking the active topic clears it */}
             {entries.map(([topic, n]) => (
               <CategoryRow
                 key={topic}

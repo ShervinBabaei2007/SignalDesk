@@ -6,7 +6,7 @@
 /** Sentiment bucket used for colours and icons. */
 export type Tone = 'positive' | 'neutral' | 'negative'
 
-/** Mirrors backend/app/sentiment.py. Change both together. */
+/** Neutral band edges, mirroring backend/app/sentiment.py (change both together). */
 export const POSITIVE_ABOVE = 0.15
 export const NEGATIVE_BELOW = -0.15
 /** 'Very' positive / negative start here (frontend wording only). */

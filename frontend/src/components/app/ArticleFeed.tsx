@@ -57,7 +57,7 @@ function countLabel(n: number, singular: string, plural: string): string {
   return `${n} ${n === 1 ? singular : plural}`
 }
 
-/** Grouped mode: "best of N reports" on the lead. Flat mode: a chip that opens the article's story. */
+/** Coverage marker: "best of N reports" on a grouped story's lead, or a story chip in the flat feed. */
 function CoverageBadge({ article, story }: { article: Article; story?: Story }) {
   if (story) {
     if (story.report_count <= 1) return null
@@ -71,7 +71,7 @@ function CoverageBadge({ article, story }: { article: Article; story?: Story }) 
   return article.cluster_size > 1 ? <StoryChip article={article} /> : null
 }
 
-/** The article's lead image as a small thumbnail. Hotlinked, so it simply disappears if the site blocks it. */
+/** Hotlinked lead-image thumbnail that hides itself if the site blocks or fails to serve it. */
 function Thumbnail({ url }: { url: string }) {
   const [failed, setFailed] = useState(false)
   if (failed) return null
@@ -95,10 +95,13 @@ function ArticleCard({
   const summary = cleanSummary(a.summary_deep || a.summary || '')
   const { isRead } = useLibrary()
   const read = isRead(a.id)
+  // Demo articles have placeholder URLs, so their domain is not worth showing.
   const domain = a.is_seed ? '' : domainOf(a.url)
+  /** Navigates to this article's reader page. */
   const open = () => {
     location.hash = `#/article/${a.id}`
   }
+  // Stagger the entrance of the first few cards only, so later ones do not lag behind.
   return (
     <BlurFade delay={Math.min(index, 8) * 0.04} duration={0.3} offset={8}>
       <Card
@@ -220,6 +223,7 @@ function FeedSkeleton() {
 function FeedPagination({ onNavigate, noun }: { onNavigate: () => void; noun: string }) {
   const { page, pageCount, setPage, total } = useDashboard()
   if (pageCount <= 1) return null
+  /** Switches to a page and lets the feed scroll back to its top. */
   const go = (p: number) => {
     setPage(p)
     onNavigate()
@@ -236,6 +240,7 @@ function FeedPagination({ onNavigate, noun }: { onNavigate: () => void; noun: st
               <span className="hidden sm:inline">Previous</span>
             </Button>
           </PaginationItem>
+          {/* Numbered buttons around the current page, with ellipses where pages are skipped */}
           {pageWindow(page, pageCount).map((item, i) =>
             item === 'gap' ? (
               <PaginationItem key={`gap-${i}`}>
@@ -291,18 +296,20 @@ function EmptyFeed({ saved, showClear, onClear }: { saved: boolean; showClear: b
   )
 }
 
-/** The feed list, driven by the dashboard's filters and page. */
+/** The main article feed, showing grouped stories or flat articles for the current filters and page. */
 export function ArticleFeed() {
   const {
     stories, articles, grouped, total, articleTotal, loading, filters, setFilter, clearFilters, hasActiveFilters,
   } = useDashboard()
   const { setGrouped } = useSettings()
   const count = grouped ? stories.length : articles.length
+  // When narrowed to one story, collect its distinct outlets for the banner.
   const sources = filters.cluster
     ? [...new Set(grouped ? stories.flatMap((s) => s.sources) : articles.map((a) => a.source))]
     : []
   const showSkeleton = loading && count === 0
   const top = useRef<HTMLElement>(null)
+  /** Smoothly scrolls the feed's heading into view. */
   const toTop = () => top.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 
   return (

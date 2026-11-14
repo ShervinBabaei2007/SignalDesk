@@ -63,6 +63,7 @@ export function SentimentBadge({ score, className }: { score: number; className?
 export function SentimentScale({ score, className }: { score?: number; className?: string }) {
   return (
     <div className={className}>
+      {/* Gradient stops at 42.5% and 57.5% mark the neutral band in the middle of the scale */}
       <div className="relative h-2 rounded-full bg-[linear-gradient(90deg,color-mix(in_srgb,var(--negative)_55%,transparent)_0_42.5%,color-mix(in_srgb,var(--neutral)_45%,transparent)_42.5%_57.5%,color-mix(in_srgb,var(--positive)_55%,transparent)_57.5%_100%)]">
         {score !== undefined && (
           <span
@@ -80,7 +81,7 @@ export function SentimentScale({ score, className }: { score?: number; className
   )
 }
 
-/** Professional "what does this mean?" affordance: an Info icon button that opens a popover. */
+/** Help icon button that opens a popover explaining how sentiment is scored. */
 export function SentimentInfo({ className }: { className?: string }) {
   return (
     <Popover>

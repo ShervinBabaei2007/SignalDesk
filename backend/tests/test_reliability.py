@@ -46,6 +46,7 @@ and <a href="https://news.example.com/other">our own earlier story</a>.</p>
 # --------------------------------------------------------------------------- #
 
 def test_a_transparent_page_shows_every_signal():
+    """A page with byline, dates, external links, a corrections policy and a notice reports every signal."""
     s = signals.extract_signals(GOOD_PAGE, "https://news.example.com/a", "Body\nCorrection: an earlier headline misstated it.")
     assert s == {"byline": True, "published": True, "updated": True, "sources": 2, "policy": True, "correction": True}
 
@@ -62,11 +63,13 @@ def test_signals_are_found_even_when_megabytes_of_script_come_first():
 
 
 def test_a_bare_page_shows_none():
+    """A page with only plain text reports no transparency signals."""
     s = signals.extract_signals("<html><body><p>Just text.</p></body></html>", "https://x.test/a", "Just text.")
     assert s == {"byline": False, "published": False, "updated": False, "sources": 0, "policy": False, "correction": False}
 
 
 def test_own_domain_and_social_links_do_not_count_as_sourcing():
+    """Links to the outlet's own site or social networks are not external sources, but another outlet is."""
     html = ('<p><a href="https://www.news.example.com/x">us</a> <a href="https://facebook.com/s">fb</a> '
             '<a href="https://t.co/abc">t</a></p>')
     assert signals.extract_signals(html, "https://news.example.com/a")["sources"] == 0
@@ -74,6 +77,7 @@ def test_own_domain_and_social_links_do_not_count_as_sourcing():
 
 
 def test_bylines_and_dates_are_found_in_json_ld_and_markup():
+    """Bylines and dates are detected from JSON-LD as well as byline classes and time tags."""
     ld = '<script type="application/ld+json">{"author": {"name": "A"}, "datePublished": "2026-01-01", "dateModified": "2026-01-01"}</script>'
     s = signals.extract_signals(f"<html><head>{ld}</head><body></body></html>")
     assert s["byline"] and s["published"] and not s["updated"]  # modified equals published: not an update
@@ -89,11 +93,14 @@ def test_bylines_and_dates_are_found_in_json_ld_and_markup():
     ("", False),
 ])
 def test_correction_notices_are_told_from_the_word_correction(text, expected):
+    """Real correction or clarification notices are detected, while ordinary uses of "correction" are not."""
     assert signals.has_correction_notice(text) is expected
 
 
 def test_enrichment_stores_the_signals_it_finds(monkeypatch):
+    """Fetching a page returns its text together with the transparency signals found on it."""
     class Resp:
+        """Fake HTTP response serving the transparent page padded with enough article text to extract."""
         status_code, headers, url = 200, {"content-type": "text/html"}, "https://news.example.com/a"
         text = GOOD_PAGE.replace("<article>", "<article>" + "<p>" + "A long sentence about the economy. " * 12 + "</p>")
     monkeypatch.setattr(enrichment.httpx, "get", lambda *a, **k: Resp())
@@ -123,6 +130,7 @@ NONE = {"byline": False, "published": False, "updated": False, "sources": 0, "po
 
 def seed(db, source, n, *, signals_=FULL, info=80.0, start=1, workspace="", title=None):
     """Add `n` reports for `source` (ids from `start`); `title(i)` can make outlets share a headline."""
+    # Every report is a day old so it sits inside the profile window.
     for i in range(start, start + n):
         db.add(Article(id=i, title=title(i) if title else f"{source} story {i}", url=f"https://{source}.test/{i}", source=source, topic="World",
                        sentiment=0.0, is_seed=False, info_score=info, workspace_id=workspace,
@@ -141,9 +149,11 @@ def shared_event(k):
 
 
 def test_a_well_evidenced_outlet_gets_an_explained_score_rescaled_over_what_is_known(db):
+    """A well-evidenced outlet gets per-part points and a score rescaled over only the parts that are known."""
     # half of Alpha's reports are about events that Beta also covers (same headline), the rest are its own
     seed(db, "Alpha", 12, title=lambda i: shared_event(i - 1) if i <= 6 else f"unique{i}a unique{i}b unique{i}c")
     seed(db, "Beta", 6, start=100, title=lambda i: shared_event(i - 100))
+    # Twelve successful hourly fetches give Alpha full availability points.
     db.add_all([FeedRun(run_id=1, feed="Alpha", at=NOW - timedelta(hours=h), ok=True) for h in range(12)])
     db.commit()
     p = reliability.compute(db, NOW)["Alpha"]
@@ -158,6 +168,7 @@ def test_a_well_evidenced_outlet_gets_an_explained_score_rescaled_over_what_is_k
 
 
 def test_an_opaque_low_information_outlet_gets_limited_signals(db):
+    """An outlet with no page signals and thin reports scores below the mixed band."""
     seed(db, "Opaque", 12, signals_=NONE, info=20.0)
     p = reliability.compute(db, NOW)["Opaque"]
     assert p["score"] is not None and p["score"] < reliability.MIXED and p["label"] == "Limited signals"
@@ -165,6 +176,7 @@ def test_an_opaque_low_information_outlet_gets_limited_signals(db):
 
 
 def test_too_little_evidence_withholds_the_score_instead_of_guessing(db):
+    """An outlet with only a few reports gets no score and no part points."""
     seed(db, "Thin", 3)
     p = reliability.compute(db, NOW)["Thin"]
     assert p["score"] is None and p["label"] == "Not enough data" and p["articles"] == 3
@@ -172,6 +184,7 @@ def test_too_little_evidence_withholds_the_score_instead_of_guessing(db):
 
 
 def test_without_page_signals_the_score_is_withheld_however_many_reports_there_are(db):
+    """Many reports but no page signals still withholds the overall score while showing the parts."""
     seed(db, "NoPages", 30, signals_=None)  # information and corroboration alone are only 40 of 100: too thin to score
     p = reliability.compute(db, NOW)["NoPages"]
     assert p["score"] is None and p["label"] == "Not enough data" and p["articles"] == 30
@@ -179,6 +192,7 @@ def test_without_page_signals_the_score_is_withheld_however_many_reports_there_a
 
 
 def test_corroboration_ignores_stories_older_than_the_window(db):
+    """Matching reports from another outlet that are too old do not count as corroboration."""
     seed(db, "Alpha", 12, title=lambda i: shared_event(i % 6))
     seed(db, "Beta", 6, start=100, title=lambda i: shared_event(i - 100))
     old = NOW - timedelta(days=10)
@@ -190,6 +204,7 @@ def test_corroboration_ignores_stories_older_than_the_window(db):
 
 
 def test_many_correction_notices_count_against_an_outlet(db):
+    """An outlet correcting every report loses correction points compared with a careful one."""
     noisy = dict(FULL, correction=True)
     seed(db, "Noisy", 12, signals_=noisy)
     seed(db, "Careful", 12, start=100)
@@ -200,8 +215,10 @@ def test_many_correction_notices_count_against_an_outlet(db):
 
 
 def test_agreement_uses_cached_claims_of_shared_stories_only(db):
+    """Agreement points come from cached claims of shared stories, never from visitor stories."""
     seed(db, "Alpha", 12)
     seed(db, "Visitor stuff", 12, start=500, workspace="visitor")
+    # Four agreed and two disputed claims, so Alpha agrees on 4 of 6.
     items = [{"status": "agreed", "outlets": ["Alpha", "Beta"]}] * 4 + [{"status": "disputed", "outlets": ["Alpha", "Beta"]}] * 2
     db.add(StoryBrief(cluster_id=1, member_hash="h", payload="{}", claims=json.dumps({"kind": "auto", "items": items})))
     db.add(StoryBrief(cluster_id=500, member_hash="h", payload="{}", claims=json.dumps({"kind": "auto", "items": items})))
@@ -213,6 +230,7 @@ def test_agreement_uses_cached_claims_of_shared_stories_only(db):
 
 
 def test_a_visitor_session_cannot_change_a_public_profile(db):
+    """A visitor's own low-quality reports under a public outlet's name leave that outlet's profile unchanged."""
     seed(db, "Alpha", 12)
     before = reliability.compute(db, NOW)["Alpha"]
     seed(db, "Alpha", 20, start=700, workspace="visitor", signals_=NONE, info=1.0)
@@ -221,6 +239,7 @@ def test_a_visitor_session_cannot_change_a_public_profile(db):
 
 
 def test_profiles_are_cached_briefly(db, monkeypatch):
+    """Profiles are served from cache until the cache is reset."""
     seed(db, "Alpha", 12)
     first = reliability.profiles(db)
     seed(db, "Gamma", 12, start=900)
@@ -230,6 +249,7 @@ def test_profiles_are_cached_briefly(db, monkeypatch):
 
 
 def test_listing_orders_best_first_with_the_disclaimer(db):
+    """The source listing ranks scored outlets by score, puts unscored ones last and carries the disclaimer."""
     seed(db, "Alpha", 12)
     seed(db, "Opaque", 12, start=100, signals_=NONE, info=20.0)
     seed(db, "Thin", 2, start=200)
@@ -251,6 +271,7 @@ def members(db, workspace_for_second=""):
 
 
 def test_a_story_with_a_visitors_article_is_never_cached_for_others(db):
+    """Briefs and claims for a story containing a visitor's article are not written to the shared cache."""
     story = members(db, "visitor")
     briefs.get_brief(db, 1, "t", story)
     claims.get_claims(db, 1, "t", story)
@@ -258,6 +279,7 @@ def test_a_story_with_a_visitors_article_is_never_cached_for_others(db):
 
 
 def test_a_fully_shared_story_is_cached(db):
+    """Briefs and claims for a story of only shared articles are cached."""
     story = members(db, "")
     briefs.get_brief(db, 1, "t", story)
     claims.get_claims(db, 1, "t", story)
@@ -270,11 +292,13 @@ def test_a_fully_shared_story_is_cached(db):
 # --------------------------------------------------------------------------- #
 
 def test_the_sources_endpoint_and_story_comparison_expose_reliability():
+    """The sources endpoint lists profiles and story comparison shows each outlet's reliability."""
     Base.metadata.create_all(bind=app_engine)
     reliability.reset_cache()
     recent = NOW - timedelta(hours=1)
     with SessionLocal() as session:
         seed(session, "ApiAlpha", 12, start=9200)
+        # One story covered by the scored outlet and an outlet with too little data.
         for i, source in ((9301, "ApiAlpha"), (9302, "ApiBeta")):
             session.add(Article(id=i, title="Dam collapse floods valley as thousands flee", url=f"https://x.test/{i}",
                                 source=source, topic="World", sentiment=0.0, is_seed=False, published_at=recent))

@@ -97,6 +97,7 @@ def _load(db: Session) -> tuple[dict[int, Cluster], dict[int, Cluster], list[int
         select(func.count(Article.id), func.max(Article.id), func.count(Article.embedding))
         .where(Article.is_seed.is_(False))
     ).one()
+    # The cache is valid until articles or embeddings change, or the hour rolls over (the window slides).
     key = (count, max_id, embedded, now.strftime("%Y%m%d%H"))
     with _cache_lock:
         entry = _cache.get(workspace)
@@ -114,8 +115,9 @@ def _load(db: Session) -> tuple[dict[int, Cluster], dict[int, Cluster], list[int
         by_article = {aid: c for c in clusters for aid in c.article_ids}
         by_id = {c.id: c for c in clusters}
         window_ids = [r[0] for r in rows]
-        _cache.pop(workspace, None)
+        _cache.pop(workspace, None)  # re-insert so this workspace becomes the newest entry
         _cache[workspace] = {"key": key, "by_article": by_article, "by_id": by_id, "window_ids": window_ids}
+        # Evict the oldest workspaces (dicts keep insertion order) beyond the cache size.
         while len(_cache) > _CACHE_SIZE:
             _cache.pop(next(iter(_cache)))
         return by_article, by_id, window_ids
@@ -131,6 +133,7 @@ def recent_stories(db: Session) -> list[tuple[str, list[Article]]]:
     articles = {a.id: a for a in db.execute(
         select(Article).where(Article.id.in_(window_ids or [0]))).scalars()}
     groups: dict[str, list[Article]] = {}
+    # Group the window's articles by story key, keeping newest-first order.
     for article_id in window_ids:
         a = articles.get(article_id)
         if a is not None:
@@ -141,6 +144,7 @@ def recent_stories(db: Session) -> list[tuple[str, list[Article]]]:
 def annotate(db: Session, articles) -> None:
     """Attach cluster_id / cluster_size / cluster_sources to ORM objects in place."""
     by_article, _ = get_clusters(db)
+    # A lone report gets a size of 1 and no cluster.
     for a in articles:
         c = by_article.get(a.id)
         a.cluster_id = c.id if c else None
@@ -171,6 +175,7 @@ def rank_hot(clusters, info: dict, now: datetime) -> list[tuple[Cluster, dict]]:
     Pure: no database, so the scoring is testable on plain data.
     """
     ranked = []
+    # Score every multi-outlet cluster and collect its summary card.
     for c in clusters:
         if len(c.sources) < 2:  # "hot" means more than one outlet is running it
             continue
@@ -180,7 +185,7 @@ def rank_hot(clusters, info: dict, now: datetime) -> list[tuple[Cluster, dict]]:
         stamps = [_as_utc(m.published_at or m.ingested_at) for m in members]
         latest = max(stamps)
         age = min(to_hrs(d, now) for d in stamps)
-        score = (len(c.sources) * 2 + c.size) * 0.5 ** (age / 24)
+        score = (len(c.sources) * 2 + c.size) * 0.5 ** (age / 24)  # halves every 24 hours since the latest report
         ranked.append((score, c, {
             "cluster_id": c.id,
             "article_id": c.lead_id,
@@ -197,7 +202,7 @@ def rank_hot(clusters, info: dict, now: datetime) -> list[tuple[Cluster, dict]]:
 
 
 def _ranked(db: Session) -> list[tuple[Cluster, dict]]:
-    """Cached list of hot clusters with their story data."""
+    """Hot clusters with their story data, ranked from the cached grouping."""
     _, by_id = get_clusters(db)
     if not by_id:
         return []
